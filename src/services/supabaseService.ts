@@ -60,76 +60,62 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
   }
 };
 
-export const getOrdersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<Order[]> => {
+export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: string; key: string; suppliers: Supplier[] }): Promise<Order[]> => {
     const headers = getHeaders(key);
+    const supplierMap = new Map<string, Supplier>(suppliers.map(s => [s.id, s]));
 
-    // Explicitly select columns to avoid any ambiguity or magic from PostgREST with `select=*`.
-    // This resolves the "could not find a relationship" error.
-    const orderColumns = 'id,order_id,store,supplier_id,supplier_name,status,is_sent,is_received,created_at,modified_at,completed_at';
-
-    // Fetch orders and items in parallel instead of relying on a PostgREST join
-    const [ordersResponse, orderItemsResponse] = await Promise.all([
-        fetch(`${url}/rest/v1/orders?select=${orderColumns}`, { headers }),
-        fetch(`${url}/rest/v1/order_items?select=*`, { headers })
-    ]);
-
+    // Fetch all order data, assuming 'items' is a JSONB column.
+    const ordersResponse = await fetch(`${url}/rest/v1/orders?select=*`, { headers });
     if (!ordersResponse.ok) throw new Error(`Failed to fetch orders: ${await ordersResponse.text()}`);
-    if (!orderItemsResponse.ok) throw new Error(`Failed to fetch order items: ${await orderItemsResponse.text()}`);
     
     const ordersData: any[] = await ordersResponse.json();
-    const orderItemsData: any[] = await orderItemsResponse.json();
-
-    // Group order items by their order_id for efficient lookup
-    const itemsByOrderId = new Map<string, any[]>();
-    for (const item of orderItemsData) {
-        if (!itemsByOrderId.has(item.order_id)) {
-            itemsByOrderId.set(item.order_id, []);
-        }
-        itemsByOrderId.get(item.order_id)!.push(item);
-    }
     
-    // Manually join orders with their respective items
+    // Map the database response to the application's Order type.
     return ordersData
         .filter(Boolean)
-        .map(order => ({
-            id: order.id,
-            orderId: order.order_id,
-            store: order.store,
-            supplierId: order.supplier_id,
-            supplierName: order.supplier_name,
-            status: order.status,
-            isSent: order.is_sent,
-            isReceived: order.is_received,
-            createdAt: order.created_at,
-            modifiedAt: order.modified_at,
-            completedAt: order.completed_at,
-            items: (itemsByOrderId.get(order.id) || []).map((item: any) => ({
-                itemId: item.item_id,
-                name: item.name,
-                quantity: item.quantity,
-                unit: item.unit,
-                isSpoiled: item.is_spoiled,
-            })),
-        }));
+        .reduce((acc: Order[], order) => {
+            const supplier = supplierMap.get(order.supplier_id);
+            if (supplier) {
+                acc.push({
+                    id: order.id,
+                    orderId: order.order_id,
+                    store: order.store,
+                    supplierId: order.supplier_id,
+                    supplierName: supplier.name,
+                    status: order.status,
+                    isSent: order.is_sent,
+                    isReceived: order.is_received,
+                    createdAt: order.created_at,
+                    modifiedAt: order.modified_at,
+                    completedAt: order.completed_at,
+                    // Assume 'items' column exists and is an array of OrderItem or null.
+                    items: order.items || [], 
+                });
+            } else {
+                console.warn(`Order with id ${order.id} has an unknown supplier_id ${order.supplier_id}. Skipping.`);
+            }
+            return acc;
+        }, []);
 };
 
 // --- WRITE OPERATIONS ---
 
 export const addOrder = async ({ order, url, key }: { order: Order; url: string; key: string }): Promise<Order> => {
     const headers = getHeaders(key);
-    const { id, items, ...orderData } = order;
+    const { id, ...orderData } = order;
 
+    // The payload now includes the 'items' array.
     const orderPayload = {
         order_id: orderData.orderId,
         store: orderData.store,
         supplier_id: orderData.supplierId,
-        supplier_name: orderData.supplierName,
         status: orderData.status,
         is_sent: orderData.isSent,
         is_received: orderData.isReceived,
         created_at: orderData.createdAt,
         modified_at: orderData.modifiedAt,
         completed_at: orderData.completedAt,
+        items: orderData.items,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -140,29 +126,10 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
     if (!orderResponse.ok) throw new Error(`Failed to add order: ${await orderResponse.text()}`);
     
     const newOrderFromDb = (await orderResponse.json())[0];
-    const newId = newOrderFromDb.id;
-
-
-    if (items.length > 0) {
-        const itemsPayload = items.map(item => ({
-            order_id: newId,
-            item_id: item.itemId,
-            name: item.name,
-            quantity: item.quantity,
-            unit: item.unit,
-            is_spoiled: item.isSpoiled,
-        }));
-        const itemsResponse = await fetch(`${url}/rest/v1/order_items`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(itemsPayload)
-        });
-        if (!itemsResponse.ok) throw new Error(`Order created, but failed to add items: ${await itemsResponse.text()}`);
-    }
     
     return { 
         ...order, 
-        id: newId, 
+        id: newOrderFromDb.id, 
         modifiedAt: newOrderFromDb.modified_at 
     };
 };
@@ -172,12 +139,14 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
     const headers = getHeaders(key);
     const now = new Date().toISOString();
 
+    // The payload now includes the 'items' array.
     const orderPayload = {
         status: order.status,
         is_sent: order.isSent,
         is_received: order.isReceived,
         modified_at: now,
         completed_at: order.completedAt,
+        items: order.items,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',
@@ -185,29 +154,6 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         body: JSON.stringify(orderPayload)
     });
     if (!orderResponse.ok) throw new Error(`Failed to update order: ${await orderResponse.text()}`);
-
-    const deleteResponse = await fetch(`${url}/rest/v1/order_items?order_id=eq.${order.id}`, {
-        method: 'DELETE',
-        headers
-    });
-    if (!deleteResponse.ok) throw new Error(`Failed to clear old items: ${await deleteResponse.text()}`);
-
-    if (order.items.length > 0) {
-        const itemsPayload = order.items.map(item => ({
-            order_id: order.id,
-            item_id: item.itemId,
-            name: item.name,
-            quantity: item.quantity,
-            unit: item.unit,
-            is_spoiled: item.isSpoiled ?? false,
-        }));
-        const itemsResponse = await fetch(`${url}/rest/v1/order_items`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(itemsPayload)
-        });
-        if (!itemsResponse.ok) throw new Error(`Failed to insert new items: ${await itemsResponse.text()}`);
-    }
 
     return { ...order, modifiedAt: now };
 };

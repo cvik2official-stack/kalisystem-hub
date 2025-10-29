@@ -237,7 +237,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             addToast('Syncing with Supabase...', 'info');
             
             const { items, suppliers } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
-            const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey });
+            const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
             
             dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders } }); 
             addToast('Sync complete.', 'success');
