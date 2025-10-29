@@ -62,12 +62,35 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
 
 export const getOrdersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<Order[]> => {
     const headers = getHeaders(key);
-    const response = await fetch(`${url}/rest/v1/orders?select=*,order_items(*)`, { headers });
-    if (!response.ok) throw new Error(`Failed to fetch orders: ${await response.text()}`);
-    const data: any[] = await response.json();
+
+    // Explicitly select columns to avoid any ambiguity or magic from PostgREST with `select=*`.
+    // This resolves the "could not find a relationship" error.
+    const orderColumns = 'id,order_id,store,supplier_id,supplier_name,status,is_sent,is_received,created_at,modified_at,completed_at';
+
+    // Fetch orders and items in parallel instead of relying on a PostgREST join
+    const [ordersResponse, orderItemsResponse] = await Promise.all([
+        fetch(`${url}/rest/v1/orders?select=${orderColumns}`, { headers }),
+        fetch(`${url}/rest/v1/order_items?select=*`, { headers })
+    ]);
+
+    if (!ordersResponse.ok) throw new Error(`Failed to fetch orders: ${await ordersResponse.text()}`);
+    if (!orderItemsResponse.ok) throw new Error(`Failed to fetch order items: ${await orderItemsResponse.text()}`);
     
-    return data
-        .filter(Boolean) // Filter out any null/undefined order objects
+    const ordersData: any[] = await ordersResponse.json();
+    const orderItemsData: any[] = await orderItemsResponse.json();
+
+    // Group order items by their order_id for efficient lookup
+    const itemsByOrderId = new Map<string, any[]>();
+    for (const item of orderItemsData) {
+        if (!itemsByOrderId.has(item.order_id)) {
+            itemsByOrderId.set(item.order_id, []);
+        }
+        itemsByOrderId.get(item.order_id)!.push(item);
+    }
+    
+    // Manually join orders with their respective items
+    return ordersData
+        .filter(Boolean)
         .map(order => ({
             id: order.id,
             orderId: order.order_id,
@@ -80,7 +103,7 @@ export const getOrdersFromSupabase = async ({ url, key }: SupabaseCredentials): 
             createdAt: order.created_at,
             modifiedAt: order.modified_at,
             completedAt: order.completed_at,
-            items: (order.order_items || []).map((item: any) => ({
+            items: (itemsByOrderId.get(order.id) || []).map((item: any) => ({
                 itemId: item.item_id,
                 name: item.name,
                 quantity: item.quantity,

@@ -51,6 +51,7 @@ export interface AppContextActions {
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
+    syncWithSupabase: () => Promise<void>;
 }
 
 
@@ -203,6 +204,7 @@ export const AppContext = createContext<{
       addOrder: async () => {},
       updateOrder: async () => {},
       deleteOrder: async () => {},
+      syncWithSupabase: async () => {},
   }
 });
 
@@ -220,11 +222,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [state]);
 
-  const loadInitialData = useCallback(async () => {
-    // Immediately render the app with cached data
-    dispatch({ type: 'INITIALIZATION_COMPLETE' });
-    
-    // Begin background sync
+  const syncWithSupabase = useCallback(async () => {
     dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
     try {
         if (!navigator.onLine) {
@@ -257,9 +255,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     if (!state.isInitialized) {
-      loadInitialData();
+      // Immediately render the app with cached data
+      dispatch({ type: 'INITIALIZATION_COMPLETE' });
+      // Begin background sync
+      syncWithSupabase();
     }
-  }, [state.isInitialized, loadInitialData]);
+  }, [state.isInitialized, syncWithSupabase]);
 
   const actions: AppContextActions = {
     addItem: async (item: Omit<Item, 'id'>) => {
@@ -347,7 +348,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             dispatch({ type: 'DELETE_ORDER', payload: orderId });
             addToast(`Order deleted.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
-    }
+    },
+    syncWithSupabase,
   };
 
   return (
