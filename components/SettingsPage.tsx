@@ -1,0 +1,49 @@
+import React, { useState } from 'react';
+import ItemsSettings from './settings/ItemsSettings';
+import SuppliersSettings from './settings/SuppliersSettings';
+import IntegrationsSettings from './settings/IntegrationsSettings';
+import OptionsSettings from './settings/OptionsSettings';
+
+type SettingsTab = 'items' | 'suppliers' | 'integrations' | 'options';
+
+const SettingsPage: React.FC = () => {
+  const [selectedTab, setSelectedTab] = useState<SettingsTab>('items');
+
+  const tabs: { id: SettingsTab; label: string }[] = [
+    { id: 'items', label: 'Items' },
+    { id: 'suppliers', label: 'Suppliers' },
+    { id: 'integrations', label: 'Integrations' },
+    { id: 'options', label: 'Options' },
+  ];
+
+  return (
+    <div className="mt-6 flex flex-col flex-grow">
+      <div className="border-b border-gray-700">
+        <nav className="-mb-px flex space-x-6">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setSelectedTab(tab.id)}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+                selectedTab === tab.id
+                  ? 'border-indigo-500 text-indigo-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      <div className="mt-4 flex-grow flex flex-col">
+        {selectedTab === 'items' && <ItemsSettings />}
+        {selectedTab === 'suppliers' && <SuppliersSettings />}
+        {selectedTab === 'integrations' && <IntegrationsSettings />}
+        {selectedTab === 'options' && <OptionsSettings />}
+      </div>
+    </div>
+  );
+};
+
+export default SettingsPage;

@@ -1,0 +1,286 @@
+import { Item, Order, OrderItem, Supplier, SupplierName } from '../types';
+
+interface SupabaseCredentials {
+  url: string;
+  key: string;
+}
+
+const getHeaders = (key: string) => ({
+    'apikey': key,
+    'Authorization': `Bearer ${key}`,
+    'Content-Type': 'application/json'
+});
+
+
+// --- READ OPERATIONS ---
+
+export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[] }> => {
+  const headers = getHeaders(key);
+
+  try {
+    const [suppliersResponse, itemsResponse] = await Promise.all([
+        fetch(`${url}/rest/v1/suppliers?select=*`, { headers }),
+        fetch(`${url}/rest/v1/items?select=*`, { headers })
+    ]);
+
+    if (!suppliersResponse.ok) throw new Error(`Failed to fetch suppliers: ${await suppliersResponse.text()}`);
+    if (!itemsResponse.ok) throw new Error(`Failed to fetch items: ${await itemsResponse.text()}`);
+
+    const suppliersData: any[] = await suppliersResponse.json();
+    const itemsData: any[] = await itemsResponse.json();
+    
+    const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
+        id: s.id,
+        name: s.name,
+        telegramGroupId: s.telegram_group_id,
+        modifiedAt: s.modified_at,
+    }]));
+    
+    const items: Item[] = itemsData.reduce((acc: Item[], i) => {
+        const supplier = supplierMap.get(i.supplier_id);
+        if (supplier) {
+            acc.push({
+                id: i.id,
+                name: i.name,
+                unit: i.unit,
+                supplierId: i.supplier_id,
+                supplierName: supplier.name,
+                createdAt: i.created_at,
+                modifiedAt: i.modified_at,
+            });
+        }
+        return acc;
+    }, []);
+
+    return { items, suppliers: Array.from(supplierMap.values()) };
+
+  } catch (error) {
+    console.error("Error fetching from Supabase:", error);
+    throw error;
+  }
+};
+
+export const getOrdersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<Order[]> => {
+    const headers = getHeaders(key);
+    const response = await fetch(`${url}/rest/v1/orders?select=*,order_items(*)`, { headers });
+    if (!response.ok) throw new Error(`Failed to fetch orders: ${await response.text()}`);
+    const data: any[] = await response.json();
+    
+    return data
+        .filter(Boolean) // Filter out any null/undefined order objects
+        .map(order => ({
+            id: order.id,
+            orderId: order.order_id,
+            store: order.store,
+            supplierId: order.supplier_id,
+            supplierName: order.supplier_name,
+            status: order.status,
+            isSent: order.is_sent,
+            isReceived: order.is_received,
+            createdAt: order.created_at,
+            modifiedAt: order.modified_at,
+            completedAt: order.completed_at,
+            items: (order.order_items || []).map((item: any) => ({
+                itemId: item.item_id,
+                name: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                isSpoiled: item.is_spoiled,
+            })),
+        }));
+};
+
+// --- WRITE OPERATIONS ---
+
+export const addOrder = async ({ order, url, key }: { order: Order; url: string; key: string }): Promise<Order> => {
+    const headers = getHeaders(key);
+    const { id, items, ...orderData } = order;
+
+    const orderPayload = {
+        order_id: orderData.orderId,
+        store: orderData.store,
+        supplier_id: orderData.supplierId,
+        supplier_name: orderData.supplierName,
+        status: orderData.status,
+        is_sent: orderData.isSent,
+        is_received: orderData.isReceived,
+        created_at: orderData.createdAt,
+        modified_at: orderData.modifiedAt,
+        completed_at: orderData.completedAt,
+    };
+
+    const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
+        method: 'POST',
+        headers: { ...headers, 'Prefer': 'return=representation' },
+        body: JSON.stringify(orderPayload)
+    });
+    if (!orderResponse.ok) throw new Error(`Failed to add order: ${await orderResponse.text()}`);
+    
+    const newOrderFromDb = (await orderResponse.json())[0];
+    const newId = newOrderFromDb.id;
+
+
+    if (items.length > 0) {
+        const itemsPayload = items.map(item => ({
+            order_id: newId,
+            item_id: item.itemId,
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            is_spoiled: item.isSpoiled,
+        }));
+        const itemsResponse = await fetch(`${url}/rest/v1/order_items`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(itemsPayload)
+        });
+        if (!itemsResponse.ok) throw new Error(`Order created, but failed to add items: ${await itemsResponse.text()}`);
+    }
+    
+    return { 
+        ...order, 
+        id: newId, 
+        modifiedAt: newOrderFromDb.modified_at 
+    };
+};
+
+
+export const updateOrder = async ({ order, url, key }: { order: Order; url: string; key: string }): Promise<Order> => {
+    const headers = getHeaders(key);
+    const now = new Date().toISOString();
+
+    const orderPayload = {
+        status: order.status,
+        is_sent: order.isSent,
+        is_received: order.isReceived,
+        modified_at: now,
+        completed_at: order.completedAt,
+    };
+    const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(orderPayload)
+    });
+    if (!orderResponse.ok) throw new Error(`Failed to update order: ${await orderResponse.text()}`);
+
+    const deleteResponse = await fetch(`${url}/rest/v1/order_items?order_id=eq.${order.id}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!deleteResponse.ok) throw new Error(`Failed to clear old items: ${await deleteResponse.text()}`);
+
+    if (order.items.length > 0) {
+        const itemsPayload = order.items.map(item => ({
+            order_id: order.id,
+            item_id: item.itemId,
+            name: item.name,
+            quantity: item.quantity,
+            unit: item.unit,
+            is_spoiled: item.isSpoiled ?? false,
+        }));
+        const itemsResponse = await fetch(`${url}/rest/v1/order_items`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(itemsPayload)
+        });
+        if (!itemsResponse.ok) throw new Error(`Failed to insert new items: ${await itemsResponse.text()}`);
+    }
+
+    return { ...order, modifiedAt: now };
+};
+
+
+export const deleteOrder = async ({ orderId, url, key }: { orderId: string; url: string; key: string }): Promise<void> => {
+    const headers = getHeaders(key);
+    const response = await fetch(`${url}/rest/v1/orders?id=eq.${orderId}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) throw new Error(`Failed to delete order: ${await response.text()}`);
+};
+
+
+export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url: string, key: string }): Promise<Item> => {
+    const payload = {
+        name: item.name,
+        unit: item.unit,
+        supplier_id: item.supplierId,
+    };
+    const response = await fetch(`${url}/rest/v1/items?select=*`, {
+        method: 'POST',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Failed to add item: ${await response.text()}`);
+    const data = await response.json();
+    const newItem = data[0];
+    return { ...item, id: newItem.id, createdAt: newItem.created_at, modifiedAt: newItem.modified_at };
+};
+
+export const updateItem = async ({ item, url, key }: { item: Item, url: string, key: string }): Promise<Item> => {
+    const payload = {
+        name: item.name,
+        unit: item.unit,
+        supplier_id: item.supplierId,
+    };
+    const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
+        method: 'PATCH',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Failed to update item: ${await response.text()}`);
+    const data = await response.json();
+    const updatedItem = data[0];
+    return { ...item, modifiedAt: updatedItem.modified_at };
+};
+
+export const deleteItem = async ({ itemId, url, key }: { itemId: string, url: string, key: string }): Promise<void> => {
+    const response = await fetch(`${url}/rest/v1/items?id=eq.${itemId}`, {
+        method: 'DELETE',
+        headers: getHeaders(key)
+    });
+    if (!response.ok) throw new Error(`Failed to delete item: ${await response.text()}`);
+};
+
+export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplier, url: string, key: string }): Promise<Supplier> => {
+    const payload = { telegram_group_id: supplier.telegramGroupId };
+    const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplier.id}&select=*`, {
+        method: 'PATCH',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Failed to update supplier: ${await response.text()}`);
+    const data = await response.json();
+    return { ...supplier, modifiedAt: data[0].modified_at };
+};
+
+// --- SEEDING ---
+export const seedDatabase = async ({ url, key, items, suppliers }: { url: string, key: string, items: Item[], suppliers: Supplier[] }) => {
+    const headers = {
+        ...getHeaders(key),
+        'Prefer': 'return=representation,resolution=merge-duplicates',
+    };
+    
+    const supplierPayload = Object.values(SupplierName).map(name => ({ name }));
+    const supplierResponse = await fetch(`${url}/rest/v1/suppliers?on_conflict=name`, {
+        method: 'POST', headers, body: JSON.stringify(supplierPayload),
+    });
+
+    if (!supplierResponse.ok) throw new Error(`Failed to seed suppliers: ${await supplierResponse.text()}`);
+    const upsertedSuppliers: {id: string; name: SupplierName}[] = await supplierResponse.json();
+    const supplierNameToIdMap = new Map(upsertedSuppliers.map(s => [s.name, s.id]));
+
+    const itemPayload = items
+      .filter(item => supplierNameToIdMap.has(item.supplierName))
+      .map(item => ({ name: item.name, unit: item.unit, supplier_id: supplierNameToIdMap.get(item.supplierName) }));
+
+    if(itemPayload.length === 0) return { itemsUpserted: 0 };
+
+    const itemResponse = await fetch(`${url}/rest/v1/items?on_conflict=name,supplier_id`, {
+        method: 'POST', headers, body: JSON.stringify(itemPayload),
+    });
+
+    if (!itemResponse.ok) throw new Error(`Failed to seed items: ${await itemResponse.text()}`);
+    const responseData = await itemResponse.json();
+    return { itemsUpserted: responseData.length || 0 };
+};
