@@ -1,4 +1,4 @@
-import { Bot, GrammyError, HttpError, InlineKeyboard, webhookCallback } from 'grammy';
+import { Bot, GrammyError, HttpError, InlineKeyboard, webhookCallback } from 'https://esm.sh/grammy';
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { GoogleGenAI } from 'https://esm.sh/@google/genai';
 
