@@ -41,15 +41,24 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
         }
 
         try {
-            if (isNew) {
-                if (state.items.some(i => i.name.toLowerCase() === name.toLowerCase() && i.supplierId === supplierId)) {
-                    addToast(`Item "${name}" from ${selectedSupplier.name} already exists.`, 'error');
-                    return;
-                }
-                await onSave({ name, unit, supplierId, supplierName: selectedSupplier.name });
-            } else {
-                await onSave({ ...item, name, unit, supplierId, supplierName: selectedSupplier.name });
+            // This validation should only run for new items.
+            if (isNew && state.items.some(i => i.name.toLowerCase() === name.toLowerCase() && i.supplierId === supplierId)) {
+                addToast(`Item "${name}" from ${selectedSupplier.name} already exists.`, 'error');
+                setIsSaving(false);
+                return;
             }
+            
+            // Construct the item object to save. This will have the temporary ID for new items
+            // and the real ID for existing items. The parent component will handle the logic.
+            const itemToSave: Item = {
+                ...item,
+                name,
+                unit,
+                supplierId,
+                supplierName: selectedSupplier.name
+            };
+
+            await onSave(itemToSave);
             onClose();
         } catch (e) {
             // Error toast is handled by the context action

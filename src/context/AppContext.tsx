@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, Unit } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier } from '../services/supabaseService';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
 import { processCsvContent } from '../services/csvService';
 
@@ -8,7 +8,7 @@ export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings';
+  activeStore: StoreName | 'Settings' | 'KALI';
   suppliers: Supplier[];
   items: Item[];
   orders: Order[];
@@ -28,11 +28,12 @@ export interface AppState {
 }
 
 export type Action =
-  | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' }
+  | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' | 'KALI' }
   | { type: 'SET_ACTIVE_STATUS'; payload: OrderStatus }
   | { type: '_ADD_ITEM'; payload: Item }
   | { type: '_UPDATE_ITEM'; payload: Item }
   | { type: '_DELETE_ITEM'; payload: string }
+  | { type: '_ADD_SUPPLIER'; payload: Supplier }
   | { type: '_UPDATE_SUPPLIER'; payload: Supplier }
   | { type: 'ADD_ORDERS'; payload: Order[] }
   | { type: 'UPDATE_ORDER'; payload: Order }
@@ -44,7 +45,7 @@ export type Action =
   | { type: 'INITIALIZATION_COMPLETE' };
 
 export interface AppContextActions {
-    addItem: (item: Omit<Item, 'id'>) => Promise<void>;
+    addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
     updateItem: (item: Item) => Promise<void>;
     deleteItem: (itemId: string) => Promise<void>;
     updateSupplier: (supplier: Supplier) => Promise<void>;
@@ -76,6 +77,11 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case '_DELETE_ITEM':
         return { ...state, items: state.items.filter(i => i.id !== action.payload) };
+    case '_ADD_SUPPLIER':
+        if (state.suppliers.some(s => s.id === action.payload.id)) {
+            return state;
+        }
+        return { ...state, suppliers: [...state.suppliers, action.payload] };
     case '_UPDATE_SUPPLIER':
         return { ...state, suppliers: state.suppliers.map(s => s.id === action.payload.id ? action.payload : s) };
     case 'ADD_ORDERS': {
@@ -109,7 +115,25 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case '_SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload, isLoading: action.payload === 'syncing' };
     case '_MERGE_DATABASE': {
-        const { items, suppliers, orders: remoteOrders } = action.payload;
+        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders } = action.payload;
+
+        // --- Merge Items ---
+        const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
+        state.items.forEach(localItem => {
+            if (!mergedItemsMap.has(localItem.id)) {
+                mergedItemsMap.set(localItem.id, localItem);
+            }
+        });
+
+        // --- Merge Suppliers ---
+        const mergedSuppliersMap = new Map(remoteSuppliers.map(s => [s.id, s]));
+        state.suppliers.forEach(localSupplier => {
+            if (!mergedSuppliersMap.has(localSupplier.id)) {
+                mergedSuppliersMap.set(localSupplier.id, localSupplier);
+            }
+        });
+
+        // --- Merge Orders ---
         const localOrdersMap = new Map(state.orders.map(o => [o.id, o]));
         const mergedOrders: Order[] = [];
 
@@ -126,10 +150,14 @@ const appReducer = (state: AppState, action: Action): AppState => {
                 mergedOrders.push(remoteOrder);
             }
         }
-
         localOrdersMap.forEach(localOrder => mergedOrders.push(localOrder));
 
-        return { ...state, items, suppliers, orders: mergedOrders };
+        return { 
+            ...state, 
+            items: Array.from(mergedItemsMap.values()), 
+            suppliers: Array.from(mergedSuppliersMap.values()), 
+            orders: mergedOrders 
+        };
     }
     case 'INITIALIZATION_COMPLETE':
       return { ...state, isInitialized: true };
@@ -162,7 +190,8 @@ const getInitialState = (): AppState => {
     settings: {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
-      csvUrl: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQbOvxfGpbbvY9fzyOBYFdQ6M2_N2kR-hIQxalGpb4y7ZaDANOx9AglF3k8axXzJA-mLcbwKfvHuTYO/pub?gid=472324130&single=true&output=csv',
+      telegramToken: process.env.TELEGRAM_TOKEN,
+      csvUrl: process.env.CSV_URL,
       isAiEnabled: true,
     },
     isLoading: false,
@@ -197,7 +226,7 @@ export const AppContext = createContext<{
   state: getInitialState(),
   dispatch: () => null,
   actions: {
-      addItem: async () => {},
+      addItem: async () => { throw new Error('addItem not implemented'); },
       updateItem: async () => {},
       deleteItem: async () => {},
       updateSupplier: async () => {},
@@ -263,7 +292,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [state.isInitialized, syncWithSupabase]);
 
   const actions: AppContextActions = {
-    addItem: async (item: Omit<Item, 'id'>) => {
+    addItem: async (item: Omit<Item, 'id'>): Promise<Item> => {
         const { supabaseUrl, supabaseKey } = state.settings;
         if (!supabaseUrl || !supabaseKey) {
             addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
@@ -272,6 +301,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const newItem = await supabaseAddItem({ item, url: supabaseUrl, key: supabaseKey });
             dispatch({ type: '_ADD_ITEM', payload: newItem });
             addToast(`Item "${newItem.name}" created.`, 'success');
+            return newItem;
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     updateItem: async (item: Item) => {
@@ -312,20 +342,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (!supabaseUrl || !supabaseKey) {
             addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
         }
-        const now = new Date();
-        const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
-        const counterKey = `${dateStr}_${supplier.name}_${store}`;
-        const newCounter = (state.orderIdCounters[counterKey] || 0) + 1;
-        const newOrderId = `${dateStr}_${supplier.name}_${store}_${String(newCounter).padStart(3,'0')}`;
-        const newOrder: Order = {
-            id: `placeholder_${Date.now()}`, // This ID is temporary and will be replaced by the one from the DB
-            orderId: newOrderId, store, supplierId: supplier.id, supplierName: supplier.name, items, status: OrderStatus.DISPATCHING,
-            isSent: false, isReceived: false, createdAt: now.toISOString(), modifiedAt: now.toISOString(),
-        };
         try {
+            let supplierToUse = supplier;
+
+            // Check if the supplier is a new, temporary one created on the fly.
+            if (supplier.id.startsWith('new_')) {
+                addToast(`Creating or verifying supplier: ${supplier.name}...`, 'info');
+                // This will create the supplier if it doesn't exist, or fetch the existing one.
+                const newSupplierFromDb = await supabaseAddSupplier({ supplierName: supplier.name, url: supabaseUrl, key: supabaseKey });
+                dispatch({ type: '_ADD_SUPPLIER', payload: newSupplierFromDb });
+                supplierToUse = newSupplierFromDb; // Use the supplier with the real UUID.
+            }
+
+            const now = new Date();
+            const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
+            const counterKey = `${dateStr}_${supplierToUse.name}_${store}`;
+            const newCounter = (state.orderIdCounters[counterKey] || 0) + 1;
+            const newOrderId = `${dateStr}_${supplierToUse.name}_${store}_${String(newCounter).padStart(3,'0')}`;
+            const newOrder: Order = {
+                id: `placeholder_${Date.now()}`, // This ID is temporary and will be replaced by the one from the DB
+                orderId: newOrderId, store, supplierId: supplierToUse.id, supplierName: supplierToUse.name, items, status: OrderStatus.DISPATCHING,
+                isSent: false, isReceived: false, createdAt: now.toISOString(), modifiedAt: now.toISOString(),
+            };
             const savedOrder = await supabaseAddOrder({ order: newOrder, url: supabaseUrl, key: supabaseKey });
             dispatch({ type: 'ADD_ORDERS', payload: [savedOrder] });
-            addToast(`Order for ${supplier.name} created.`, 'success');
+            addToast(`Order for ${supplierToUse.name} created.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     updateOrder: async (order) => {

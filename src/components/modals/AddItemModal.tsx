@@ -1,9 +1,7 @@
-
-
-
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Order, OrderItem, Item, OrderStatus } from '../../types';
+import { Order, OrderItem, Item, OrderStatus, Unit } from '../../types';
+import { useToasts } from '../../context/ToastContext';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -13,8 +11,10 @@ interface AddItemModalProps {
 }
 
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem, order }) => {
-  const { state } = useContext(AppContext);
+  const { state, actions } = useContext(AppContext);
+  const { addToast } = useToasts();
   const [search, setSearch] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
 
   const filteredItems = useMemo(() => {
     // Exclude items already in the order
@@ -43,15 +43,50 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
     onClose();
   };
   
-  const handleAddNewItem = () => {
-    onAddItem({
-      itemId: `new_${Date.now()}_${Math.random()}`,
-      name: search,
-      quantity: 1,
-      unit: undefined, // Default unit, can be changed later
-    });
-    setSearch('');
-    onClose();
+  const handleAddNewItem = async () => {
+    const trimmedSearch = search.trim();
+    if (!trimmedSearch) return;
+
+    setIsCreating(true);
+    try {
+        const supplier = state.suppliers.find(s => s.id === order.supplierId);
+        if (!supplier) {
+            addToast('Could not find the supplier for this order.', 'error');
+            return;
+        }
+
+        const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase() && i.supplierId === supplier.id);
+        
+        if (existingItemInDb) {
+            addToast(`"${trimmedSearch}" already exists for ${supplier.name}. Adding it to the order.`, 'info');
+            onAddItem({
+                itemId: existingItemInDb.id,
+                name: existingItemInDb.name,
+                quantity: 1,
+                unit: existingItemInDb.unit,
+            });
+        } else {
+            const newItemFromDb = await actions.addItem({
+                name: trimmedSearch,
+                supplierId: supplier.id,
+                supplierName: supplier.name,
+                unit: Unit.PC, // Default unit
+            });
+            onAddItem({
+                itemId: newItemFromDb.id,
+                name: newItemFromDb.name,
+                quantity: 1,
+                unit: newItemFromDb.unit,
+            });
+        }
+        setSearch('');
+        onClose();
+    } catch (e) {
+        // Error toast is handled by the context action
+        console.error("Failed to create and add new item:", e);
+    } finally {
+        setIsCreating(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -77,7 +112,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
               type="text"
               id="add-item-search-input"
               name="add-item-search-input"
-              placeholder="Search for an item..."
+              placeholder="Search or add a new item..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoFocus
@@ -91,9 +126,10 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
                         <p className="text-gray-500 mb-4">No item named "{search}".</p>
                         <button
                             onClick={handleAddNewItem}
-                            className="w-full text-center p-2 rounded-md text-indigo-400 hover:bg-gray-700 hover:text-indigo-300 font-semibold"
+                            disabled={isCreating}
+                            className="w-full text-center p-2 rounded-md text-indigo-400 hover:bg-gray-700 hover:text-indigo-300 font-semibold disabled:text-gray-500 disabled:cursor-wait"
                         >
-                            + Add "{search}"
+                            {isCreating ? 'Creating...' : `+ Add "${search.trim()}"`}
                         </button>
                     </div>
                 ) : (

@@ -1,44 +1,81 @@
-
-
-import React, { useContext, useState, useRef } from 'react';
+import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
 import { useToasts } from '../context/ToastContext';
 import ConfirmationModal from './modals/ConfirmationModal';
 import { sendTelegramMessage } from '../services/telegramService';
+import EditItemModal from './modals/EditItemModal';
 
 interface SupplierCardProps {
   order: Order;
   isManagerView?: boolean;
-  isCollapsedByDrag?: boolean;
-  onItemDragStart?: () => void;
-  onItemDragEnd?: () => void;
+  draggedItem?: { item: OrderItem; sourceOrderId: string } | null;
+  setDraggedItem?: (item: { item: OrderItem; sourceOrderId: string } | null) => void;
+  onItemDrop?: (destinationOrderId: string) => void;
+  showStoreName?: boolean;
 }
 
-const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, isCollapsedByDrag = false, onItemDragStart, onItemDragEnd }) => {
+const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false }) => {
     const { state, dispatch, actions } = useContext(AppContext);
     const { addToast } = useToasts();
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, options: { label: string; action: () => void; isDestructive?: boolean; }[] } | null>(null);
-    const [isDraggingOver, setIsDraggingOver] = useState(false);
     const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isConfirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
     const longPressTimer = useRef<number | null>(null);
     const wasLongPressed = useRef(false);
     const supplierLongPressTimer = useRef<number | null>(null);
+    
+    const [isEditItemModalOpen, setEditItemModalOpen] = useState(false);
+    const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
+    const clickTimeout = useRef<number | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (clickTimeout.current) {
+                clearTimeout(clickTimeout.current);
+            }
+        };
+    }, []);
+
+    const handleItemDoubleClick = (orderItem: OrderItem) => {
+        const masterItem = state.items.find(i => i.id === orderItem.itemId);
+        if (masterItem) {
+            setSelectedMasterItem(masterItem);
+            setEditItemModalOpen(true);
+        } else {
+            addToast(`Could not find master data for item "${orderItem.name}".`, 'error');
+        }
+    };
 
     const handleItemClick = (item: OrderItem) => {
         if (wasLongPressed.current) return;
         if (isManagerView) return;
+
+        // Double click/tap logic for DISPATCHING status to open edit modal
+        if (order.status === OrderStatus.DISPATCHING) {
+            if (clickTimeout.current) {
+                clearTimeout(clickTimeout.current);
+                clickTimeout.current = null;
+                handleItemDoubleClick(item);
+                return; // Prevent single-click logic from firing
+            }
+        }
+        
+        // Single click/tap logic for DISPATCHING or ON_THE_WAY to open numpad
         if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
-          setSelectedItem(item);
-          setNumpadOpen(true);
+            clickTimeout.current = window.setTimeout(() => {
+                setSelectedItem(item);
+                setNumpadOpen(true);
+                clickTimeout.current = null;
+            }, 250);
         }
     };
 
@@ -112,7 +149,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             const newItems = order.items.filter(i => i.itemId !== item.itemId);
-            await actions.updateOrder({ ...order, items: newItems });
+            if (newItems.length === 0 && order.status === OrderStatus.ON_THE_WAY) {
+                await actions.deleteOrder(order.id);
+                addToast(`Order for ${order.supplierName} removed as it became empty.`, 'success');
+            } else {
+                await actions.updateOrder({ ...order, items: newItems });
+            }
             setContextMenu(null);
         } catch (error) {
             console.error("Failed to delete item:", error);
@@ -229,13 +271,27 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const generateOrderMessage = (order: Order): string => {
+        if (order.supplierName === SupplierName.KALI) {
+            return `${order.store}\n` +
+                order.items.map(item => {
+                    const unitText = item.unit ? `${item.unit}` : '';
+                    return `${item.name} x${item.quantity}${unitText}`;
+                }).join('\n');
+        }
+
+        // Default message format for other suppliers
+        return `#️⃣ Order ${order.orderId}\n` +
+               `🚚 Delivery order\n` +
+               `📌 ${order.store}\n\n` +
+               order.items.map(item => {
+                   const unitText = item.unit ? ` ${item.unit}` : '';
+                   return `${item.name} x${item.quantity}${unitText}`;
+               }).join('\n');
+    };
+
     const handleCopyOrderMessage = () => {
-        const plainTextMessage = `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n` + 
-            order.items.map(item => {
-                const unitText = item.unit ? ` ${item.unit}` : '';
-                return `${item.name} x${item.quantity}${unitText}`;
-            }).join('\n');
-    
+        const plainTextMessage = generateOrderMessage(order);
         navigator.clipboard.writeText(plainTextMessage).then(() => {
             addToast('Order copied to clipboard!', 'success');
         });
@@ -250,13 +306,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
         setIsProcessing(true);
         try {
-            const message = `#️⃣ Order ${order.orderId}\n` + 
-                `🚚 Delivery order\n` + 
-                `📌 ${order.store}\n\n` + 
-                order.items.map(item => {
-                    const unitText = item.unit ? ` ${item.unit}` : '';
-                    return `${item.name} x${item.quantity}${unitText}`;
-                }).join('\n');
+            const message = generateOrderMessage(order);
                 
             const success = await sendTelegramMessage({
                 botToken: state.settings.telegramToken,
@@ -276,67 +326,66 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
-    // Drag and Drop handlers
-    const handleDragStart = (e: React.DragEvent, item: OrderItem) => {
-        e.dataTransfer.setData('text/plain', JSON.stringify({ sourceOrderId: order.id, item }));
-        setTimeout(() => {
-            onItemDragStart?.();
-        }, 0);
-    };
-    
-    const handleDragEnd = () => {
-        onItemDragEnd?.();
-    };
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault();
-        if (order.status === OrderStatus.DISPATCHING && !isManagerView) {
-            setIsDraggingOver(true);
+    const handleSaveMasterItem = async (itemToSave: Item | Omit<Item, 'id'>) => {
+        if ('id' in itemToSave) {
+            await actions.updateItem(itemToSave as Item);
+        } else {
+            addToast('Error: Cannot save an item without an ID from this view.', 'error');
         }
     };
 
-    const handleDragLeave = () => {
-        setIsDraggingOver(false);
+    const handleDeleteMasterItem = async (itemId: string) => {
+        await actions.deleteItem(itemId);
     };
 
-    const handleDrop = async (e: React.DragEvent) => {
+    // --- Drag and Drop Handlers ---
+    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: OrderItem) => {
+        e.dataTransfer.setData('text/plain', item.itemId);
+        e.dataTransfer.effectAllowed = "move";
+        // FIX: Use optional chaining as setDraggedItem may not be provided.
+        setDraggedItem?.({ item, sourceOrderId: order.id });
+    };
+
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
-        setIsDraggingOver(false);
-        onItemDragEnd?.();
-    
-        if (order.status !== OrderStatus.DISPATCHING || isManagerView) return;
-    
-        try {
-            const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-            const { sourceOrderId, item } = data as { sourceOrderId: string, item: OrderItem };
-    
-            if (sourceOrderId !== order.id) {
-                addToast(`Moving items between orders is not fully connected to the database yet.`, 'info');
-            }
-        } catch (error) {
-            console.error("Drop failed:", error);
-            addToast(`Drop failed: ${error}`, 'error');
+        if (draggedItem && draggedItem.sourceOrderId !== order.id) {
+            setIsDragOver(true);
         }
     };
-    
+
+    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragOver(false);
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragOver(false);
+        if (draggedItem && draggedItem.sourceOrderId !== order.id) {
+            // FIX: Use optional chaining as onItemDrop may not be provided.
+            onItemDrop?.(order.id);
+        }
+    };
+
+
     const supplier = state.suppliers.find(s => s.id === order.supplierId);
     const canSendTelegram = !!state.settings.telegramToken && !!supplier?.telegramGroupId;
-    const isEffectivelyCollapsed = isCollapsedByDrag || isManuallyCollapsed;
+    const isEffectivelyCollapsed = isManuallyCollapsed;
     const canEditCard = !isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
-    const canDragItems = !isManagerView && order.status === OrderStatus.DISPATCHING;
     const isItemInteractive = canEditCard || isManagerView;
     const showActionRow = order.status !== OrderStatus.COMPLETED;
+    const canAcceptDrop = isDragOver && draggedItem && draggedItem.sourceOrderId !== order.id && order.status === OrderStatus.DISPATCHING;
 
     return (
         <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
+            onDragOver={canEditCard ? handleDragOver : undefined}
+            onDragLeave={canEditCard ? handleDragLeave : undefined}
+            onDrop={canEditCard ? handleDrop : undefined}
             className={`relative bg-gray-800 rounded-xl shadow-lg flex flex-col border-t-4 transition-all duration-300
                 ${order.status === OrderStatus.DISPATCHING ? 'border-blue-500' : ''}
                 ${order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' : ''}
                 ${order.status === OrderStatus.COMPLETED ? 'border-green-500' : ''}
-                ${isDraggingOver ? 'ring-2 ring-indigo-500' : ''}
+                ${canAcceptDrop ? 'border-2 border-dashed border-indigo-400' : ''}
             `}
         >
             {isProcessing && (
@@ -356,7 +405,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     onTouchEnd={handleSupplierPressEnd}
                     className="p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer"
                 >
-                    <h3 className="font-bold text-white text-lg select-none">{order.supplierName}</h3>
+                    <h3 className="font-bold text-white text-lg select-none">
+                        {order.supplierName}
+                        {showStoreName && <span className="text-gray-400 font-medium text-base ml-2">({order.store})</span>}
+                    </h3>
                 </div>
                  <div className="flex items-center space-x-1">
                     <button onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label={isManuallyCollapsed ? 'Expand card' : 'Collapse card'}>
@@ -373,12 +425,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 </div>
             </div>
 
-            <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
-                <div className="flex-grow px-2 pt-2 pb-0 space-y-1 overflow-y-auto">
+            <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
+                <div className="flex-grow px-2 pt-2 pb-0 space-y-1">
                     {order.items.length > 0 &&
                         order.items.map(item => (
                             <div
                                 key={item.itemId}
+                                draggable={canEditCard}
+                                onDragStart={(e) => handleDragStart(e, item)}
+                                // FIX: Use optional chaining as setDraggedItem may not be provided.
+                                onDragEnd={() => setDraggedItem?.(null)}
                                 onClick={() => handleItemClick(item)}
                                 onContextMenu={(e) => handleItemContextMenu(e, item)}
                                 onMouseDown={() => handleItemPressStart(item)}
@@ -388,12 +444,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                 onTouchEnd={handleItemPressEnd}
                                 role="button"
                                 tabIndex={isItemInteractive ? 0 : -1}
-                                draggable={canDragItems}
-                                onDragStart={(e) => canDragItems && handleDragStart(e, item)}
-                                onDragEnd={() => canDragItems && handleDragEnd()}
                                 className={`flex justify-between items-center px-2 py-1 rounded-md 
                                     ${isItemInteractive ? 'cursor-pointer hover:bg-gray-700' : ''}
-                                    ${canDragItems ? 'cursor-grab' : ''}
+                                    ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}
                                 `}
                             >
                                 <span className={`text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
@@ -482,6 +535,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 confirmText="Delete"
                 isDestructive={true}
             />
+            {selectedMasterItem && isEditItemModalOpen && (
+                <EditItemModal
+                    item={selectedMasterItem}
+                    isOpen={isEditItemModalOpen}
+                    onClose={() => setEditItemModalOpen(false)}
+                    onSave={handleSaveMasterItem}
+                    onDelete={handleDeleteMasterItem}
+                />
+            )}
         </div>
     );
 };

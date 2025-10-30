@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useContext } from 'react';
-import { Order, OrderStatus } from '../../types';
+import { Order, OrderStatus, SupplierName } from '../../types';
 import { useToasts } from '../../context/ToastContext';
 import { AppContext } from '../../context/AppContext';
 import { sendTelegramMessage } from '../../services/telegramService';
@@ -16,6 +16,14 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
     const [isSending, setIsSending] = useState(false);
     
     const message = useMemo(() => {
+        if (order.supplierName === SupplierName.KALI) {
+            return `${order.store}\n` +
+                order.items.map(item => {
+                    const unitText = item.unit ? ` ${item.unit}` : '';
+                    return `${item.name} x${item.quantity}${unitText}`;
+                }).join('\n');
+        }
+
         let text = `#️⃣ Order ${order.orderId}\n`;
         text += `🚚 Delivery order\n`;
         text += `📌 ${order.store}\n\n`;
@@ -56,12 +64,7 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
     };
     
     const handleCopyToClipboard = () => {
-        const plainTextMessage = `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n` + order.items.map(item => {
-            const unitText = item.unit ? ` ${item.unit}` : '';
-            return `${item.name} x${item.quantity}${unitText}`;
-        }).join('\n');
-
-        navigator.clipboard.writeText(plainTextMessage).then(() => {
+        navigator.clipboard.writeText(message).then(() => {
             addToast('Order copied to clipboard!', 'success');
             onClose();
         });

@@ -211,6 +211,27 @@ export const deleteItem = async ({ itemId, url, key }: { itemId: string, url: st
     if (!response.ok) throw new Error(`Failed to delete item: ${await response.text()}`);
 };
 
+export const addSupplier = async ({ supplierName, url, key }: { supplierName: SupplierName, url: string, key: string }): Promise<Supplier> => {
+    const payload = {
+        name: supplierName,
+    };
+    // Using on_conflict with merge-duplicates will either create a new supplier or return the existing one if the name matches.
+    const response = await fetch(`${url}/rest/v1/suppliers?select=*&on_conflict=name`, {
+        method: 'POST',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation,resolution=merge-duplicates' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Failed to add or find supplier: ${await response.text()}`);
+    const data = await response.json();
+    const newSupplierFromDb = data[0];
+    return { 
+        id: newSupplierFromDb.id,
+        name: newSupplierFromDb.name,
+        telegramGroupId: newSupplierFromDb.telegram_group_id,
+        modifiedAt: newSupplierFromDb.modified_at
+    };
+};
+
 export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplier, url: string, key: string }): Promise<Supplier> => {
     const payload = { telegram_group_id: supplier.telegramGroupId };
     const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplier.id}&select=*`, {

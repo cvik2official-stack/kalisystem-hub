@@ -9,8 +9,6 @@ const StoreTabs: React.FC = () => {
   const { addToast } = useToasts();
   const longPressTimer = useRef<number | null>(null);
 
-  const allTabs = stores.map(s => s.name);
-
   const handlePressStart = (storeName: StoreName) => {
     // Set a timer for the long-press action
     longPressTimer.current = window.setTimeout(() => {
@@ -30,7 +28,7 @@ const StoreTabs: React.FC = () => {
     }
   };
 
-  const handleClick = (tabName: StoreName) => {
+  const handleClick = (tabName: StoreName | 'KALI') => {
     dispatch({ type: 'SET_ACTIVE_STORE', payload: tabName });
   };
 
@@ -38,27 +36,42 @@ const StoreTabs: React.FC = () => {
   return (
     <div className="border-b border-gray-700">
       <nav className="-mb-px flex space-x-6" aria-label="Tabs">
-        {allTabs.map((tabName) => (
+        {stores.map(({ name }) => (
           <button
-            key={tabName}
-            onClick={() => handleClick(tabName as StoreName)}
-            onMouseDown={() => handlePressStart(tabName as StoreName)}
+            key={name}
+            onClick={() => handleClick(name)}
+            onMouseDown={() => handlePressStart(name)}
             onMouseUp={handlePressEnd}
             onMouseLeave={handlePressEnd} // Also cancel if the mouse leaves the button
-            onTouchStart={() => handlePressStart(tabName as StoreName)}
+            onTouchStart={() => handlePressStart(name)}
             onTouchEnd={handlePressEnd}
             className={`
               whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
               ${
-                activeStore === tabName
+                activeStore === name
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
               }
             `}
           >
-            {tabName}
+            {name}
           </button>
         ))}
+        {/* Special KALI Tab */}
+        <button
+            key="KALI"
+            onClick={() => handleClick('KALI')}
+            className={`
+              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              ${
+                activeStore === 'KALI'
+                  ? 'border-indigo-500 text-indigo-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+              }
+            `}
+          >
+            KALI
+          </button>
       </nav>
     </div>
   );

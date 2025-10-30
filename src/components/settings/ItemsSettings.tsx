@@ -59,15 +59,19 @@ const ItemsSettings: React.FC = () => {
     );
   }, [state.items, searchTerm]);
 
+  // FIX: Refactored item grouping to use a Map, which provides stronger typing for entries.
+  // This resolves issues where `items` was being treated as `unknown` when using Object.entries.
   const groupedItems = useMemo(() => {
-    return filteredItems.reduce((acc, item) => {
+    const groups = new Map<string, Item[]>();
+    for (const item of filteredItems) {
         const supplier = item.supplierName;
-        if (!acc[supplier]) {
-            acc[supplier] = [];
+        if (!groups.has(supplier)) {
+            groups.set(supplier, []);
         }
-        acc[supplier].push(item);
-        return acc;
-    }, {} as Record<string, Item[]>);
+        // Using non-null assertion as we ensure the key exists just before.
+        groups.get(supplier)!.push(item);
+    }
+    return groups;
   }, [filteredItems]);
 
   const toggleSupplierExpansion = (supplierName: string) => {
@@ -155,7 +159,7 @@ const ItemsSettings: React.FC = () => {
           </div>
         ) : (
           <div className="flex-grow overflow-y-auto hide-scrollbar p-2 space-y-2">
-            {Object.entries(groupedItems).sort(([a], [b]) => a.localeCompare(b)).map(([supplierName, items]) => (
+            {Array.from(groupedItems.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([supplierName, items]) => (
               <div key={supplierName} className="bg-gray-900/50 rounded-lg">
                   <button 
                       onClick={() => toggleSupplierExpansion(supplierName)}

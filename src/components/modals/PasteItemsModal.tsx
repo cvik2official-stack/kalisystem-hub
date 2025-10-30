@@ -1,8 +1,9 @@
 
+
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import parseItemListWithGemini from '../../services/geminiService';
-import { Order, OrderItem, OrderStatus, ParsedItem, SupplierName, StoreName, Supplier } from '../../types';
+import { Order, OrderItem, OrderStatus, ParsedItem, SupplierName, StoreName, Supplier, Unit, Item } from '../../types';
 import { useToasts } from '../../context/ToastContext';
 import { parseItemListLocally } from '../../services/localParsingService';
 import { addOrder as supabaseAddOrder } from '../../services/supabaseService';
@@ -49,22 +50,42 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
             };
           }
         } else if (pItem.newItemName) {
+           // Default new items to MARKET supplier. This could be made configurable later.
            supplier = state.suppliers.find(s => s.name === 'MARKET') || null;
            if (supplier) {
+               // FIX: Create the new item in the master database before adding it to an order.
+               // The central state is updated inside actions.addItem, so subsequent finds will work for duplicates in the same paste.
+               const existingItemInDb = state.items.find(i => i.name.toLowerCase() === pItem.newItemName!.toLowerCase() && i.supplierId === supplier!.id);
+               
+               let finalItem: Item;
+               if (existingItemInDb) {
+                   // If it already exists (maybe from a previous sync or another part of the same paste), use it.
+                   finalItem = existingItemInDb;
+               } else {
+                   // Otherwise, create it now. `actions.addItem` will update the central state.
+                   addToast(`Creating new item: ${pItem.newItemName}`, 'info');
+                   finalItem = await actions.addItem({
+                       name: pItem.newItemName,
+                       supplierId: supplier.id,
+                       supplierName: supplier.name,
+                       unit: pItem.unit ?? Unit.PC, // Default to PC if no unit is parsed
+                   });
+               }
+               
                orderItem = {
-                   itemId: `new_${Date.now()}_${Math.random()}`,
-                   name: pItem.newItemName,
+                   itemId: finalItem.id, // Use the real ID from the database
+                   name: finalItem.name,
                    quantity: pItem.quantity,
-                   unit: pItem.unit ?? undefined
+                   unit: pItem.unit ?? finalItem.unit,
                };
            }
         }
 
         if (supplier && orderItem) {
-            if (!ordersBySupplier[supplier.name]) {
-                ordersBySupplier[supplier.name] = { supplier, items: [] };
+            if (!ordersBySupplier[supplier.id]) {
+                ordersBySupplier[supplier.id] = { supplier, items: [] };
             }
-            ordersBySupplier[supplier.name].items.push(orderItem);
+            ordersBySupplier[supplier.id].items.push(orderItem);
         }
       }
       
