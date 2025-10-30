@@ -32,7 +32,6 @@ export interface Supplier {
   id: string; // uuid from Supabase
   name: SupplierName;
   telegramGroupId?: string;
-  // FIX: Added modifiedAt to match the database schema and allow for timestamp tracking.
   modifiedAt?: string;
 }
 
@@ -64,11 +63,4 @@ export interface ParsedItem {
   newItemName?: string;
   quantity: number;
   unit?: Unit;
-}
-
-export interface SendMessageParams {
-    botToken: string;
-    chatId: string;
-    text: string;
-    parseMode?: 'HTML' | 'MarkdownV2';
 }

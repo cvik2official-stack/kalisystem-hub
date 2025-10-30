@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
@@ -8,6 +8,7 @@ import { useToasts } from '../context/ToastContext';
 import ConfirmationModal from './modals/ConfirmationModal';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import EditItemModal from './modals/EditItemModal';
+import { generateOrderMessage } from '../utils/messageFormatter';
 
 interface SupplierCardProps {
   order: Order;
@@ -18,36 +19,8 @@ interface SupplierCardProps {
   showStoreName?: boolean;
 }
 
-const escapeHtml = (text: string): string => {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-};
-
-const generateOrderMessage = (order: Order, format: 'plain' | 'html'): string => {
-    const isHtml = format === 'html';
-
-    if (order.supplierName === SupplierName.KALI) {
-        return (isHtml ? `<b>${escapeHtml(order.store)}</b>` : order.store) + '\n' +
-            order.items.map(item => {
-                const unitText = item.unit ? (isHtml ? escapeHtml(item.unit) : item.unit) : '';
-                const itemName = isHtml ? escapeHtml(item.name) : item.name;
-                return `${itemName} x${item.quantity}${unitText}`;
-            }).join('\n');
-    }
-
-    const header = isHtml
-        ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${escapeHtml(order.store)}</b>\n\n`
-        : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n`;
-
-    return header + order.items.map(item => {
-        const unitText = item.unit ? ` ${isHtml ? escapeHtml(item.unit) : item.unit}` : '';
-        const itemName = isHtml ? `<i>${escapeHtml(item.name)}</i>` : item.name;
-        return `${itemName} x${item.quantity}${unitText}`;
-    }).join('\n');
-};
-
-
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false }) => {
-    const { state, dispatch, actions } = useContext(AppContext);
+    const { state, actions } = useContext(AppContext);
     const { addToast } = useToasts();
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
@@ -280,25 +253,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
     
     const handleSendTelegram = async () => {
-        const supplier = state.suppliers.find(s => s.id === order.supplierId);
-        const { supabaseUrl, supabaseKey, telegramToken } = state.settings;
-        if (!supabaseUrl || !supabaseKey || !telegramToken || !supplier?.telegramGroupId) {
-            addToast('Telegram is not configured for this supplier.', 'error');
-            return;
-        }
-    
         setIsProcessing(true);
         try {
             const message = generateOrderMessage(order, 'html');
             await sendOrderToSupplierOnTelegram({
-                url: supabaseUrl,
-                key: supabaseKey,
-                chatId: supplier.telegramGroupId,
+                supplierName: order.supplierName,
                 message,
             });
             addToast('Order sent to Telegram!', 'success');
-        } catch (error) {
-            addToast('Failed to send order to Telegram.', 'error');
+        } catch (error: any) {
+            addToast(`Failed to send order: ${error.message}`, 'error');
         } finally {
             setIsProcessing(false);
         }
@@ -355,10 +319,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             onItemDrop?.(order.id);
         }
     };
-
-    const supplier = state.suppliers.find(s => s.id === order.supplierId);
-    const canSendTelegram = !!state.settings.telegramToken && !!supplier?.telegramGroupId;
-    const canShareToStore = true; // Always allow attempting to share; backend will handle configuration.
 
     const isEffectivelyCollapsed = isManuallyCollapsed;
     const canEditCard = !isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
@@ -444,21 +404,17 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                 <button onClick={() => setAddItemModalOpen(true)} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                                 </button>
-                                {canSendTelegram && (
-                                    <button onClick={handleSendTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                                    </button>
-                                )}
+                                <button onClick={handleSendTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                                </button>
                                 <button onClick={handleCopyOrderMessage} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text">
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
                                 </button>
-                                {canShareToStore && (
-                                     <button onClick={handleShareToStore} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Share order with store">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor">
-                                            <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
-                                        </svg>
-                                    </button>
-                                )}
+                                <button onClick={handleShareToStore} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Share order with store">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M15 8a3 3 0 10-2.977-2.63l-4.94 2.47a3 3 0 100 4.319l4.94 2.47a3 3 0 10.895-1.789l-4.94-2.47a3.027 3.027 0 000-.74l4.94-2.47C13.456 7.68 14.19 8 15 8z" />
+                                    </svg>
+                                </button>
                                <div className="flex-grow"></div>
                                <button onClick={handleSendOrder} disabled={order.items.length === 0 || isProcessing} className="flex-grow bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-indigo-800 disabled:cursor-not-allowed">
                                  {isProcessing ? '...' : 'Send'}

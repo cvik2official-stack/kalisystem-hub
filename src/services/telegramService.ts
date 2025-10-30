@@ -1,4 +1,4 @@
-import { Order } from '../types';
+import { Order, SupplierName } from '../types';
 
 interface EdgeFunctionParams {
     url: string;
@@ -30,19 +30,21 @@ const invokeTelegramBot = async ({ url, key, payload }: EdgeFunctionParams) => {
 };
 
 interface SendToSupplierParams {
-    url: string;
-    key: string;
-    chatId: string;
+    supplierName: SupplierName;
     message: string;
 }
 
-export const sendOrderToSupplierOnTelegram = async ({ url, key, chatId, message }: SendToSupplierParams): Promise<void> => {
+const SUPABASE_URL = 'https://expwmqozywxbhewaczju.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg';
+
+
+export const sendOrderToSupplierOnTelegram = async ({ supplierName, message }: SendToSupplierParams): Promise<void> => {
     await invokeTelegramBot({
-        url,
-        key,
+        url: SUPABASE_URL,
+        key: SUPABASE_KEY,
         payload: {
             endpoint: '/send-to-supplier',
-            chatId,
+            supplierName,
             message,
         },
     });

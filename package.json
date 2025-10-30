@@ -9,11 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.27.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "grammy": "^1.38.3",
-    "deno.ns": "^0.8.0"
+    "grammy": "^1.38.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

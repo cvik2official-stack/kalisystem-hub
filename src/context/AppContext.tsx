@@ -16,13 +16,9 @@ export interface AppState {
   activeStatus: OrderStatus;
   orderIdCounters: Record<string, number>;
   settings: {
-    supabaseUrl?: string;
-    supabaseKey?: string;
-    telegramToken?: string;
-    csvUrl?: string;
-    geminiApiKey?: string;
     isAiEnabled?: boolean;
     lastSyncedCsvContent?: string;
+    csvUrl?: string; // Kept as user may want to change this
   };
   isLoading: boolean;
   isInitialized: boolean;
@@ -58,6 +54,9 @@ export interface AppContextActions {
     syncWithSupabase: () => Promise<void>;
 }
 
+// These are public keys, safe to include in client-side code.
+const SUPABASE_URL = 'https://expwmqozywxbhewaczju.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg';
 
 const appReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
@@ -165,7 +164,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
 const APP_STATE_KEY = 'supplyChainCommanderState_v3';
 
 const getInitialState = (): AppState => {
-  let loadedState: AppState | undefined;
+  let loadedState: Partial<AppState> = {};
   try {
     const serializedState = localStorage.getItem(APP_STATE_KEY);
     if (serializedState) {
@@ -184,16 +183,15 @@ const getInitialState = (): AppState => {
     activeStatus: OrderStatus.DISPATCHING,
     orderIdCounters: {},
     settings: {
-      supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
-      supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
+      csvUrl: '', // Load from localStorage
     },
     isLoading: false,
     isInitialized: false,
     syncStatus: 'idle',
   };
 
-  if (loadedState) {
+  if (loadedState.orders) {
     loadedState.orders = (loadedState.orders as any[]).map(o => {
       const { lastUpdate, ...rest } = o;
       return {
@@ -202,15 +200,15 @@ const getInitialState = (): AppState => {
         modifiedAt: o.modifiedAt || lastUpdate || new Date().toISOString(),
       };
     });
-
-    loadedState.settings = { ...initialState.settings, ...loadedState.settings };
-    loadedState.isLoading = false;
-    loadedState.isInitialized = false;
-    // Always use the static list of stores
-    loadedState.stores = initialState.stores; 
-    return loadedState;
   }
-  return initialState;
+  
+  // Merge loaded settings with defaults, ensuring secrets are never loaded from localStorage
+  const finalSettings = {
+    ...initialState.settings,
+    ...loadedState.settings,
+  };
+
+  return { ...initialState, ...loadedState, settings: finalSettings, isLoading: false, isInitialized: false };
 };
 
 export const AppContext = createContext<{
@@ -239,7 +237,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   
   useEffect(() => {
     try {
-        const stateToSave = { ...state, isLoading: false, isInitialized: true };
+        const stateToSave: Partial<AppState> = { ...state, isLoading: false, isInitialized: true };
+        // Do not save sensitive or large data that should be fetched on load
+        delete (stateToSave as any).orders;
+        delete (stateToSave as any).items;
+        delete (stateToSave as any).suppliers;
         const serializedState = JSON.stringify(stateToSave);
         localStorage.setItem(APP_STATE_KEY, serializedState);
     } catch(err) {
@@ -256,30 +258,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return;
         }
 
-        const { supabaseUrl, supabaseKey } = state.settings;
+        addToast('Syncing with Supabase...', 'info');
         
-        if (supabaseUrl && supabaseKey) {
-            addToast('Syncing with Supabase...', 'info');
-            
-            // Step 1: Fetch suppliers and items first.
-            const { items, suppliers } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
-            
-            // Step 2: Now fetch orders using the suppliers list we just got.
-            const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
+        // Step 1: Fetch suppliers and items first.
+        const { items, suppliers } = await getItemsAndSuppliersFromSupabase({ url: SUPABASE_URL, key: SUPABASE_KEY });
+        
+        // Step 2: Now fetch orders using the suppliers list we just got.
+        const orders = await getOrdersFromSupabase({ url: SUPABASE_URL, key: SUPABASE_KEY, suppliers });
 
-            // Step 3: Merge all data.
-            dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders } }); 
-            addToast('Sync complete.', 'success');
-            dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
-        } else {
-            addToast('Supabase not configured. Using cached data.', 'info');
-            dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
-        }
+        // Step 3: Merge all data.
+        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders } }); 
+        addToast('Sync complete.', 'success');
+        dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
+
     } catch (e: any) {
         addToast(`Supabase sync failed: ${e.message}. Using cache.`, 'error');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'error' });
     }
-}, [state.settings, addToast, dispatch]);
+}, [addToast, dispatch]);
 
 
   useEffect(() => {
@@ -291,60 +287,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const actions: AppContextActions = {
     addItem: async (item: Omit<Item, 'id'>): Promise<Item> => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
-            const newItem = await supabaseAddItem({ item, url: supabaseUrl, key: supabaseKey });
+            const newItem = await supabaseAddItem({ item, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: '_ADD_ITEM', payload: newItem });
             addToast(`Item "${newItem.name}" created.`, 'success');
             return newItem;
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     updateItem: async (item: Item) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
-            const updatedItem = await supabaseUpdateItem({ item, url: supabaseUrl, key: supabaseKey });
+            const updatedItem = await supabaseUpdateItem({ item, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: '_UPDATE_ITEM', payload: updatedItem });
             addToast(`Item "${updatedItem.name}" updated.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     deleteItem: async (itemId: string) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
-            await supabaseDeleteItem({ itemId, url: supabaseUrl, key: supabaseKey });
+            await supabaseDeleteItem({ itemId, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: '_DELETE_ITEM', payload: itemId });
             addToast('Item deleted.', 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     updateSupplier: async (supplier: Supplier) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
-            const updatedSupplier = await supabaseUpdateSupplier({ supplier, url: supabaseUrl, key: supabaseKey });
+            const updatedSupplier = await supabaseUpdateSupplier({ supplier, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: '_UPDATE_SUPPLIER', payload: updatedSupplier });
             addToast(`Supplier "${updatedSupplier.name}" updated.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     addOrder: async (supplier, store, items = []) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
             let supplierToUse = supplier;
             if (supplier.id.startsWith('new_')) {
                 addToast(`Creating or verifying supplier: ${supplier.name}...`, 'info');
-                const newSupplierFromDb = await supabaseAddSupplier({ supplierName: supplier.name, url: supabaseUrl, key: supabaseKey });
+                const newSupplierFromDb = await supabaseAddSupplier({ supplierName: supplier.name, url: SUPABASE_URL, key: SUPABASE_KEY });
                 dispatch({ type: '_ADD_SUPPLIER', payload: newSupplierFromDb });
                 supplierToUse = newSupplierFromDb;
             }
@@ -359,39 +335,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 orderId: newOrderId, store, supplierId: supplierToUse.id, supplierName: supplierToUse.name, items, status: OrderStatus.DISPATCHING,
                 isSent: false, isReceived: false, createdAt: now.toISOString(), modifiedAt: now.toISOString(),
             };
-            const savedOrder = await supabaseAddOrder({ order: newOrder, url: supabaseUrl, key: supabaseKey });
+            const savedOrder = await supabaseAddOrder({ order: newOrder, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: 'ADD_ORDERS', payload: [savedOrder] });
             addToast(`Order for ${supplierToUse.name} created.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     updateOrder: async (order) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
-            const updatedOrder = await supabaseUpdateOrder({ order, url: supabaseUrl, key: supabaseKey });
+            const updatedOrder = await supabaseUpdateOrder({ order, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     deleteOrder: async (orderId) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) {
-            addToast('Supabase not configured.', 'error'); throw new Error('Supabase not configured');
-        }
         try {
-            await supabaseDeleteOrder({ orderId, url: supabaseUrl, key: supabaseKey });
+            await supabaseDeleteOrder({ orderId, url: SUPABASE_URL, key: SUPABASE_KEY });
             dispatch({ type: 'DELETE_ORDER', payload: orderId });
             addToast(`Order deleted.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
     },
     sendOrderToStore: async (order: Order, message: string) => {
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!supabaseUrl || !supabaseKey) throw new Error('Supabase not configured.');
-
         await sendOrderToStoreOnTelegram({
-            url: supabaseUrl,
-            key: supabaseKey,
+            url: SUPABASE_URL,
+            key: SUPABASE_KEY,
             order,
             message,
         });

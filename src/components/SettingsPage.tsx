@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import ItemsSettings from './settings/ItemsSettings';
 import SuppliersSettings from './settings/SuppliersSettings';
-import IntegrationsSettings from './settings/IntegrationsSettings';
 import OptionsSettings from './settings/OptionsSettings';
 
-type SettingsTab = 'items' | 'suppliers' | 'integrations' | 'options';
+type SettingsTab = 'items' | 'suppliers' | 'options';
 
 const SettingsPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<SettingsTab>('items');
@@ -12,7 +11,6 @@ const SettingsPage: React.FC = () => {
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'items', label: 'Items' },
     { id: 'suppliers', label: 'Suppliers' },
-    { id: 'integrations', label: 'Integrations' },
     { id: 'options', label: 'Options' },
   ];
 
@@ -39,7 +37,6 @@ const SettingsPage: React.FC = () => {
       <div className="mt-4 flex-grow flex flex-col">
         {selectedTab === 'items' && <ItemsSettings />}
         {selectedTab === 'suppliers' && <SuppliersSettings />}
-        {selectedTab === 'integrations' && <IntegrationsSettings />}
         {selectedTab === 'options' && <OptionsSettings />}
       </div>
     </div>

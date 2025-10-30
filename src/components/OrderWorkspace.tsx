@@ -1,4 +1,3 @@
-// FIX: Implemented the OrderWorkspace component to replace the placeholder content.
 import React, { useContext, useState, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { OrderItem, OrderStatus, StoreName, Supplier, SupplierName } from '../types';
@@ -25,7 +24,6 @@ const OrderWorkspace: React.FC = () => {
   };
   
   const handleAddOrder = (supplier: Supplier) => {
-    // FIX: Removed redundant check for 'Settings'. The type of `activeStore` is already narrowed by the check at the top of the component.
     actions.addOrder(supplier, activeStore as StoreName);
     setAddSupplierModalOpen(false);
   };
@@ -35,7 +33,6 @@ const OrderWorkspace: React.FC = () => {
 
     const { item: droppedItem, sourceOrderId } = draggedItem;
 
-    // Prevent dropping on the same card
     if (sourceOrderId === destinationOrderId) {
         setDraggedItem(null);
         return;
@@ -50,7 +47,6 @@ const OrderWorkspace: React.FC = () => {
         return;
     }
     
-    // 1. Handle source order: Remove item, and delete order if it becomes empty on the "On The Way" tab
     const newSourceItems = sourceOrder.items.filter(i => i.itemId !== droppedItem.itemId);
     if (newSourceItems.length === 0 && sourceOrder.status === OrderStatus.ON_THE_WAY) {
       await actions.deleteOrder(sourceOrder.id);
@@ -59,18 +55,15 @@ const OrderWorkspace: React.FC = () => {
       await actions.updateOrder({ ...sourceOrder, items: newSourceItems });
     }
 
-    // 2. Add item to destination order (check for duplicates and merge)
     const existingItemInDest = destinationOrder.items.find(i => i.itemId === droppedItem.itemId);
     let newDestinationItems;
     if (existingItemInDest) {
-        // Item already exists, so update its quantity
         newDestinationItems = destinationOrder.items.map(i =>
             i.itemId === droppedItem.itemId
                 ? { ...i, quantity: i.quantity + droppedItem.quantity }
                 : i
         );
     } else {
-        // Item doesn't exist, add it
         newDestinationItems = [...destinationOrder.items, droppedItem];
     }
     await actions.updateOrder({ ...destinationOrder, items: newDestinationItems });
@@ -82,12 +75,8 @@ const OrderWorkspace: React.FC = () => {
 
   const filteredOrders = orders.filter(order => {
     if (activeStore === 'KALI') {
-        // Show all KALI supplier orders, regardless of store
         return order.supplierName === SupplierName.KALI && order.status === activeStatus;
     }
-    // FIX: This comparison is invalid because activeStore is narrowed to never be 'Settings' at this point.
-    
-    // Original logic for store tabs
     return order.store === activeStore && order.status === activeStatus;
   });
 
@@ -106,7 +95,6 @@ const OrderWorkspace: React.FC = () => {
       }
   };
   
-  // FIX: This comparison is invalid because activeStore is narrowed to never be 'Settings' at this point.
   const canCreateOrders = activeStore !== 'KALI';
 
   return (

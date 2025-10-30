@@ -15,14 +15,6 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const isAiEnabledButNotConfigured = state.settings.isAiEnabled && !state.settings.geminiApiKey;
-
-  const handleGoToSettings = (e: React.MouseEvent) => {
-      e.preventDefault();
-      onClose(); // Close the current modal
-      dispatch({ type: 'SET_ACTIVE_STORE', payload: 'Settings' });
-  };
-
   const handleClose = () => {
     if (isLoading) return;
     setIsLoading(false);
@@ -37,7 +29,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
       addToast(isAiEnabled ? 'Parsing with AI...' : 'Parsing locally...', 'info');
       
       const parsedItems = isAiEnabled
-        ? await parseItemListWithGemini(text, state.items, state.settings.geminiApiKey)
+        ? await parseItemListWithGemini(text, state.items)
         : await parseItemListLocally(text, state.items);
       
       const ordersBySupplier: Record<string, { supplier: Supplier, items: OrderItem[] }> = {};
@@ -61,7 +53,6 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
            // Default new items to MARKET supplier. This could be made configurable later.
            supplier = state.suppliers.find(s => s.name === 'MARKET') || null;
            if (supplier) {
-               // FIX: Create the new item in the master database before adding it to an order.
                // The central state is updated inside actions.addItem, so subsequent finds will work for duplicates in the same paste.
                const existingItemInDb = state.items.find(i => i.name.toLowerCase() === pItem.newItemName!.toLowerCase() && i.supplierId === supplier!.id);
                
@@ -155,15 +146,6 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
         </button>
         <h2 className="text-xl font-bold text-white mb-4">Paste Item List</h2>
         
-        {isAiEnabledButNotConfigured && (
-            <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 text-sm rounded-md p-3 mb-4 text-center">
-                AI parsing requires a Gemini API key. Please add it in{' '}
-                <a href="#" onClick={handleGoToSettings} className="font-bold underline hover:text-yellow-200">
-                    Settings
-                </a>.
-            </div>
-        )}
-
         <textarea
           id="paste-item-list-textarea"
           name="paste-item-list-textarea"

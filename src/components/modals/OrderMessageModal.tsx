@@ -1,8 +1,8 @@
-import React, { useState, useMemo, useContext } from 'react';
-import { Order, OrderStatus, SupplierName } from '../../types';
+import React, { useState, useMemo } from 'react';
+import { Order, OrderStatus } from '../../types';
 import { useToasts } from '../../context/ToastContext';
-import { AppContext } from '../../context/AppContext';
 import { sendOrderToSupplierOnTelegram } from '../../services/telegramService';
+import { generateOrderMessage } from '../../utils/messageFormatter';
 
 interface OrderMessageModalProps {
   order: Order;
@@ -10,67 +10,24 @@ interface OrderMessageModalProps {
   onClose: () => void;
 }
 
-const escapeHtml = (text: string): string => {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-};
-
 const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, onClose }) => {
-    const { state } = useContext(AppContext);
     const { addToast } = useToasts();
     const [isSending, setIsSending] = useState(false);
     
-    const { plainTextMessage, htmlMessage } = useMemo(() => {
-        if (order.supplierName === SupplierName.KALI) {
-            const plain = `${order.store}\n` +
-                order.items.map(item => {
-                    const unitText = item.unit ? `${item.unit}` : '';
-                    return `${item.name} x${item.quantity}${unitText}`;
-                }).join('\n');
-
-            const html = `<b>${escapeHtml(order.store)}</b>\n` +
-                order.items.map(item => {
-                    const unitText = item.unit ? `${escapeHtml(item.unit)}` : '';
-                    return `${escapeHtml(item.name)} x${item.quantity}${unitText}`;
-                }).join('\n');
-
-            return { plainTextMessage: plain, htmlMessage: html };
-        }
-
-        const plainItems = order.items.map(item => {
-            const unitText = item.unit ? ` ${item.unit}` : '';
-            return `${item.name} x${item.quantity}${unitText}`;
-        }).join('\n');
-        const plain = `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n${plainItems}`;
-
-        const htmlItems = order.items.map(item => {
-            const unitText = item.unit ? ` ${escapeHtml(item.unit)}` : '';
-            return `<i>${escapeHtml(item.name)}</i> x${item.quantity}${unitText}`;
-        }).join('\n');
-        const html = `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${escapeHtml(order.store)}</b>\n\n${htmlItems}`;
-        
-        return { plainTextMessage: plain, htmlMessage: html };
-    }, [order]);
+    const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain'), [order]);
+    const htmlMessage = useMemo(() => generateOrderMessage(order, 'html'), [order]);
 
     const handleSendWithTelegram = async () => {
-        const supplier = state.suppliers.find(s => s.name === order.supplierName);
-        const { supabaseUrl, supabaseKey, telegramToken } = state.settings;
-        if (!supabaseUrl || !supabaseKey || !telegramToken || !supplier?.telegramGroupId) {
-            addToast('Telegram is not configured for this supplier.', 'error');
-            return;
-        }
-
         setIsSending(true);
         try {
             await sendOrderToSupplierOnTelegram({
-                url: supabaseUrl,
-                key: supabaseKey,
-                chatId: supplier.telegramGroupId,
+                supplierName: order.supplierName,
                 message: htmlMessage,
             });
             addToast('Order sent to Telegram!', 'success');
             onClose();
-        } catch (error) {
-            addToast('Failed to send order to Telegram.', 'error');
+        } catch (error: any) {
+            addToast(`Failed to send order: ${error.message}`, 'error');
         } finally {
             setIsSending(false);
         }
@@ -84,8 +41,6 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
     }
 
     if (!isOpen) return null;
-
-    const canSendTelegram = !!state.settings.telegramToken && !!state.suppliers.find(s => s.name === order.supplierName)?.telegramGroupId;
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={onClose}>
@@ -107,11 +62,9 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
                     <button onClick={handleCopyToClipboard} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">
                         Copy Text
                     </button>
-                    {canSendTelegram && (
-                        <button onClick={handleSendWithTelegram} disabled={isSending} className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800 disabled:cursor-not-allowed">
-                            {isSending ? 'Sending...' : 'Send to Telegram'}
-                        </button>
-                    )}
+                    <button onClick={handleSendWithTelegram} disabled={isSending} className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800 disabled:cursor-not-allowed">
+                        {isSending ? 'Sending...' : 'Send to Telegram'}
+                    </button>
                 </div>
             </div>
         </div>

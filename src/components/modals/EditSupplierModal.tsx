@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useContext } from 'react';
 import { Supplier } from '../../types';
 import { AppContext } from '../../context/AppContext';
@@ -21,8 +20,6 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
     }, [supplier]);
 
     const handleSave = () => {
-        // Fix: Do not save the name from the local state. The name is from an enum and should not be editable.
-        // The spread `...supplier` will retain the original name with the correct type.
         onSave({
             ...supplier,
             telegramGroupId: telegramGroupId.trim(),
@@ -52,7 +49,6 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                             id="supplier-name"
                             name="supplier-name"
                             value={name}
-                            // Fix: The name is from an enum and should not be editable. This resolves the type error on save.
                             readOnly
                             className="mt-1 w-full bg-gray-700 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500 opacity-70 cursor-not-allowed"
                         />
