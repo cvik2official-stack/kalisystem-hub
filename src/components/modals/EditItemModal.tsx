@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Item, Unit } from '../../types';
 import { AppContext } from '../../context/AppContext';
@@ -117,6 +118,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                         <input
                             type="text"
                             id="item-name"
+                            name="item-name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
@@ -126,6 +128,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                         <label htmlFor="item-supplier" className="block text-sm font-medium text-gray-300">Supplier</label>
                         <select
                             id="item-supplier"
+                            name="item-supplier"
                             value={supplierId}
                             onChange={(e) => setSupplierId(e.target.value)}
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
@@ -139,6 +142,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                         <label htmlFor="item-unit" className="block text-sm font-medium text-gray-300">Default Unit</label>
                         <select
                             id="item-unit"
+                            name="item-unit"
                             value={unit}
                             onChange={(e) => setUnit(e.target.value as Unit)}
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
@@ -157,6 +161,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                             <input
                                 type="text"
                                 id="variant-name"
+                                name="variant-name"
                                 value={newVariantName}
                                 onChange={(e) => setNewVariantName(e.target.value)}
                                 className="w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"

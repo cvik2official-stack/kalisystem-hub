@@ -1,3 +1,4 @@
+
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import parseItemListWithGemini from '../../services/geminiService';
@@ -125,6 +126,8 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
         </button>
         <h2 className="text-xl font-bold text-white mb-4">Paste Item List</h2>
         <textarea
+          id="paste-item-list-textarea"
+          name="paste-item-list-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="w-full h-48 bg-gray-900 text-gray-200 rounded-md p-3 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500 text-sm"

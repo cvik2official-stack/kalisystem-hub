@@ -1,3 +1,4 @@
+
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Supplier, SupplierName } from '../../types';
@@ -67,6 +68,8 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
             </div>
             <input
                 type="text"
+                id="add-supplier-search-input"
+                name="add-supplier-search-input"
                 placeholder="Search suppliers..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}

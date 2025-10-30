@@ -1,3 +1,4 @@
+
 import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit } from '../../types';
@@ -86,6 +87,8 @@ const ItemsSettings: React.FC = () => {
       <div className="flex justify-between items-center mb-4 w-full lg:w-3/4">
         <input
             type="text"
+            id="item-settings-search-input"
+            name="item-settings-search-input"
             placeholder="Search items..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}

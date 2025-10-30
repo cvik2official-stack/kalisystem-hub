@@ -1,3 +1,4 @@
+
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { useToasts } from '../../context/ToastContext';
@@ -6,22 +7,20 @@ import { seedDatabase } from '../../services/supabaseService';
 
 // --- Icon Components for UI polish ---
 const SupabaseIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7c0-1.1.9-2 2-2h12a2 2 0 012 2v10a2 2 0 01-2 2H6a2 2 0 01-2-2V7zm16 4l-3-3m0 0l-3 3m3-3v12" />
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
     </svg>
 );
 
 const TelegramIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
     </svg>
 );
 
 const CsvIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 18h.01" />
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 18h.01" />
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
     </svg>
 );
 
@@ -120,6 +119,7 @@ const IntegrationsSettings: React.FC = () => {
                                 <input
                                     type="text"
                                     id="csv-url"
+                                    name="csv-url"
                                     value={settings.csvUrl || ''}
                                     onChange={(e) => setSettings({ ...settings, csvUrl: e.target.value })}
                                     className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
@@ -152,6 +152,7 @@ const IntegrationsSettings: React.FC = () => {
                             <input
                                 type="text"
                                 id="supabase-url"
+                                name="supabase-url"
                                 value={settings.supabaseUrl || ''}
                                 onChange={(e) => setSettings({ ...settings, supabaseUrl: e.target.value })}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
@@ -162,6 +163,7 @@ const IntegrationsSettings: React.FC = () => {
                             <input
                                 type="text"
                                 id="supabase-key"
+                                name="supabase-key"
                                 value={settings.supabaseKey || ''}
                                 onChange={(e) => setSettings({ ...settings, supabaseKey: e.target.value })}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
@@ -195,6 +197,7 @@ const IntegrationsSettings: React.FC = () => {
                             <input
                                 type="text"
                                 id="telegram-token"
+                                name="telegram-token"
                                 value={settings.telegramToken || ''}
                                 onChange={(e) => setSettings({ ...settings, telegramToken: e.target.value })}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"

@@ -1,3 +1,4 @@
+
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { useToasts } from '../../context/ToastContext';
@@ -23,10 +24,12 @@ const OptionsSettings: React.FC = () => {
                 <h3 className="text-lg font-semibold text-white mb-4">Item Parsing</h3>
                 <div className="flex items-center justify-between">
                     <p className="text-gray-200">Enable AI Item Matching</p>
-                    <label className="flex items-center cursor-pointer">
+                    <label htmlFor="ai-toggle" className="flex items-center cursor-pointer">
                         <div className="relative">
                             <input
                                 type="checkbox"
+                                id="ai-toggle"
+                                name="ai-toggle"
                                 className="sr-only"
                                 checked={isAiEnabled}
                                 onChange={handleToggleAi}

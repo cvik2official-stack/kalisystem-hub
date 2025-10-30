@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { OrderItem, Unit } from '../../types';
 
@@ -78,6 +79,8 @@ const NumpadModal: React.FC<NumpadModalProps> = ({ item, isOpen, onClose, onSave
         <input
           ref={inputRef}
           type="text"
+          id="numpad-quantity-input"
+          name="numpad-quantity-input"
           inputMode="decimal"
           value={value}
           onChange={handleInputChange}

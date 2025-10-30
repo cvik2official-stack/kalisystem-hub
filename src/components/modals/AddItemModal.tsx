@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Order, OrderItem, Item, OrderStatus } from '../../types';
@@ -74,6 +75,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
           
           <input
               type="text"
+              id="add-item-search-input"
+              name="add-item-search-input"
               placeholder="Search for an item..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}

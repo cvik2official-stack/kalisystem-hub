@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Supplier } from '../../types';
 import { AppContext } from '../../context/AppContext';
@@ -49,6 +50,7 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                          <input
                             type="text"
                             id="supplier-name"
+                            name="supplier-name"
                             value={name}
                             // Fix: The name is from an enum and should not be editable. This resolves the type error on save.
                             readOnly
@@ -60,6 +62,7 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                         <input
                             type="text"
                             id="supplier-telegram"
+                            name="supplier-telegram"
                             value={telegramGroupId}
                             onChange={(e) => setTelegramGroupId(e.target.value)}
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
