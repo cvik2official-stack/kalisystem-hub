@@ -1,4 +1,5 @@
 
+
 import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit } from '../../types';
@@ -140,7 +141,7 @@ const ItemsSettings: React.FC = () => {
               <tbody className="bg-gray-800 divide-y divide-gray-700">
                   {filteredItems.map(item => (
                   <tr key={item.id} className="hover:bg-gray-700/50">
-                      <td className="pr-2 py-2 text-white text-sm whitespace-nowrap truncate max-w-xs">{item.name}</td>
+                      <td className="pr-2 py-2 text-white text-sm whitespace-nowrap truncate max-w-[150px] md:max-w-xs">{item.name}</td>
                       <td className="px-2 py-2 text-gray-300 text-sm whitespace-nowrap">{item.supplierName}</td>
                       <td className="pl-2 pr-4 py-2">
                         <div className="flex items-center justify-end space-x-2">

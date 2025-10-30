@@ -1,4 +1,5 @@
 
+
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { useToasts } from '../../context/ToastContext';
@@ -21,6 +22,12 @@ const TelegramIcon: React.FC = () => (
 const CsvIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+    </svg>
+);
+
+const GeminiIcon: React.FC = () => (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.293 2.293a1 1 0 010 1.414L10 16l-4 4-4-4 5.293-5.293a1 1 0 011.414 0L13 13m0 0l2.293 2.293a1 1 0 010 1.414L10 21l-4-4 3.707-3.707a1 1 0 011.414 0L13 13z" />
     </svg>
 );
 
@@ -58,10 +65,8 @@ const IntegrationsSettings: React.FC = () => {
                 return;
             }
 
-            // Fix: processCsvContent returns suppliers as well, which is needed for the dispatch payload.
             const { items, suppliers } = processCsvContent(csvText);
             
-            // Fix: The 'REPLACE_ITEM_DATABASE' action requires the 'suppliers' property in its payload.
             dispatch({ type: 'REPLACE_ITEM_DATABASE', payload: { items, suppliers, rawCsv: csvText } });
           
             addToast(`Sync successful: ${items.length} items loaded.`, 'success');
@@ -85,7 +90,6 @@ const IntegrationsSettings: React.FC = () => {
         setIsSeeding(true);
         addToast('Seeding data to Supabase...', 'info');
         try {
-            // Fix: The seedDatabase function requires the 'suppliers' property.
             const { itemsUpserted } = await seedDatabase({
                 items: state.items,
                 suppliers: state.suppliers,
@@ -181,6 +185,30 @@ const IntegrationsSettings: React.FC = () => {
                         </div>
                     )}
                 </div>
+
+                {/* Gemini AI Accordion */}
+                <div className="bg-gray-800 rounded-xl shadow-lg">
+                    <button onClick={() => setOpenAccordion(openAccordion === 'gemini' ? null : 'gemini')} className="w-full flex justify-between items-center p-4 focus:outline-none">
+                        <div className="flex items-center space-x-3">
+                            <GeminiIcon />
+                            <span className="font-semibold text-white">Gemini AI</span>
+                        </div>
+                        <span className={`transform transition-transform text-gray-400 ${openAccordion === 'gemini' ? 'rotate-180' : ''}`}>▼</span>
+                    </button>
+                    {openAccordion === 'gemini' && (
+                        <div className="p-4 border-t border-gray-700">
+                            <label htmlFor="gemini-api-key" className="block text-sm font-medium text-gray-300">API Key</label>
+                            <input
+                                type="password"
+                                id="gemini-api-key"
+                                name="gemini-api-key"
+                                value={settings.geminiApiKey || ''}
+                                onChange={(e) => setSettings({ ...settings, geminiApiKey: e.target.value })}
+                                className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
+                            />
+                        </div>
+                    )}
+                </div>
                 
                 {/* Telegram Accordion */}
                 <div className="bg-gray-800 rounded-xl shadow-lg">
@@ -195,7 +223,7 @@ const IntegrationsSettings: React.FC = () => {
                         <div className="p-4 border-t border-gray-700">
                             <label htmlFor="telegram-token" className="block text-sm font-medium text-gray-300">Bot Token</label>
                             <input
-                                type="text"
+                                type="password"
                                 id="telegram-token"
                                 name="telegram-token"
                                 value={settings.telegramToken || ''}

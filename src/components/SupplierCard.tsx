@@ -521,7 +521,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             </div>
             {contextMenu && <ContextMenu {...contextMenu} onClose={() => setContextMenu(null)} />}
             {isNumpadOpen && selectedItem && (
-                <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={handleSaveItem} />
+                <NumpadModal 
+                    item={selectedItem} 
+                    isOpen={isNumpadOpen} 
+                    onClose={() => setNumpadOpen(false)} 
+                    onSave={handleSaveItem}
+                    onDelete={() => handleDeleteItem(selectedItem)}
+                />
             )}
             {isAddItemModalOpen && (
                 <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onAddItem={handleAddItem} />

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useContext } from 'react';
 import { Item, Unit } from '../../types';
 import { AppContext } from '../../context/AppContext';
@@ -20,7 +19,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
     const [supplierId, setSupplierId] = useState<string>('');
     const [newVariantName, setNewVariantName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
-
+    
     useEffect(() => {
         if (isOpen) {
             setName(item.name);
@@ -28,7 +27,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
             setSupplierId(item.supplierId);
         }
     }, [isOpen, item]);
-    
+
     const isNew = !state.items.some(i => i.id === item.id);
 
     const handleSave = async () => {

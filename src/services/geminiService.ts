@@ -1,16 +1,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Item, ParsedItem, Unit } from '../types';
 
-// Safely get the API key
-const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : undefined;
-// Initialize the client only if the key exists.
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
-
-
-const parseItemListWithGemini = async (text: string, existingItems: Item[]): Promise<ParsedItem[]> => {
-    if (!ai) {
+const parseItemListWithGemini = async (text: string, existingItems: Item[], apiKey?: string): Promise<ParsedItem[]> => {
+    if (!apiKey) {
         throw new Error("Gemini API key is not configured. AI parsing is disabled.");
     }
+
+    const ai = new GoogleGenAI({ apiKey });
 
     const prompt = `
         Parse the following user-provided list of items. For each item, match it against the provided list of existing items.

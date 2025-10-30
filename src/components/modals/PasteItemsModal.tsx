@@ -29,7 +29,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
       addToast(isAiEnabled ? 'Parsing with AI...' : 'Parsing locally...', 'info');
       
       const parsedItems = isAiEnabled
-        ? await parseItemListWithGemini(text, state.items)
+        ? await parseItemListWithGemini(text, state.items, state.settings.geminiApiKey)
         : await parseItemListLocally(text, state.items);
       
       const ordersBySupplier: Record<string, { supplier: Supplier, items: OrderItem[] }> = {};

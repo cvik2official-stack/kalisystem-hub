@@ -2,7 +2,6 @@ import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCa
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
-import { processCsvContent } from '../services/csvService';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -19,6 +18,7 @@ export interface AppState {
     supabaseKey?: string;
     telegramToken?: string;
     csvUrl?: string;
+    geminiApiKey?: string;
     isAiEnabled?: boolean;
     lastSyncedCsvContent?: string;
   };
@@ -190,8 +190,6 @@ const getInitialState = (): AppState => {
     settings: {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
-      telegramToken: typeof process !== 'undefined' ? process.env.TELEGRAM_TOKEN : undefined,
-      csvUrl: typeof process !== 'undefined' ? process.env.CSV_URL : undefined,
       isAiEnabled: true,
     },
     isLoading: false,
