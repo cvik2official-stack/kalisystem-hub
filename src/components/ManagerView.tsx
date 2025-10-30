@@ -3,9 +3,10 @@ import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
 import SupplierCard from './SupplierCard';
 import { OrderStatus, StoreName } from '../types';
+import CompletedOrdersTable from './CompletedOrdersTable';
 
 const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
-  const { state, dispatch } = useContext(AppContext);
+  const { state } = useContext(AppContext);
   const { orders } = state;
   const [activeStatus, setActiveStatus] = React.useState<OrderStatus>(OrderStatus.ON_THE_WAY);
 
@@ -20,8 +21,16 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200 font-sans antialiased">
       <div className="w-full lg:w-3/5 lg:mx-auto p-4">
-        <header className="mb-6">
+        <header className="mb-6 flex items-center justify-between">
           <h1 className="text-3xl font-bold text-white">Manager View: {storeName}</h1>
+           <div className="flex items-center space-x-2">
+              <div className="flex space-x-1.5">
+                <span className="w-3 h-3 bg-red-500 rounded-full"></span>
+                <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
+                <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+              </div>
+              <h2 className="text-xs font-semibold text-gray-300">Kali System</h2>
+            </div>
         </header>
 
         <div className="border-b border-gray-700">
@@ -48,11 +57,15 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
               <p className="text-gray-500">No orders in this category.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredOrders.map((order) => (
-                <SupplierCard key={order.id} order={order} isManagerView={true} />
-              ))}
-            </div>
+             activeStatus !== OrderStatus.COMPLETED ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-6">
+                  {filteredOrders.map((order) => (
+                    <SupplierCard key={order.id} order={order} isManagerView={true} />
+                  ))}
+                </div>
+             ) : (
+                <CompletedOrdersTable orders={filteredOrders} />
+             )
           )}
         </div>
       </div>

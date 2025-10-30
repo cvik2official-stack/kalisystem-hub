@@ -1,42 +1,68 @@
-import { SendMessageParams } from '../types';
+import { Order } from '../types';
 
-export const sendTelegramMessage = async ({ botToken, chatId, text, parseMode }: SendMessageParams): Promise<boolean> => {
-    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
-    
-    // Guard clause to prevent sending empty or whitespace-only messages.
-    if (!text || text.trim() === '') {
-        console.error("Attempted to send an empty message to Telegram.");
-        return false;
+interface EdgeFunctionParams {
+    url: string;
+    key: string;
+    payload: any;
+}
+
+const invokeTelegramBot = async ({ url, key, payload }: EdgeFunctionParams) => {
+    const response = await fetch(`${url}/functions/v1/telegram-bot`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${key}`,
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Edge function failed: ${errorText}`);
     }
 
-    const body: { chat_id: string; text: string; parse_mode?: string } = {
-        chat_id: chatId,
-        text: text,
-    };
-
-    if (parseMode) {
-        body.parse_mode = parseMode;
+    const data = await response.json();
+    if (!data.ok) {
+        throw new Error(`Telegram bot error: ${data.error || 'Unknown error'}`);
     }
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(body)
-        });
+    return data;
+};
 
-        const data = await response.json();
-        if (data.ok) {
-            console.log("Message sent successfully:", data);
-            return true;
-        } else {
-            console.error("Telegram API Error:", data);
-            return false;
-        }
-    } catch (error) {
-        console.error("Failed to send Telegram message:", error);
-        return false;
-    }
+interface SendToSupplierParams {
+    url: string;
+    key: string;
+    chatId: string;
+    message: string;
+}
+
+export const sendOrderToSupplierOnTelegram = async ({ url, key, chatId, message }: SendToSupplierParams): Promise<void> => {
+    await invokeTelegramBot({
+        url,
+        key,
+        payload: {
+            endpoint: '/send-to-supplier',
+            chatId,
+            message,
+        },
+    });
+};
+
+interface SendToStoreParams {
+    url: string;
+    key: string;
+    order: Order;
+    message: string;
+}
+
+export const sendOrderToStoreOnTelegram = async ({ url, key, order, message }: SendToStoreParams): Promise<void> => {
+    await invokeTelegramBot({
+        url,
+        key,
+        payload: {
+            endpoint: '/send-to-store',
+            order,
+            message,
+        },
+    });
 };

@@ -45,7 +45,7 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id: string; // Supabase UUID
+  id:string; // Supabase UUID
   orderId: string; // Human-readable ID
   store: StoreName;
   supplierId: string; // Foreign key to the suppliers table

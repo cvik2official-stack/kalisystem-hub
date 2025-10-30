@@ -2,6 +2,8 @@ import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCa
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
+import { sendOrderToStoreOnTelegram } from '../services/telegramService';
+import { StoreName as StoreNameEnum } from '../constants';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -52,6 +54,7 @@ export interface AppContextActions {
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
+    sendOrderToStore: (order: Order, message: string) => Promise<void>;
     syncWithSupabase: () => Promise<void>;
 }
 
@@ -117,23 +120,16 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case '_MERGE_DATABASE': {
         const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders } = action.payload;
 
-        // --- Merge Items ---
         const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
         state.items.forEach(localItem => {
-            if (!mergedItemsMap.has(localItem.id)) {
-                mergedItemsMap.set(localItem.id, localItem);
-            }
+            if (!mergedItemsMap.has(localItem.id)) mergedItemsMap.set(localItem.id, localItem);
         });
 
-        // --- Merge Suppliers ---
         const mergedSuppliersMap = new Map(remoteSuppliers.map(s => [s.id, s]));
         state.suppliers.forEach(localSupplier => {
-            if (!mergedSuppliersMap.has(localSupplier.id)) {
-                mergedSuppliersMap.set(localSupplier.id, localSupplier);
-            }
+            if (!mergedSuppliersMap.has(localSupplier.id)) mergedSuppliersMap.set(localSupplier.id, localSupplier);
         });
 
-        // --- Merge Orders ---
         const localOrdersMap = new Map(state.orders.map(o => [o.id, o]));
         const mergedOrders: Order[] = [];
 
@@ -153,7 +149,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
         localOrdersMap.forEach(localOrder => mergedOrders.push(localOrder));
 
         return { 
-            ...state, 
+            ...state,
             items: Array.from(mergedItemsMap.values()), 
             suppliers: Array.from(mergedSuppliersMap.values()), 
             orders: mergedOrders 
@@ -180,7 +176,7 @@ const getInitialState = (): AppState => {
   }
 
   const initialState: AppState = {
-    stores: Object.values(StoreName).map(name => ({ name })),
+    stores: Object.values(StoreNameEnum).map(name => ({ name })),
     activeStore: StoreName.CV2,
     suppliers: [],
     items: [],
@@ -208,9 +204,10 @@ const getInitialState = (): AppState => {
     });
 
     loadedState.settings = { ...initialState.settings, ...loadedState.settings };
-    loadedState.stores = initialState.stores;
     loadedState.isLoading = false;
     loadedState.isInitialized = false;
+    // Always use the static list of stores
+    loadedState.stores = initialState.stores; 
     return loadedState;
   }
   return initialState;
@@ -231,6 +228,7 @@ export const AppContext = createContext<{
       addOrder: async () => {},
       updateOrder: async () => {},
       deleteOrder: async () => {},
+      sendOrderToStore: async () => {},
       syncWithSupabase: async () => {},
   }
 });
@@ -263,9 +261,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (supabaseUrl && supabaseKey) {
             addToast('Syncing with Supabase...', 'info');
             
+            // Step 1: Fetch suppliers and items first.
             const { items, suppliers } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
-            const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
             
+            // Step 2: Now fetch orders using the suppliers list we just got.
+            const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
+
+            // Step 3: Merge all data.
             dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders } }); 
             addToast('Sync complete.', 'success');
             dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -282,9 +284,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     if (!state.isInitialized) {
-      // Immediately render the app with cached data
       dispatch({ type: 'INITIALIZATION_COMPLETE' });
-      // Begin background sync
       syncWithSupabase();
     }
   }, [state.isInitialized, syncWithSupabase]);
@@ -342,14 +342,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         try {
             let supplierToUse = supplier;
-
-            // Check if the supplier is a new, temporary one created on the fly.
             if (supplier.id.startsWith('new_')) {
                 addToast(`Creating or verifying supplier: ${supplier.name}...`, 'info');
-                // This will create the supplier if it doesn't exist, or fetch the existing one.
                 const newSupplierFromDb = await supabaseAddSupplier({ supplierName: supplier.name, url: supabaseUrl, key: supabaseKey });
                 dispatch({ type: '_ADD_SUPPLIER', payload: newSupplierFromDb });
-                supplierToUse = newSupplierFromDb; // Use the supplier with the real UUID.
+                supplierToUse = newSupplierFromDb;
             }
 
             const now = new Date();
@@ -358,7 +355,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const newCounter = (state.orderIdCounters[counterKey] || 0) + 1;
             const newOrderId = `${dateStr}_${supplierToUse.name}_${store}_${String(newCounter).padStart(3,'0')}`;
             const newOrder: Order = {
-                id: `placeholder_${Date.now()}`, // This ID is temporary and will be replaced by the one from the DB
+                id: `placeholder_${Date.now()}`,
                 orderId: newOrderId, store, supplierId: supplierToUse.id, supplierName: supplierToUse.name, items, status: OrderStatus.DISPATCHING,
                 isSent: false, isReceived: false, createdAt: now.toISOString(), modifiedAt: now.toISOString(),
             };
@@ -387,6 +384,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             dispatch({ type: 'DELETE_ORDER', payload: orderId });
             addToast(`Order deleted.`, 'success');
         } catch (e: any) { addToast(`Error: ${e.message}`, 'error'); throw e; }
+    },
+    sendOrderToStore: async (order: Order, message: string) => {
+        const { supabaseUrl, supabaseKey } = state.settings;
+        if (!supabaseUrl || !supabaseKey) throw new Error('Supabase not configured.');
+
+        await sendOrderToStoreOnTelegram({
+            url: supabaseUrl,
+            key: supabaseKey,
+            order,
+            message,
+        });
     },
     syncWithSupabase,
   };

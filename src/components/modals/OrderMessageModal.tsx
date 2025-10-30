@@ -2,7 +2,7 @@ import React, { useState, useMemo, useContext } from 'react';
 import { Order, OrderStatus, SupplierName } from '../../types';
 import { useToasts } from '../../context/ToastContext';
 import { AppContext } from '../../context/AppContext';
-import { sendTelegramMessage } from '../../services/telegramService';
+import { sendOrderToSupplierOnTelegram } from '../../services/telegramService';
 
 interface OrderMessageModalProps {
   order: Order;
@@ -23,28 +23,27 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
         if (order.supplierName === SupplierName.KALI) {
             const plain = `${order.store}\n` +
                 order.items.map(item => {
-                    const unitText = item.unit ? `${item.unit}` : ''; // No space for KALI
+                    const unitText = item.unit ? `${item.unit}` : '';
                     return `${item.name} x${item.quantity}${unitText}`;
                 }).join('\n');
 
             const html = `<b>${escapeHtml(order.store)}</b>\n` +
                 order.items.map(item => {
-                    const unitText = item.unit ? `${escapeHtml(item.unit)}` : ''; // No space
+                    const unitText = item.unit ? `${escapeHtml(item.unit)}` : '';
                     return `${escapeHtml(item.name)} x${item.quantity}${unitText}`;
                 }).join('\n');
 
             return { plainTextMessage: plain, htmlMessage: html };
         }
 
-        // Default
         const plainItems = order.items.map(item => {
-            const unitText = item.unit ? ` ${item.unit}` : ''; // Space for others
+            const unitText = item.unit ? ` ${item.unit}` : '';
             return `${item.name} x${item.quantity}${unitText}`;
         }).join('\n');
         const plain = `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n${plainItems}`;
 
         const htmlItems = order.items.map(item => {
-            const unitText = item.unit ? ` ${escapeHtml(item.unit)}` : ''; // Space
+            const unitText = item.unit ? ` ${escapeHtml(item.unit)}` : '';
             return `<i>${escapeHtml(item.name)}</i> x${item.quantity}${unitText}`;
         }).join('\n');
         const html = `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${escapeHtml(order.store)}</b>\n\n${htmlItems}`;
@@ -54,26 +53,22 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
 
     const handleSendWithTelegram = async () => {
         const supplier = state.suppliers.find(s => s.name === order.supplierName);
-        if (!state.settings.telegramToken || !supplier?.telegramGroupId) {
+        const { supabaseUrl, supabaseKey, telegramToken } = state.settings;
+        if (!supabaseUrl || !supabaseKey || !telegramToken || !supplier?.telegramGroupId) {
             addToast('Telegram is not configured for this supplier.', 'error');
             return;
         }
 
         setIsSending(true);
         try {
-            const success = await sendTelegramMessage({
-                botToken: state.settings.telegramToken,
+            await sendOrderToSupplierOnTelegram({
+                url: supabaseUrl,
+                key: supabaseKey,
                 chatId: supplier.telegramGroupId,
-                text: htmlMessage,
-                parseMode: 'HTML'
+                message: htmlMessage,
             });
-
-            if (success) {
-                addToast('Order sent to Telegram!', 'success');
-                onClose();
-            } else {
-                 addToast('Failed to send order to Telegram.', 'error');
-            }
+            addToast('Order sent to Telegram!', 'success');
+            onClose();
         } catch (error) {
             addToast('Failed to send order to Telegram.', 'error');
         } finally {
