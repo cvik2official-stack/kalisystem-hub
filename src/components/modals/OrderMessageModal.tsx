@@ -10,29 +10,46 @@ interface OrderMessageModalProps {
   onClose: () => void;
 }
 
+const escapeHtml = (text: string): string => {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+};
+
 const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, onClose }) => {
     const { state } = useContext(AppContext);
     const { addToast } = useToasts();
     const [isSending, setIsSending] = useState(false);
     
-    const message = useMemo(() => {
+    const { plainTextMessage, htmlMessage } = useMemo(() => {
         if (order.supplierName === SupplierName.KALI) {
-            return `${order.store}\n` +
+            const plain = `${order.store}\n` +
                 order.items.map(item => {
-                    const unitText = item.unit ? ` ${item.unit}` : '';
+                    const unitText = item.unit ? `${item.unit}` : ''; // No space for KALI
                     return `${item.name} x${item.quantity}${unitText}`;
                 }).join('\n');
+
+            const html = `<b>${escapeHtml(order.store)}</b>\n` +
+                order.items.map(item => {
+                    const unitText = item.unit ? `${escapeHtml(item.unit)}` : ''; // No space
+                    return `${escapeHtml(item.name)} x${item.quantity}${unitText}`;
+                }).join('\n');
+
+            return { plainTextMessage: plain, htmlMessage: html };
         }
 
-        let text = `#️⃣ Order ${order.orderId}\n`;
-        text += `🚚 Delivery order\n`;
-        text += `📌 ${order.store}\n\n`;
+        // Default
+        const plainItems = order.items.map(item => {
+            const unitText = item.unit ? ` ${item.unit}` : ''; // Space for others
+            return `${item.name} x${item.quantity}${unitText}`;
+        }).join('\n');
+        const plain = `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n${plainItems}`;
+
+        const htmlItems = order.items.map(item => {
+            const unitText = item.unit ? ` ${escapeHtml(item.unit)}` : ''; // Space
+            return `<i>${escapeHtml(item.name)}</i> x${item.quantity}${unitText}`;
+        }).join('\n');
+        const html = `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${escapeHtml(order.store)}</b>\n\n${htmlItems}`;
         
-        order.items.forEach((item) => {
-            const unitText = item.unit ? ` ${item.unit}` : '';
-            text += `${item.name} x${item.quantity}${unitText}\n`;
-        });
-        return text;
+        return { plainTextMessage: plain, htmlMessage: html };
     }, [order]);
 
     const handleSendWithTelegram = async () => {
@@ -47,7 +64,8 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
             const success = await sendTelegramMessage({
                 botToken: state.settings.telegramToken,
                 chatId: supplier.telegramGroupId,
-                text: message,
+                text: htmlMessage,
+                parseMode: 'HTML'
             });
 
             if (success) {
@@ -64,7 +82,7 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
     };
     
     const handleCopyToClipboard = () => {
-        navigator.clipboard.writeText(message).then(() => {
+        navigator.clipboard.writeText(plainTextMessage).then(() => {
             addToast('Order copied to clipboard!', 'success');
             onClose();
         });
@@ -88,7 +106,7 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
                 </button>
                 <h2 className="text-xl font-bold text-white mb-4">Order Message for {order.supplierName}</h2>
                 <div className="bg-gray-900 rounded-md p-4 max-h-60 overflow-y-auto">
-                    <pre className="text-gray-300 whitespace-pre-wrap text-sm font-sans">{message}</pre>
+                    <pre className="text-gray-300 whitespace-pre-wrap text-sm font-sans">{plainTextMessage}</pre>
                 </div>
                 <div className="mt-6 flex justify-between items-center">
                     <button onClick={handleCopyToClipboard} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">

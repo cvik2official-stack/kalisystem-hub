@@ -1,19 +1,22 @@
-interface SendMessageParams {
-    botToken: string;
-    chatId: string;
-    text: string;
-}
+import { SendMessageParams } from '../types';
 
-export const sendTelegramMessage = async ({ botToken, chatId, text }: SendMessageParams): Promise<boolean> => {
+export const sendTelegramMessage = async ({ botToken, chatId, text, parseMode }: SendMessageParams): Promise<boolean> => {
     const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
     
-    // Telegram's sendMessage API requires a specific format.
-    // We'll use a simplified version of Markdown that Telegram supports.
-    const body = {
+    // Guard clause to prevent sending empty or whitespace-only messages.
+    if (!text || text.trim() === '') {
+        console.error("Attempted to send an empty message to Telegram.");
+        return false;
+    }
+
+    const body: { chat_id: string; text: string; parse_mode?: string } = {
         chat_id: chatId,
         text: text,
-        parse_mode: 'Markdown'
     };
+
+    if (parseMode) {
+        body.parse_mode = parseMode;
+    }
 
     try {
         const response = await fetch(url, {

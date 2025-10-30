@@ -1,7 +1,6 @@
 
-
 import React, { useContext, useState } from 'react';
-import { AppContext } from '../../context/AppContext';
+import { AppContext, AppState } from '../../context/AppContext';
 import { useToasts } from '../../context/ToastContext';
 import { processCsvContent } from '../../services/csvService';
 import { seedDatabase } from '../../services/supabaseService';
@@ -35,25 +34,29 @@ const IntegrationsSettings: React.FC = () => {
     const { state, dispatch } = useContext(AppContext);
     const { addToast } = useToasts();
 
-    const [settings, setSettings] = useState(state.settings);
     const [isSyncing, setIsSyncing] = useState(false);
     const [isSeeding, setIsSeeding] = useState(false);
     const [openAccordion, setOpenAccordion] = useState<string | null>('csv');
 
-    const handleSaveIntegrationSettings = () => {
-        dispatch({ type: 'SAVE_SETTINGS', payload: settings });
-        addToast('Integration settings saved successfully.', 'success');
+    const handleSettingChange = (key: keyof AppState['settings'], value: string | boolean) => {
+        dispatch({
+            type: 'SAVE_SETTINGS',
+            payload: {
+                ...state.settings,
+                [key]: value,
+            },
+        });
     };
 
     const handleSyncCsv = async () => {
-        if (!settings.csvUrl) {
+        if (!state.settings.csvUrl) {
           addToast('Please enter a CSV URL.', 'error');
           return;
         }
         setIsSyncing(true);
         addToast('Syncing database from CSV...', 'info');
         try {
-            const response = await fetch(settings.csvUrl);
+            const response = await fetch(state.settings.csvUrl);
             if (!response.ok) {
                 throw new Error(`Failed to fetch CSV file. Status: ${response.status}`);
             }
@@ -79,7 +82,7 @@ const IntegrationsSettings: React.FC = () => {
     };
     
     const handleSeedDatabase = async () => {
-        if (!settings.supabaseUrl || !settings.supabaseKey) {
+        if (!state.settings.supabaseUrl || !state.settings.supabaseKey) {
             addToast('Please provide Supabase URL and Key.', 'error');
             return;
         }
@@ -93,8 +96,8 @@ const IntegrationsSettings: React.FC = () => {
             const { itemsUpserted } = await seedDatabase({
                 items: state.items,
                 suppliers: state.suppliers,
-                url: settings.supabaseUrl,
-                key: settings.supabaseKey,
+                url: state.settings.supabaseUrl,
+                key: state.settings.supabaseKey,
             });
             addToast(`Seed successful: ${itemsUpserted} items upserted.`, 'success');
         } catch (error: any) {
@@ -124,8 +127,8 @@ const IntegrationsSettings: React.FC = () => {
                                     type="text"
                                     id="csv-url"
                                     name="csv-url"
-                                    value={settings.csvUrl || ''}
-                                    onChange={(e) => setSettings({ ...settings, csvUrl: e.target.value })}
+                                    value={state.settings.csvUrl || ''}
+                                    onChange={(e) => handleSettingChange('csvUrl', e.target.value)}
                                     className="w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
                                 />
                                 <button
@@ -157,8 +160,8 @@ const IntegrationsSettings: React.FC = () => {
                                 type="text"
                                 id="supabase-url"
                                 name="supabase-url"
-                                value={settings.supabaseUrl || ''}
-                                onChange={(e) => setSettings({ ...settings, supabaseUrl: e.target.value })}
+                                value={state.settings.supabaseUrl || ''}
+                                onChange={(e) => handleSettingChange('supabaseUrl', e.target.value)}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -168,15 +171,15 @@ const IntegrationsSettings: React.FC = () => {
                                 type="text"
                                 id="supabase-key"
                                 name="supabase-key"
-                                value={settings.supabaseKey || ''}
-                                onChange={(e) => setSettings({ ...settings, supabaseKey: e.target.value })}
+                                value={state.settings.supabaseKey || ''}
+                                onChange={(e) => handleSettingChange('supabaseKey', e.target.value)}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
                         <div className="pt-2">
                              <button
                                 onClick={handleSeedDatabase}
-                                disabled={isSeeding || !settings.supabaseKey || !settings.supabaseUrl}
+                                disabled={isSeeding || !state.settings.supabaseKey || !state.settings.supabaseUrl}
                                 className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:bg-green-800 disabled:cursor-not-allowed"
                             >
                                 {isSeeding ? 'Seeding...' : 'Seed Supabase with Local Data'}
@@ -202,8 +205,8 @@ const IntegrationsSettings: React.FC = () => {
                                 type="password"
                                 id="gemini-api-key"
                                 name="gemini-api-key"
-                                value={settings.geminiApiKey || ''}
-                                onChange={(e) => setSettings({ ...settings, geminiApiKey: e.target.value })}
+                                value={state.settings.geminiApiKey || ''}
+                                onChange={(e) => handleSettingChange('geminiApiKey', e.target.value)}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
@@ -226,17 +229,12 @@ const IntegrationsSettings: React.FC = () => {
                                 type="password"
                                 id="telegram-token"
                                 name="telegram-token"
-                                value={settings.telegramToken || ''}
-                                onChange={(e) => setSettings({ ...settings, telegramToken: e.target.value })}
+                                value={state.settings.telegramToken || ''}
+                                onChange={(e) => handleSettingChange('telegramToken', e.target.value)}
                                 className="mt-1 w-full bg-gray-900 border border-gray-700 rounded-md p-2 text-gray-200 focus:ring-indigo-500 focus:border-indigo-500"
                             />
                         </div>
                     )}
-                </div>
-                <div className="pt-4">
-                    <button onClick={handleSaveIntegrationSettings} className="w-full inline-flex items-center justify-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
-                        Save Integration Settings
-                    </button>
                 </div>
             </div>
         </div>

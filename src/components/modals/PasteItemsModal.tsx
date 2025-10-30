@@ -15,6 +15,14 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  const isAiEnabledButNotConfigured = state.settings.isAiEnabled && !state.settings.geminiApiKey;
+
+  const handleGoToSettings = (e: React.MouseEvent) => {
+      e.preventDefault();
+      onClose(); // Close the current modal
+      dispatch({ type: 'SET_ACTIVE_STORE', payload: 'Settings' });
+  };
+
   const handleClose = () => {
     if (isLoading) return;
     setIsLoading(false);
@@ -146,6 +154,16 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
             </svg>
         </button>
         <h2 className="text-xl font-bold text-white mb-4">Paste Item List</h2>
+        
+        {isAiEnabledButNotConfigured && (
+            <div className="bg-yellow-900/50 border border-yellow-700 text-yellow-300 text-sm rounded-md p-3 mb-4 text-center">
+                AI parsing requires a Gemini API key. Please add it in{' '}
+                <a href="#" onClick={handleGoToSettings} className="font-bold underline hover:text-yellow-200">
+                    Settings
+                </a>.
+            </div>
+        )}
+
         <textarea
           id="paste-item-list-textarea"
           name="paste-item-list-textarea"

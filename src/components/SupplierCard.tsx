@@ -18,6 +18,35 @@ interface SupplierCardProps {
   showStoreName?: boolean;
 }
 
+const escapeHtml = (text: string): string => {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+};
+
+const generateOrderMessage = (order: Order, format: 'plain' | 'html'): string => {
+    const isHtml = format === 'html';
+
+    if (order.supplierName === SupplierName.KALI) {
+        return (isHtml ? `<b>${escapeHtml(order.store)}</b>` : order.store) + '\n' +
+            order.items.map(item => {
+                const unitText = item.unit ? (isHtml ? escapeHtml(item.unit) : item.unit) : '';
+                const itemName = isHtml ? escapeHtml(item.name) : item.name;
+                return `${itemName} x${item.quantity}${unitText}`;
+            }).join('\n');
+    }
+
+    // Default message format for other suppliers
+    const header = isHtml
+        ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${escapeHtml(order.store)}</b>\n\n`
+        : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${order.store}\n\n`;
+
+    return header + order.items.map(item => {
+        const unitText = item.unit ? ` ${isHtml ? escapeHtml(item.unit) : item.unit}` : '';
+        const itemName = isHtml ? `<i>${escapeHtml(item.name)}</i>` : item.name;
+        return `${itemName} x${item.quantity}${unitText}`;
+    }).join('\n');
+};
+
+
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false }) => {
     const { state, dispatch, actions } = useContext(AppContext);
     const { addToast } = useToasts();
@@ -271,27 +300,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
-    const generateOrderMessage = (order: Order): string => {
-        if (order.supplierName === SupplierName.KALI) {
-            return `${order.store}\n` +
-                order.items.map(item => {
-                    const unitText = item.unit ? `${item.unit}` : '';
-                    return `${item.name} x${item.quantity}${unitText}`;
-                }).join('\n');
-        }
-
-        // Default message format for other suppliers
-        return `#️⃣ Order ${order.orderId}\n` +
-               `🚚 Delivery order\n` +
-               `📌 ${order.store}\n\n` +
-               order.items.map(item => {
-                   const unitText = item.unit ? ` ${item.unit}` : '';
-                   return `${item.name} x${item.quantity}${unitText}`;
-               }).join('\n');
-    };
-
     const handleCopyOrderMessage = () => {
-        const plainTextMessage = generateOrderMessage(order);
+        const plainTextMessage = generateOrderMessage(order, 'plain');
         navigator.clipboard.writeText(plainTextMessage).then(() => {
             addToast('Order copied to clipboard!', 'success');
         });
@@ -306,12 +316,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
         setIsProcessing(true);
         try {
-            const message = generateOrderMessage(order);
+            const message = generateOrderMessage(order, 'html');
                 
             const success = await sendTelegramMessage({
                 botToken: state.settings.telegramToken,
                 chatId: supplier.telegramGroupId,
                 text: message,
+                parseMode: 'HTML',
             });
     
             if (success) {

@@ -65,3 +65,10 @@ export interface ParsedItem {
   quantity: number;
   unit?: Unit;
 }
+
+export interface SendMessageParams {
+    botToken: string;
+    chatId: string;
+    text: string;
+    parseMode?: 'HTML' | 'MarkdownV2';
+}
