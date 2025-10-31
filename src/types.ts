@@ -31,6 +31,7 @@ export interface Item {
 export interface Supplier {
   id: string; // uuid from Supabase
   name: SupplierName;
+  // FIX: Add telegramGroupId to support integration settings.
   telegramGroupId?: string;
   // FIX: Added modifiedAt to match the database schema and allow for timestamp tracking.
   modifiedAt?: string;

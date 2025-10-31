@@ -1,6 +1,7 @@
-// FIX: Switched to using the 'npm:' specifier for Supabase function types, which is more robust for Deno and resolves issues with esm.sh type definition resolution.
-// FIX: Corrected the path from 'src' to 'dist' to locate the type definition file.
-/// <reference types="npm:@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
+// FIX: Updated Supabase functions type definitions URL to a working version-pinned esm.sh link.
+// FIX: Corrected the URL for Supabase functions type definitions to a valid, versioned esm.sh link.
+// FIX: Corrected the URL for Supabase functions type definitions to remove the invalid '/v135' path segment.
+/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 // FIX: Switched from deno.land to a Deno-specific bundle from esm.sh to resolve deployment permission errors in Supabase.

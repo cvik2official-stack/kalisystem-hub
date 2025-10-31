@@ -22,13 +22,13 @@ export interface AppState {
     // FIX: Added optional properties to support integration settings.
     csvUrl?: string;
     geminiApiKey?: string;
-    telegramToken?: string;
-    storeChatIds?: Partial<Record<string, string>>;
     spreadsheetIds?: Partial<Record<string, string>>;
   };
   isLoading: boolean;
   isInitialized: boolean;
   syncStatus: SyncStatus;
+  isManagerView: boolean;
+  managerStoreFilter: StoreName | null;
 }
 
 export type Action =
@@ -47,7 +47,8 @@ export type Action =
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
   | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
-  | { type: 'SET_STORE_CONFIGS'; payload: { storeChatIds: Record<string, string>, spreadsheetIds: Record<string, string> } };
+  | { type: 'SET_STORE_CONFIGS'; payload: { spreadsheetIds: Record<string, string> } }
+  | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } };
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
@@ -57,7 +58,7 @@ export interface AppContextActions {
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
-    updateStoreConfig: (storeName: string, field: 'chatId' | 'spreadsheetId', value: string) => Promise<void>;
+    updateStoreConfig: (storeName: string, spreadsheetId: string) => Promise<void>;
     syncWithSupabase: () => Promise<void>;
     runDailyReports: () => Promise<void>;
 }
@@ -154,11 +155,16 @@ const appReducer = (state: AppState, action: Action): AppState => {
         ...state,
         settings: {
           ...state.settings,
-          storeChatIds: action.payload.storeChatIds,
           spreadsheetIds: action.payload.spreadsheetIds,
         }
       };
     }
+    case 'SET_MANAGER_VIEW':
+        return {
+            ...state,
+            isManagerView: action.payload.isManager,
+            managerStoreFilter: action.payload.store,
+        };
     default:
       return state;
   }
@@ -185,12 +191,13 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      storeChatIds: {},
       spreadsheetIds: {},
     },
     isLoading: false,
     isInitialized: false,
     syncStatus: 'idle',
+    isManagerView: false,
+    managerStoreFilter: null,
   };
 
   const finalState = { ...initialState, ...loadedState };
@@ -321,29 +328,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: 'DELETE_ORDER', payload: orderId });
         addToast(`Order deleted.`, 'success');
     },
-    updateStoreConfig: async (storeName, field, value) => {
-        const currentChatId = state.settings.storeChatIds?.[storeName];
-        const currentSpreadsheetId = state.settings.spreadsheetIds?.[storeName];
-
-        const configToSave = {
-            chatId: field === 'chatId' ? value : currentChatId,
-            spreadsheetId: field === 'spreadsheetId' ? value : currentSpreadsheetId,
-        };
-
+    updateStoreConfig: async (storeName, spreadsheetId) => {
         await upsertStoreConfigInSupabase({
             storeName,
-            config: configToSave,
+            spreadsheetId,
             url: state.settings.supabaseUrl,
             key: state.settings.supabaseKey
         });
 
-        const settingsKey = field === 'chatId' ? 'storeChatIds' : 'spreadsheetIds';
         dispatch({
             type: 'SAVE_SETTINGS',
             payload: {
-                [settingsKey]: {
-                    ...state.settings[settingsKey],
-                    [storeName]: value.trim(),
+                spreadsheetIds: {
+                    ...state.settings.spreadsheetIds,
+                    [storeName]: spreadsheetId.trim(),
                 },
             }
         });

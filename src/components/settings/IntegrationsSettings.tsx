@@ -11,12 +11,6 @@ const SupabaseIcon: React.FC = () => (
     </svg>
 );
 
-const TelegramIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-    </svg>
-);
-
 const CsvIcon: React.FC = () => (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
         <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
@@ -214,20 +208,6 @@ ON public.stores_config FOR ALL TO anon USING (true) WITH CHECK (true);
                 </div>
             </AccordionItem>
             
-            <AccordionItem title="Telegram Bot" id="telegram" icon={<TelegramIcon />} openAccordion={openAccordion} setOpenAccordion={setOpenAccordion}>
-                <div className="space-y-4">
-                     <div className="text-xs text-gray-500">
-                        <p><strong>Instructions:</strong> Add the following secrets to your Supabase project under <strong>Project Settings &gt; Edge Functions</strong>.</p>
-                        <ul className="list-disc list-inside mt-1 space-y-1">
-                            <li><code>TELEGRAM_BOT_TOKEN</code>: Your token from BotFather.</li>
-                            <li><code>[SUPPLIER_NAME]_CHAT_ID</code>: e.g., <code>PISEY_CHAT_ID</code>, <code>MARKET_CHAT_ID</code>.</li>
-                            <li><code>[STORE_NAME]_CHAT_ID</code>: e.g., <code>CV2_CHAT_ID</code>.</li>
-                        </ul>
-                         <p className="mt-2">To find a chat ID, add your bot to a group, send <code>/whoami</code>, and copy the ID.</p>
-                    </div>
-                </div>
-            </AccordionItem>
-
             <AccordionItem title="Google Sheets" id="sheets" icon={<GoogleSheetsIcon />} openAccordion={openAccordion} setOpenAccordion={setOpenAccordion}>
                  <div className="text-xs text-gray-500">
                     <p><strong>Instructions:</strong> Add the following secret to your Supabase project under <strong>Project Settings &gt; Edge Functions</strong> to enable daily reporting.</p>

@@ -3,17 +3,32 @@ import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
-import ManagerView from './components/ManagerView';
 import ToastContainer from './components/ToastContainer';
+import { OrderStatus, StoreName } from './types';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { activeStore, isInitialized, syncStatus } = state;
 
-  // Check for manager view URL parameters from the hash
-  const urlParams = new URLSearchParams(window.location.hash.slice(1).startsWith('?') ? window.location.hash.slice(2) : window.location.hash.slice(1));
-  const view = urlParams.get('view');
-  const storeName = urlParams.get('store');
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.hash.slice(1).startsWith('?') ? window.location.hash.slice(2) : window.location.hash.slice(1));
+    const view = urlParams.get('view');
+    const storeParam = urlParams.get('store');
+
+    if (view === 'manager' && storeParam) {
+        const isValidStore = Object.values(StoreName).includes(storeParam as StoreName);
+        if (isValidStore) {
+            const managerStore = storeParam as StoreName;
+            dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: true, store: managerStore } });
+            dispatch({ type: 'SET_ACTIVE_STORE', payload: managerStore });
+            dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.ON_THE_WAY });
+
+            // Clean the URL hash so a refresh doesn't re-trigger this in a confusing way
+            const newUrl = window.location.pathname + window.location.search;
+            window.history.replaceState({}, '', newUrl);
+        }
+    }
+  }, [dispatch]);
 
   useEffect(() => {
     const checkAndRunReport = async () => {
@@ -47,15 +62,6 @@ const App: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [actions]);
 
-
-  if (view === 'manager' && storeName) {
-    return (
-      <>
-        <ManagerView storeName={storeName} />
-        <ToastContainer />
-      </>
-    );
-  }
 
   if (!isInitialized) {
     return (

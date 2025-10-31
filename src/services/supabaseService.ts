@@ -9,7 +9,6 @@ interface SupabaseCredentials {
 interface SupplierFromDb {
   id: string;
   name: SupplierName;
-  telegram_group_id?: string;
   modified_at: string;
 }
 
@@ -38,7 +37,6 @@ interface OrderFromDb {
 
 interface StoreConfigFromDb {
   store_name: string;
-  telegram_chat_id: string | null;
   spreadsheet_id: string | null;
 }
 
@@ -52,27 +50,23 @@ const getHeaders = (key: string) => ({
 
 // --- READ OPERATIONS ---
 
-export const getStoreConfigsFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ storeChatIds: Record<string, string>, spreadsheetIds: Record<string, string> }> => {
-  const response = await fetch(`${url}/rest/v1/stores_config?select=*`, {
+export const getStoreConfigsFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ spreadsheetIds: Record<string, string> }> => {
+  const response = await fetch(`${url}/rest/v1/stores_config?select=store_name,spreadsheet_id`, {
     headers: getHeaders(key),
   });
 
   if (!response.ok) throw new Error(`Failed to fetch store configs: ${await response.text()}`);
 
   const data: StoreConfigFromDb[] = await response.json();
-  const storeChatIds: Record<string, string> = {};
   const spreadsheetIds: Record<string, string> = {};
 
   for (const config of data) {
-    if (config.telegram_chat_id) {
-      storeChatIds[config.store_name] = config.telegram_chat_id;
-    }
     if (config.spreadsheet_id) {
       spreadsheetIds[config.store_name] = config.spreadsheet_id;
     }
   }
 
-  return { storeChatIds, spreadsheetIds };
+  return { spreadsheetIds };
 };
 
 
@@ -94,7 +88,6 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
     const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
         id: s.id,
         name: s.name,
-        telegramGroupId: s.telegram_group_id,
         modifiedAt: s.modified_at,
     }]));
     
@@ -162,11 +155,10 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
 
 // --- WRITE OPERATIONS ---
 
-export const upsertStoreConfigInSupabase = async ({ storeName, config, url, key }: { storeName: string; config: { chatId?: string; spreadsheetId?: string; }; url: string; key: string }): Promise<void> => {
+export const upsertStoreConfigInSupabase = async ({ storeName, spreadsheetId, url, key }: { storeName: string; spreadsheetId: string; url: string; key: string }): Promise<void> => {
   const payload = {
     store_name: storeName,
-    telegram_chat_id: config.chatId || null,
-    spreadsheet_id: config.spreadsheetId || null,
+    spreadsheet_id: spreadsheetId || null,
   };
   
   const response = await fetch(`${url}/rest/v1/stores_config`, {
@@ -305,13 +297,12 @@ export const addSupplier = async ({ supplierName, url, key }: { supplierName: Su
     return { 
         id: newSupplierFromDb.id,
         name: newSupplierFromDb.name,
-        telegramGroupId: newSupplierFromDb.telegram_group_id,
         modifiedAt: newSupplierFromDb.modified_at
     };
 };
 
 export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplier, url: string, key: string }): Promise<Supplier> => {
-    const payload = { telegram_group_id: supplier.telegramGroupId };
+    const payload = { }; // No editable fields left
     const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplier.id}&select=*`, {
         method: 'PATCH',
         headers: { ...getHeaders(key), 'Prefer': 'return=representation' },

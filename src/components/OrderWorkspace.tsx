@@ -82,8 +82,11 @@ const OrderWorkspace: React.FC = () => {
 
   const filteredOrders = orders.filter(order => {
     if (activeStore === 'KALI') {
-        // Show all KALI supplier orders, regardless of store
-        return order.supplierName === SupplierName.KALI && order.status === activeStatus;
+        const baseFilter = order.supplierName === SupplierName.KALI && order.status === activeStatus;
+        if (state.isManagerView && state.managerStoreFilter) {
+            return baseFilter && order.store === state.managerStoreFilter;
+        }
+        return baseFilter;
     }
     // Original logic for store tabs
     return order.store === activeStore && order.status === activeStatus;
@@ -185,6 +188,7 @@ const OrderWorkspace: React.FC = () => {
                                 <SupplierCard
                                     key={order.id}
                                     order={order}
+                                    isManagerView={state.isManagerView}
                                     draggedItem={draggedItem}
                                     setDraggedItem={setDraggedItem}
                                     onItemDrop={handleItemDrop}

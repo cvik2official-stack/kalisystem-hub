@@ -1,9 +1,7 @@
-import React, { useState, useMemo, useContext } from 'react';
+import React, { useMemo } from 'react';
 import { Order, OrderStatus } from '../../types';
 import { useToasts } from '../../context/ToastContext';
-import { AppContext } from '../../context/AppContext';
 import { generateOrderMessage } from '../../utils/messageFormatter';
-import { sendOrderToSupplierOnTelegram } from '../../services/telegramService';
 
 interface OrderMessageModalProps {
   order: Order;
@@ -13,26 +11,9 @@ interface OrderMessageModalProps {
 
 const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, onClose }) => {
     const { addToast } = useToasts();
-    const { state } = useContext(AppContext);
-    const [isSending, setIsSending] = useState(false);
     
     const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain'), [order]);
-    const htmlMessage = useMemo(() => generateOrderMessage(order, 'html'), [order]);
 
-    const handleSendWithTelegram = async () => {
-        setIsSending(true);
-        try {
-            // FIX: Expected 3 arguments, but got 2. Pass Supabase credentials to the telegram service function.
-            await sendOrderToSupplierOnTelegram(order.supplierName, htmlMessage, { url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-            addToast('Order sent to Telegram!', 'success');
-            onClose();
-        } catch (error: any) {
-            addToast(error.message || 'Failed to send to Telegram.', 'error');
-        } finally {
-            setIsSending(false);
-        }
-    };
-    
     const handleCopyToClipboard = () => {
         navigator.clipboard.writeText(plainTextMessage).then(() => {
             addToast('Order copied to clipboard!', 'success');
@@ -58,12 +39,9 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
                 <div className="bg-gray-900 rounded-md p-4 max-h-60 overflow-y-auto">
                     <pre className="text-gray-300 whitespace-pre-wrap text-sm font-sans">{plainTextMessage}</pre>
                 </div>
-                <div className="mt-6 flex justify-between items-center">
+                <div className="mt-6 flex justify-end items-center">
                     <button onClick={handleCopyToClipboard} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">
                         Copy Text
-                    </button>
-                    <button onClick={handleSendWithTelegram} disabled={isSending} className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800 disabled:cursor-not-allowed">
-                        {isSending ? 'Sending...' : 'Send to Telegram'}
                     </button>
                 </div>
             </div>

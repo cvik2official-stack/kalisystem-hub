@@ -1,8 +1,8 @@
-// FIX: Replaced npm specifier with a direct URL to the type definition file to resolve "Cannot find type definition file" errors.
-/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
+// FIX: Switched to using the 'npm:' specifier for Supabase function types, which is more robust and resolves issues with esm.sh type definition resolution.
+// FIX: Corrected the path from 'src' to 'dist' to locate the type definition file.
+/// <reference types="npm:@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { Gapi, GapiAuthenticator, a1 } from "https://deno.land/x/gapi@v0.3.4/mod.ts";
 
 declare const Deno: {
   env: {
@@ -12,6 +12,68 @@ declare const Deno: {
 
 const serviceAccountJson = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_JSON");
 
+interface ServiceAccount {
+  client_email: string;
+  private_key: string;
+}
+
+/**
+ * Creates a JWT, exchanges it for a Google Cloud access token.
+ */
+async function getAccessToken(serviceAccount: ServiceAccount): Promise<string> {
+    const scope = "https://www.googleapis.com/auth/spreadsheets";
+    const aud = "https://oauth2.googleapis.com/token";
+
+    const header = { alg: "RS256", typ: "JWT" };
+    const now = Math.floor(Date.now() / 1000);
+    const payload = {
+        iss: serviceAccount.client_email,
+        scope: scope,
+        aud: aud,
+        exp: now + 3600, // Expires in 1 hour
+        iat: now,
+    };
+    
+    const toBase64Url = (data: string) => btoa(data).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const unsignedToken = `${toBase64Url(JSON.stringify(header))}.${toBase64Url(JSON.stringify(payload))}`;
+
+    const privateKeyData = serviceAccount.private_key
+        .replace("-----BEGIN PRIVATE KEY-----", "")
+        .replace("-----END PRIVATE KEY-----", "")
+        .replace(/\n/g, "");
+    const privateKeyBuffer = Uint8Array.from(atob(privateKeyData), c => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+        "pkcs8",
+        privateKeyBuffer,
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+        false,
+        ["sign"]
+    );
+
+    const signatureBuffer = await crypto.subtle.sign(
+        "RSASSA-PKCS1-v1_5",
+        cryptoKey,
+        new TextEncoder().encode(unsignedToken)
+    );
+    const signature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const jwt = `${unsignedToken}.${signature}`;
+
+    const tokenResponse = await fetch(aud, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+            assertion: jwt,
+        }),
+    });
+
+    if (!tokenResponse.ok) {
+        throw new Error(`Failed to fetch access token: ${await tokenResponse.text()}`);
+    }
+    const tokenData = await tokenResponse.json();
+    return tokenData.access_token;
+}
+
 serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -19,7 +81,6 @@ serve(async (req) => {
     'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   };
 
-  // Explicitly handle CORS preflight requests.
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders, status: 204 });
   }
@@ -34,36 +95,37 @@ serve(async (req) => {
         throw new Error("Missing required parameters: spreadsheetId, sheetName, or values.");
     }
 
-    const auth = new GapiAuthenticator({
-        serviceAccount: JSON.parse(serviceAccountJson),
-        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-    });
+    const accessToken = await getAccessToken(JSON.parse(serviceAccountJson));
+    const sheetsApiBase = "https://sheets.googleapis.com/v4/spreadsheets";
+    const authHeaders = {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+    };
 
-    const gapi = new Gapi({ authenticator: auth });
-    const sheets = gapi.sheets("v4");
+    const getSheetResponse = await fetch(`${sheetsApiBase}/${spreadsheetId}?fields=sheets.properties.title`, { headers: authHeaders });
+    if (!getSheetResponse.ok) throw new Error(`Failed to get spreadsheet details: ${await getSheetResponse.text()}`);
+    const spreadsheet = await getSheetResponse.json();
+    const sheetExists = spreadsheet.sheets?.some((s: any) => s.properties?.title === sheetName);
 
-    // 1. Check if the sheet for today already exists
-    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetExists = spreadsheet.sheets?.some(s => s.properties?.title === sheetName);
-
-    // 2. If it doesn't exist, create it
     if (!sheetExists) {
-        await sheets.spreadsheets.batchUpdate({
-            spreadsheetId,
-            resource: {
+        const createSheetResponse = await fetch(`${sheetsApiBase}/${spreadsheetId}:batchUpdate`, {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
                 requests: [{ addSheet: { properties: { title: sheetName } } }],
-            },
+            }),
         });
+        if (!createSheetResponse.ok) throw new Error(`Failed to create sheet: ${await createSheetResponse.text()}`);
     }
 
-    // 3. Append the data to the sheet
-    const range = a1.fromSheet(sheetName); // a1 notation for the whole sheet
-    await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: range.toString(),
-        valueInputOption: "USER_ENTERED",
-        resource: { values },
+    const appendRange = encodeURIComponent(sheetName);
+    const appendResponse = await fetch(`${sheetsApiBase}/${spreadsheetId}/values/${appendRange}:append?valueInputOption=USER_ENTERED`, {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ values }),
     });
+
+    if (!appendResponse.ok) throw new Error(`Failed to append data: ${await appendResponse.text()}`);
 
     return new Response(JSON.stringify({ ok: true, message: `Data appended to sheet: ${sheetName}` }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
 

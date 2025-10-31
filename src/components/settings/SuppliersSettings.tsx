@@ -1,49 +1,9 @@
-import React, { useContext, useState, useRef } from 'react';
+// FIX: Import 'useContext' to resolve 'Cannot find name' error.
+import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Supplier } from '../../types';
 
 const SuppliersSettings: React.FC = () => {
-  const { state, actions } = useContext(AppContext);
-  
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingValue, setEditingValue] = useState('');
-  const longPressTimer = useRef<number | null>(null);
-
-  const handleEdit = (supplier: Supplier) => {
-    setEditingId(supplier.id);
-    setEditingValue(supplier.telegramGroupId || '');
-  };
-
-  const handleSave = async () => {
-    if (!editingId) return;
-    const supplier = state.suppliers.find(s => s.id === editingId);
-    if (supplier) {
-        await actions.updateSupplier({ ...supplier, telegramGroupId: editingValue.trim() });
-    }
-    setEditingId(null);
-  };
-  
-  const handlePressStart = (supplier: Supplier) => {
-    longPressTimer.current = window.setTimeout(() => {
-        handleEdit(supplier);
-    }, 500); // 500ms for long press
-  };
-
-  const handlePressEnd = () => {
-      if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-      }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      e.currentTarget.blur(); // Triggers onBlur which saves
-    } else if (e.key === 'Escape') {
-      setEditingId(null);
-    }
-  };
+  const { state } = useContext(AppContext);
 
   return (
     <div className="flex flex-col flex-grow">
@@ -55,36 +15,12 @@ const SuppliersSettings: React.FC = () => {
                 <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Name
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Telegram Group ID</th>
               </tr>
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
               {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(supplier => (
                 <tr key={supplier.id} className="hover:bg-gray-700/50">
                   <td className="pl-4 pr-6 py-2 text-sm text-white whitespace-nowrap">{supplier.name}</td>
-                  <td 
-                    className="px-6 py-2 text-sm text-gray-300 font-mono cursor-pointer"
-                    onClick={() => handleEdit(supplier)}
-                    onMouseDown={() => handlePressStart(supplier)}
-                    onMouseUp={handlePressEnd}
-                    onMouseLeave={handlePressEnd}
-                    onTouchStart={() => handlePressStart(supplier)}
-                    onTouchEnd={handlePressEnd}
-                  >
-                    {editingId === supplier.id ? (
-                      <input
-                        type="text"
-                        value={editingValue}
-                        onChange={(e) => setEditingValue(e.target.value)}
-                        onBlur={handleSave}
-                        onKeyDown={handleKeyDown}
-                        autoFocus
-                        className="w-full bg-gray-700 text-gray-200 rounded-md p-1 outline-none ring-1 ring-indigo-500"
-                      />
-                    ) : (
-                      supplier.telegramGroupId || <span className="text-gray-500">Not set</span>
-                    )}
-                  </td>
                 </tr>
               ))}
             </tbody>
