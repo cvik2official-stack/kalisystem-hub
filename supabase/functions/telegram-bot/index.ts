@@ -1,5 +1,5 @@
-// FIX: Switched to npm specifier for Supabase Edge Runtime types to resolve type definition fetching errors.
-/// <reference types="npm:@supabase/functions-js@2.4.1" />
+// FIX: Replaced npm specifier with a direct URL to the type definition file to resolve "Cannot find type definition file" errors.
+/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 // FIX: Switched from deno.land to a Deno-specific bundle from esm.sh to resolve deployment permission errors in Supabase.
@@ -44,7 +44,8 @@ interface Order {
 const telegramBotToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-const adminChatId = Deno.env.get('ADMIN_CHAT_ID');
+// Hardcode Admin Chat ID as requested
+const adminChatId = '-5086720919';
 
 if (!telegramBotToken) throw new Error("TELEGRAM_BOT_TOKEN is not set.");
 if (!supabaseUrl) throw new Error("SUPABASE_URL is not set.");
@@ -56,6 +57,10 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // --- Helper Functions ---
 const getChatId = (name: string): string | undefined => {
     if (!name) return undefined;
+    // Hardcode KALI chat ID for both supplier and store as requested
+    if (name.toUpperCase() === 'KALI') {
+        return '5186573916';
+    }
     const secretName = `${name.replace(/-/g, '_').toUpperCase()}_CHAT_ID`;
     return Deno.env.get(secretName);
 };
@@ -215,7 +220,6 @@ serve(async (req) => {
         'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
     };
 
-    // Explicitly handle CORS preflight requests. This is the crucial first step.
     if (req.method === 'OPTIONS') {
         return new Response(null, { headers: corsHeaders, status: 204 });
     }
@@ -225,7 +229,6 @@ serve(async (req) => {
         const body = await req.json().catch(() => ({}));
 
         if (body.endpoint) {
-            // Handle API call from web app
             const { endpoint, ...payload } = body;
             
             if (endpoint === '/send-to-supplier') {
@@ -237,13 +240,11 @@ serve(async (req) => {
                 const chatId = getChatId(payload.order?.store);
                 if (!chatId) throw new Error(`Chat ID for store ${payload.order?.store} not found.`);
                 
-                // Fetch full supplier info for message context
                 const { data: supplier, error } = await supabase.from('suppliers').select('name').eq('id', payload.order.supplier_id).single();
                 if (error) throw new Error(`Could not find supplier with ID ${payload.order.supplier_id}`);
 
                 const orderForBot: Order = { ...payload.order, supplierName: supplier?.name || 'Unknown' };
 
-                // Determine initial spoiled state from the order data
                 let initialBitmask = 0n;
                 payload.order.items.forEach((item: OrderItem, index: number) => {
                     if (item.isSpoiled) {
@@ -262,8 +263,6 @@ serve(async (req) => {
             
             return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json", ...corsHeaders }});
         } else {
-            // Assume it's a webhook from Telegram.
-            // Await the response from grammy, then inject CORS headers.
             const response = await webhookCallback(bot, "std/http")(reqClone);
             Object.entries(corsHeaders).forEach(([key, value]) => {
                 response.headers.set(key, value);

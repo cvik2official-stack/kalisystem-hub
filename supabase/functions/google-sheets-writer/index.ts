@@ -1,5 +1,5 @@
-// FIX: Switched to npm specifier for Supabase Edge Runtime types to resolve type definition fetching errors.
-/// <reference types="npm:@supabase/functions-js@2.4.1" />
+// FIX: Replaced npm specifier with a direct URL to the type definition file to resolve "Cannot find type definition file" errors.
+/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { Gapi, GapiAuthenticator, a1 } from "https://deno.land/x/gapi@v0.3.4/mod.ts";
