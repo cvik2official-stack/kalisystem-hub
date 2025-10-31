@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useEffect } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
@@ -14,6 +14,39 @@ const App: React.FC = () => {
   const urlParams = new URLSearchParams(window.location.hash.slice(1).startsWith('?') ? window.location.hash.slice(2) : window.location.hash.slice(1));
   const view = urlParams.get('view');
   const storeName = urlParams.get('store');
+
+  useEffect(() => {
+    const checkAndRunReport = async () => {
+        const now = new Date();
+        const lastReportKey = 'lastDailyReportDate';
+        const lastReportDate = localStorage.getItem(lastReportKey);
+        const todayStr = now.toISOString().split('T')[0];
+
+        // Don't run if a report for today has already been generated
+        if (lastReportDate === todayStr) {
+            return;
+        }
+
+        // Run if it's 8 PM (20:00) or later
+        if (now.getHours() >= 20) {
+            console.log('Time to run daily report...');
+            try {
+                await actions.runDailyReports();
+                localStorage.setItem(lastReportKey, todayStr);
+            } catch (e) {
+                console.error("Failed to run daily reports:", e);
+                // Don't set the flag if it fails, so it can retry later or tomorrow
+            }
+        }
+    };
+
+    // Check every 5 minutes to see if it's time to run the report
+    const intervalId = setInterval(checkAndRunReport, 5 * 60 * 1000); 
+    checkAndRunReport(); // Also run on initial load
+
+    return () => clearInterval(intervalId);
+  }, [actions]);
+
 
   if (view === 'manager' && storeName) {
     return (

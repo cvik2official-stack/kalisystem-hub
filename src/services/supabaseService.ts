@@ -36,6 +36,13 @@ interface OrderFromDb {
     items: OrderItem[];
 }
 
+interface StoreConfigFromDb {
+  store_name: string;
+  telegram_chat_id: string | null;
+  spreadsheet_id: string | null;
+}
+
+
 const getHeaders = (key: string) => ({
     'apikey': key,
     'Authorization': `Bearer ${key}`,
@@ -44,6 +51,30 @@ const getHeaders = (key: string) => ({
 
 
 // --- READ OPERATIONS ---
+
+export const getStoreConfigsFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ storeChatIds: Record<string, string>, spreadsheetIds: Record<string, string> }> => {
+  const response = await fetch(`${url}/rest/v1/stores_config?select=*`, {
+    headers: getHeaders(key),
+  });
+
+  if (!response.ok) throw new Error(`Failed to fetch store configs: ${await response.text()}`);
+
+  const data: StoreConfigFromDb[] = await response.json();
+  const storeChatIds: Record<string, string> = {};
+  const spreadsheetIds: Record<string, string> = {};
+
+  for (const config of data) {
+    if (config.telegram_chat_id) {
+      storeChatIds[config.store_name] = config.telegram_chat_id;
+    }
+    if (config.spreadsheet_id) {
+      spreadsheetIds[config.store_name] = config.spreadsheet_id;
+    }
+  }
+
+  return { storeChatIds, spreadsheetIds };
+};
+
 
 export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[] }> => {
   const headers = getHeaders(key);
@@ -130,6 +161,22 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
 };
 
 // --- WRITE OPERATIONS ---
+
+export const upsertStoreConfigInSupabase = async ({ storeName, config, url, key }: { storeName: string; config: { chatId?: string; spreadsheetId?: string; }; url: string; key: string }): Promise<void> => {
+  const payload = {
+    store_name: storeName,
+    telegram_chat_id: config.chatId || null,
+    spreadsheet_id: config.spreadsheetId || null,
+  };
+  
+  const response = await fetch(`${url}/rest/v1/stores_config`, {
+    method: 'POST',
+    headers: { ...getHeaders(key), 'Prefer': 'resolution=merge-duplicates' }, // This is upsert
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) throw new Error(`Failed to update store config for ${storeName}: ${await response.text()}`);
+};
 
 export const addOrder = async ({ order, url, key }: { order: Order; url: string; key: string }): Promise<Order> => {
     const headers = getHeaders(key);

@@ -2,10 +2,13 @@ import React, { useContext, useState, useRef, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Store, StoreName } from '../../types';
 
+type EditingField = 'chatId' | 'spreadsheetId';
+
 const StoresSettings: React.FC = () => {
-  const { state, dispatch } = useContext(AppContext);
+  const { state, actions } = useContext(AppContext);
   
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<EditingField | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const longPressTimer = useRef<number | null>(null);
 
@@ -14,31 +17,28 @@ const StoresSettings: React.FC = () => {
     return [...state.stores, kaliStore].sort((a, b) => a.name.localeCompare(b.name));
   }, [state.stores]);
 
-  const handleEdit = (store: Store) => {
+  const handleEdit = (store: Store, field: EditingField) => {
     setEditingId(store.name);
-    setEditingValue(state.settings.storeChatIds?.[store.name] || '');
+    setEditingField(field);
+    if (field === 'chatId') {
+        setEditingValue(state.settings.storeChatIds?.[store.name] || '');
+    } else {
+        setEditingValue(state.settings.spreadsheetIds?.[store.name] || '');
+    }
   };
 
-  const handleSave = () => {
-    if (!editingId) return;
+  const handleSave = async () => {
+    if (!editingId || !editingField) return;
     
-    dispatch({
-        type: 'SAVE_SETTINGS',
-        payload: {
-            ...state.settings,
-            storeChatIds: {
-                ...state.settings.storeChatIds,
-                [editingId]: editingValue.trim(),
-            },
-        },
-    });
+    await actions.updateStoreConfig(editingId, editingField, editingValue);
 
     setEditingId(null);
+    setEditingField(null);
   };
   
-  const handlePressStart = (store: Store) => {
+  const handlePressStart = (store: Store, field: EditingField) => {
     longPressTimer.current = window.setTimeout(() => {
-        handleEdit(store);
+        handleEdit(store, field);
     }, 500);
   };
 
@@ -55,13 +55,14 @@ const StoresSettings: React.FC = () => {
       e.currentTarget.blur();
     } else if (e.key === 'Escape') {
       setEditingId(null);
+      setEditingField(null);
     }
   };
 
 
   return (
     <div className="flex flex-col flex-grow">
-      <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden flex-grow flex flex-col w-full md:w-1/2">
+      <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden flex-grow flex flex-col w-full md:w-3/4">
         <div className="flex-grow overflow-y-auto hide-scrollbar">
           <table className="min-w-full divide-y divide-gray-700">
             <thead className="bg-gray-800 sticky top-0 z-10">
@@ -70,6 +71,7 @@ const StoresSettings: React.FC = () => {
                   Store Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Telegram Group ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Spreadsheet ID</th>
               </tr>
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
@@ -78,14 +80,14 @@ const StoresSettings: React.FC = () => {
                   <td className="pl-4 pr-6 py-2 text-sm text-white whitespace-nowrap">{store.name}</td>
                   <td 
                     className="px-6 py-2 text-sm text-gray-300 font-mono cursor-pointer"
-                    onClick={() => handleEdit(store)}
-                    onMouseDown={() => handlePressStart(store)}
+                    onClick={() => handleEdit(store, 'chatId')}
+                    onMouseDown={() => handlePressStart(store, 'chatId')}
                     onMouseUp={handlePressEnd}
                     onMouseLeave={handlePressEnd}
-                    onTouchStart={() => handlePressStart(store)}
+                    onTouchStart={() => handlePressStart(store, 'chatId')}
                     onTouchEnd={handlePressEnd}
                   >
-                    {editingId === store.name ? (
+                    {editingId === store.name && editingField === 'chatId' ? (
                       <input
                         type="text"
                         value={editingValue}
@@ -97,6 +99,29 @@ const StoresSettings: React.FC = () => {
                       />
                     ) : (
                       state.settings.storeChatIds?.[store.name] || <span className="text-gray-500">Not set</span>
+                    )}
+                  </td>
+                   <td 
+                    className="px-6 py-2 text-sm text-gray-300 font-mono cursor-pointer"
+                    onClick={() => handleEdit(store, 'spreadsheetId')}
+                    onMouseDown={() => handlePressStart(store, 'spreadsheetId')}
+                    onMouseUp={handlePressEnd}
+                    onMouseLeave={handlePressEnd}
+                    onTouchStart={() => handlePressStart(store, 'spreadsheetId')}
+                    onTouchEnd={handlePressEnd}
+                  >
+                    {editingId === store.name && editingField === 'spreadsheetId' ? (
+                      <input
+                        type="text"
+                        value={editingValue}
+                        onChange={(e) => setEditingValue(e.target.value)}
+                        onBlur={handleSave}
+                        onKeyDown={handleKeyDown}
+                        autoFocus
+                        className="w-full bg-gray-700 text-gray-200 rounded-md p-1 outline-none ring-1 ring-indigo-500"
+                      />
+                    ) : (
+                      state.settings.spreadsheetIds?.[store.name] || <span className="text-gray-500">Not set</span>
                     )}
                   </td>
                 </tr>

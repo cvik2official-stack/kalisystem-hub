@@ -12,7 +12,7 @@ import { useToasts } from '../context/ToastContext';
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { addToast } = useToasts();
-  const { activeStore, activeStatus, orders } = state;
+  const { activeStore, activeStatus, orders, settings } = state;
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
@@ -85,18 +85,26 @@ const OrderWorkspace: React.FC = () => {
         // Show all KALI supplier orders, regardless of store
         return order.supplierName === SupplierName.KALI && order.status === activeStatus;
     }
-    // FIX: This comparison is invalid because activeStore is narrowed to never be 'Settings' at this point.
-    
     // Original logic for store tabs
     return order.store === activeStore && order.status === activeStatus;
   });
 
-  const handlePressStart = () => {
-    if (activeStatus === OrderStatus.DISPATCHING) {
-      longPressTimer.current = window.setTimeout(() => {
-          setPasteModalOpen(true);
-      }, 500);
-    }
+  const handlePressStart = (tabId: OrderStatus) => {
+    longPressTimer.current = window.setTimeout(() => {
+      if (tabId === OrderStatus.DISPATCHING) {
+        setPasteModalOpen(true);
+// FIX: The component returns null if activeStore is 'Settings', so the check is redundant. This resolves the linting error.
+      } else if (tabId === OrderStatus.COMPLETED) {
+        if (activeStore !== 'KALI') {
+          const spreadsheetId = settings.spreadsheetIds?.[activeStore];
+          if (spreadsheetId) {
+            window.open(`https://docs.google.com/spreadsheets/d/${spreadsheetId}`, '_blank');
+          } else {
+            addToast(`No spreadsheet ID configured for ${activeStore}.`, 'info');
+          }
+        }
+      }
+    }, 500);
   };
 
   const handlePressEnd = () => {
@@ -106,7 +114,6 @@ const OrderWorkspace: React.FC = () => {
       }
   };
   
-  // FIX: This comparison is invalid because activeStore is narrowed to never be 'Settings' at this point.
   const canCreateOrders = activeStore !== 'KALI';
 
   return (
@@ -119,11 +126,11 @@ const OrderWorkspace: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => handleStatusChange(tab.id)}
-                onMouseDown={tab.id === OrderStatus.DISPATCHING ? handlePressStart : undefined}
-                onMouseUp={tab.id === OrderStatus.DISPATCHING ? handlePressEnd : undefined}
-                onMouseLeave={tab.id === OrderStatus.DISPATCHING ? handlePressEnd : undefined}
-                onTouchStart={tab.id === OrderStatus.DISPATCHING ? handlePressStart : undefined}
-                onTouchEnd={tab.id === OrderStatus.DISPATCHING ? handlePressEnd : undefined}
+                onMouseDown={() => handlePressStart(tab.id)}
+                onMouseUp={handlePressEnd}
+                onMouseLeave={handlePressEnd}
+                onTouchStart={() => handlePressStart(tab.id)}
+                onTouchEnd={handlePressEnd}
                 className={`
                   whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm
                   ${
