@@ -1,36 +1,72 @@
+import { GoogleGenAI, Type } from "@google/genai";
 import { Item, ParsedItem } from '../types';
 
-// These are public keys, safe to include in client-side code.
-const SUPABASE_URL = 'https://expwmqozywxbhewaczju.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg';
+const parseItemListWithGemini = async (
+  text: string,
+  existingItems: Item[],
+  apiKey: string // The API key is now passed directly
+): Promise<ParsedItem[]> => {
+  if (!apiKey) {
+    throw new Error("Gemini API key is not configured. Please add it in Settings.");
+  }
+  
+  try {
+    // Initialize the Gemini client on the fly with the provided key
+    const ai = new GoogleGenAI({ apiKey });
 
-const parseItemListWithGemini = async (text: string, existingItems: Item[]): Promise<ParsedItem[]> => {
-    try {
-        const response = await fetch(`${SUPABASE_URL}/functions/v1/telegram-bot`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${SUPABASE_KEY}`,
-                'Content-Type': 'application/json',
+    // The prompt is now executed on the client-side
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `Parse the following user-provided text into a list of items. For each item, identify its name, quantity, and unit.
+      Then, match each parsed item to the closest item from the provided existing item database.
+      
+      RULES:
+      1.  If a parsed item closely matches an item in the database, provide the 'matchedItemId' and its corresponding database ID. Use fuzzy matching. An item like "Angkor beer" should match "Angkor Beer (can)".
+      2.  If a parsed item does not match any existing item, provide the 'newItemName' with the name you parsed from the text. These are likely unique items, special requests, or typos.
+      3.  Always provide a quantity. Default to 1 if not specified.
+      4.  Infer the unit if possible (e.g., 'kg', 'pc', 'box').
+      
+      EXISTING ITEM DATABASE (for matching):
+      ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit })))}
+      
+      USER TEXT TO PARSE:
+      ---
+      ${text}
+      ---
+      `,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              matchedItemId: { type: Type.STRING, description: "The ID of the matched item from the database." },
+              newItemName: { type: Type.STRING, description: "The name of the item if no match was found." },
+              quantity: { type: Type.NUMBER, description: "The quantity of the item." },
+              unit: { type: Type.STRING, description: "The unit of the item (e.g., kg, pc, box)." },
             },
-            body: JSON.stringify({
-                endpoint: '/parse-with-ai',
-                text,
-                existingItems,
-            }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || "AI parsing service failed.");
-        }
-
-        const data = await response.json();
-        return data.parsedItems as ParsedItem[];
-
-    } catch (error) {
-        console.error("Error invoking Gemini parsing function:", error);
-        throw error;
+          },
+        },
+      },
+    });
+    
+    const jsonStr = response.text.trim();
+    const parsedResult = JSON.parse(jsonStr);
+    
+    if (!Array.isArray(parsedResult)) {
+        throw new Error("AI response was not in the expected array format.");
     }
+    
+    return parsedResult as ParsedItem[];
+
+  } catch (error: any) {
+    console.error("Error calling Gemini API:", error);
+    if (error.toString().includes('API key not valid')) {
+        throw new Error("The configured Gemini API key is invalid. Please check it in Settings.");
+    }
+    throw new Error("AI parsing failed. Check the browser console for more details.");
+  }
 };
 
 export default parseItemListWithGemini;

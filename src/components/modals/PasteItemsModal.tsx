@@ -1,13 +1,9 @@
-
-
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import parseItemListWithGemini from '../../services/geminiService';
-import { Order, OrderItem, OrderStatus, ParsedItem, SupplierName, StoreName, Supplier, Unit, Item } from '../../types';
+import { OrderItem, OrderStatus, SupplierName, StoreName, Supplier, Unit, Item } from '../../types';
 import { useToasts } from '../../context/ToastContext';
 import { parseItemListLocally } from '../../services/localParsingService';
-import { addOrder as supabaseAddOrder } from '../../services/supabaseService';
-
 
 const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { state, dispatch, actions } = useContext(AppContext);
@@ -17,20 +13,30 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
 
   const handleClose = () => {
     if (isLoading) return;
+    setText('');
     setIsLoading(false);
     onClose();
   };
 
   const handleSubmit = async () => {
-    if (!text.trim() || state.activeStore === 'Settings') return;
+    if (!text.trim() || state.activeStore === 'Settings' || state.activeStore === 'KALI') return;
     setIsLoading(true);
     try {
       const isAiEnabled = state.settings.isAiEnabled !== false;
       addToast(isAiEnabled ? 'Parsing with AI...' : 'Parsing locally...', 'info');
       
-      const parsedItems = isAiEnabled
-        ? await parseItemListWithGemini(text, state.items)
-        : await parseItemListLocally(text, state.items);
+      let parsedItems;
+      if (isAiEnabled) {
+          const geminiApiKey = state.settings.geminiApiKey;
+          if (!geminiApiKey) {
+              addToast('Gemini API key not set. Please add it in Settings > Integrations.', 'error');
+              setIsLoading(false);
+              return;
+          }
+          parsedItems = await parseItemListWithGemini(text, state.items, geminiApiKey);
+      } else {
+          parsedItems = await parseItemListLocally(text, state.items);
+      }
       
       const ordersBySupplier: Record<string, { supplier: Supplier, items: OrderItem[] }> = {};
 
@@ -42,41 +48,23 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           const existingItem = state.items.find(i => i.id === pItem.matchedItemId);
           if (existingItem) {
             supplier = state.suppliers.find(s => s.id === existingItem.supplierId) || null;
-            orderItem = {
-              itemId: existingItem.id,
-              name: existingItem.name,
-              quantity: pItem.quantity,
-              unit: pItem.unit ?? existingItem.unit,
-            };
+            orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: pItem.unit ?? existingItem.unit };
           }
         } else if (pItem.newItemName) {
-           // Default new items to MARKET supplier. This could be made configurable later.
            supplier = state.suppliers.find(s => s.name === 'MARKET') || null;
            if (supplier) {
-               // The central state is updated inside actions.addItem, so subsequent finds will work for duplicates in the same paste.
                const existingItemInDb = state.items.find(i => i.name.toLowerCase() === pItem.newItemName!.toLowerCase() && i.supplierId === supplier!.id);
-               
                let finalItem: Item;
                if (existingItemInDb) {
-                   // If it already exists (maybe from a previous sync or another part of the same paste), use it.
                    finalItem = existingItemInDb;
                } else {
-                   // Otherwise, create it now. `actions.addItem` will update the central state.
                    addToast(`Creating new item: ${pItem.newItemName}`, 'info');
                    finalItem = await actions.addItem({
-                       name: pItem.newItemName,
-                       supplierId: supplier.id,
-                       supplierName: supplier.name,
-                       unit: pItem.unit ?? Unit.PC, // Default to PC if no unit is parsed
+                       name: pItem.newItemName, supplierId: supplier.id,
+                       supplierName: supplier.name, unit: pItem.unit ?? Unit.PC
                    });
                }
-               
-               orderItem = {
-                   itemId: finalItem.id, // Use the real ID from the database
-                   name: finalItem.name,
-                   quantity: pItem.quantity,
-                   unit: pItem.unit ?? finalItem.unit,
-               };
+               orderItem = { itemId: finalItem.id, name: finalItem.name, quantity: pItem.quantity, unit: pItem.unit ?? finalItem.unit };
            }
         }
 
@@ -100,8 +88,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
               items.forEach(itemToAdd => {
                   const existingItemIndex = updatedItems.findIndex(i => i.itemId === itemToAdd.itemId);
                   if (existingItemIndex !== -1) {
-                      const existingItem = updatedItems[existingItemIndex];
-                      updatedItems[existingItemIndex] = { ...existingItem, quantity: existingItem.quantity + itemToAdd.quantity };
+                      updatedItems[existingItemIndex].quantity += itemToAdd.quantity;
                   } else {
                       updatedItems.push(itemToAdd);
                   }
@@ -114,19 +101,11 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           }
       }
 
-      if(createdCount > 0) {
-        addToast(`${createdCount} new order(s) created.`, 'success');
-      } 
-      if (updatedCount > 0) {
-        addToast(`${updatedCount} existing order(s) updated.`, 'info');
-      }
-      if (createdCount === 0 && updatedCount === 0) {
-        addToast('Could not parse any items from the list.', 'info');
-      }
+      if(createdCount > 0) addToast(`${createdCount} new order(s) created.`, 'success');
+      if (updatedCount > 0) addToast(`${updatedCount} existing order(s) updated.`, 'info');
+      if (createdCount === 0 && updatedCount === 0) addToast('Could not parse any items.', 'info');
 
-      onClose();
-      setText('');
-
+      handleClose();
     } catch (e: any) {
       addToast(e.message || "An unknown error occurred.", 'error');
     } finally {
@@ -137,18 +116,13 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={handleClose}>
-      <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4 border-t-4 border-blue-500" onClick={(e) => e.stopPropagation()}>
-        <button onClick={handleClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={handleClose}>
+      <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg border-t-4 border-blue-500" onClick={(e) => e.stopPropagation()}>
+        <button onClick={handleClose} className="absolute top-4 right-4 text-gray-400 hover:text-white">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
         <h2 className="text-xl font-bold text-white mb-4">Paste Item List</h2>
-        
         <textarea
-          id="paste-item-list-textarea"
-          name="paste-item-list-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="w-full h-48 bg-gray-900 text-gray-200 rounded-md p-3 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500 text-sm"
@@ -158,19 +132,14 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
             <button
               onClick={handleSubmit}
               disabled={!text.trim()}
-              className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600 disabled:cursor-not-allowed"
+              className="px-4 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600"
             >
               Dispatch
             </button>
           ) : (
             <div className="w-full flex flex-col items-center justify-center space-y-1">
-                <svg className="animate-spin h-5 w-5 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span className="text-xs font-semibold text-indigo-300">
-                    Processing items...
-                </span>
+                <svg className="animate-spin h-5 w-5 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                <span className="text-xs font-semibold text-indigo-300">Processing items...</span>
             </div>
           )}
         </div>

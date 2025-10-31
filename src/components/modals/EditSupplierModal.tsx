@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Supplier } from '../../types';
 import { AppContext } from '../../context/AppContext';
@@ -20,6 +21,8 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
     }, [supplier]);
 
     const handleSave = () => {
+        // Fix: Do not save the name from the local state. The name is from an enum and should not be editable.
+        // The spread `...supplier` will retain the original name with the correct type.
         onSave({
             ...supplier,
             telegramGroupId: telegramGroupId.trim(),
@@ -32,8 +35,8 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
     const isNew = !state.suppliers.some(s => s.id === supplier.id);
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={onClose}>
-            <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
+            <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
                 <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -49,6 +52,7 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                             id="supplier-name"
                             name="supplier-name"
                             value={name}
+                            // Fix: The name is from an enum and should not be editable. This resolves the type error on save.
                             readOnly
                             className="mt-1 w-full bg-gray-700 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500 opacity-70 cursor-not-allowed"
                         />

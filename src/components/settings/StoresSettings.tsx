@@ -1,32 +1,45 @@
-import React, { useContext, useState, useRef } from 'react';
+import React, { useContext, useState, useRef, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Supplier } from '../../types';
+import { Store, StoreName } from '../../types';
 
-const SuppliersSettings: React.FC = () => {
-  const { state, actions } = useContext(AppContext);
+const StoresSettings: React.FC = () => {
+  const { state, dispatch } = useContext(AppContext);
   
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
   const longPressTimer = useRef<number | null>(null);
 
-  const handleEdit = (supplier: Supplier) => {
-    setEditingId(supplier.id);
-    setEditingValue(supplier.telegramGroupId || '');
+  const storesForTable = useMemo(() => {
+    const kaliStore = { name: 'KALI' as StoreName };
+    return [...state.stores, kaliStore].sort((a, b) => a.name.localeCompare(b.name));
+  }, [state.stores]);
+
+  const handleEdit = (store: Store) => {
+    setEditingId(store.name);
+    setEditingValue(state.settings.storeChatIds?.[store.name] || '');
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!editingId) return;
-    const supplier = state.suppliers.find(s => s.id === editingId);
-    if (supplier) {
-        await actions.updateSupplier({ ...supplier, telegramGroupId: editingValue.trim() });
-    }
+    
+    dispatch({
+        type: 'SAVE_SETTINGS',
+        payload: {
+            ...state.settings,
+            storeChatIds: {
+                ...state.settings.storeChatIds,
+                [editingId]: editingValue.trim(),
+            },
+        },
+    });
+
     setEditingId(null);
   };
   
-  const handlePressStart = (supplier: Supplier) => {
+  const handlePressStart = (store: Store) => {
     longPressTimer.current = window.setTimeout(() => {
-        handleEdit(supplier);
-    }, 500); // 500ms for long press
+        handleEdit(store);
+    }, 500);
   };
 
   const handlePressEnd = () => {
@@ -39,11 +52,12 @@ const SuppliersSettings: React.FC = () => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      e.currentTarget.blur(); // Triggers onBlur which saves
+      e.currentTarget.blur();
     } else if (e.key === 'Escape') {
       setEditingId(null);
     }
   };
+
 
   return (
     <div className="flex flex-col flex-grow">
@@ -53,25 +67,25 @@ const SuppliersSettings: React.FC = () => {
             <thead className="bg-gray-800 sticky top-0 z-10">
               <tr>
                 <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                  Name
+                  Store Name
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Telegram Group ID</th>
               </tr>
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
-              {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(supplier => (
-                <tr key={supplier.id} className="hover:bg-gray-700/50">
-                  <td className="pl-4 pr-6 py-2 text-sm text-white whitespace-nowrap">{supplier.name}</td>
+              {storesForTable.map(store => (
+                <tr key={store.name} className="hover:bg-gray-700/50">
+                  <td className="pl-4 pr-6 py-2 text-sm text-white whitespace-nowrap">{store.name}</td>
                   <td 
                     className="px-6 py-2 text-sm text-gray-300 font-mono cursor-pointer"
-                    onClick={() => handleEdit(supplier)}
-                    onMouseDown={() => handlePressStart(supplier)}
+                    onClick={() => handleEdit(store)}
+                    onMouseDown={() => handlePressStart(store)}
                     onMouseUp={handlePressEnd}
                     onMouseLeave={handlePressEnd}
-                    onTouchStart={() => handlePressStart(supplier)}
+                    onTouchStart={() => handlePressStart(store)}
                     onTouchEnd={handlePressEnd}
                   >
-                    {editingId === supplier.id ? (
+                    {editingId === store.name ? (
                       <input
                         type="text"
                         value={editingValue}
@@ -82,7 +96,7 @@ const SuppliersSettings: React.FC = () => {
                         className="w-full bg-gray-700 text-gray-200 rounded-md p-1 outline-none ring-1 ring-indigo-500"
                       />
                     ) : (
-                      supplier.telegramGroupId || <span className="text-gray-500">Not set</span>
+                      state.settings.storeChatIds?.[store.name] || <span className="text-gray-500">Not set</span>
                     )}
                   </td>
                 </tr>
@@ -95,4 +109,4 @@ const SuppliersSettings: React.FC = () => {
   );
 };
 
-export default SuppliersSettings;
+export default StoresSettings;

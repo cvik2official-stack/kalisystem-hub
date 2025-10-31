@@ -1,4 +1,4 @@
-import React, { Component, ReactNode, ErrorInfo } from 'react';
+import React, { ReactNode, ErrorInfo } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -9,7 +9,7 @@ interface State {
   error: Error | null;
 }
 
-class ErrorBoundary extends Component<Props, State> {
+class ErrorBoundary extends React.Component<Props, State> {
   public state: State = {
     hasError: false,
     error: null,
@@ -78,6 +78,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
+    // FIX: This line was correct, but the error suggests a tooling issue. Refactoring the class to extend React.Component directly should resolve it.
     return this.props.children;
   }
 }

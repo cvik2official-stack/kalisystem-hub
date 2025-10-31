@@ -88,8 +88,8 @@ const ItemsSettings: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col flex-grow lg:items-center">
-      <div className="flex justify-between items-center mb-4 w-full lg:w-3/4">
+    <div className="flex flex-col flex-grow">
+      <div className="flex justify-between items-center mb-4 w-full md:w-1/2">
         <input
             type="text"
             id="item-settings-search-input"
@@ -127,7 +127,7 @@ const ItemsSettings: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden flex-grow flex flex-col w-full lg:w-3/4">
+      <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden flex-grow flex flex-col w-full md:w-1/2">
         {viewMode === 'list' ? (
            <div className="flex-grow overflow-y-auto hide-scrollbar">
               <table className="min-w-full divide-y divide-gray-700">

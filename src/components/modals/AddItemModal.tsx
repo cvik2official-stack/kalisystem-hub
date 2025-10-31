@@ -93,8 +93,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
 
   return (
     <>
-      <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={onClose}>
-        <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md mx-4 border-t-4 ${
+      <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
+        <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md border-t-4 ${
             order.status === OrderStatus.DISPATCHING ? 'border-blue-500' :
             order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' :
             'border-green-500'

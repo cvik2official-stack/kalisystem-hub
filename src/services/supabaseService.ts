@@ -1,8 +1,39 @@
-import { Item, Order, OrderItem, Supplier, SupplierName, Store } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit } from '../types';
 
 interface SupabaseCredentials {
   url: string;
   key: string;
+}
+
+// Interfaces for raw database responses with snake_case properties
+interface SupplierFromDb {
+  id: string;
+  name: SupplierName;
+  telegram_group_id?: string;
+  modified_at: string;
+}
+
+interface ItemFromDb {
+  id: string;
+  name: string;
+  unit: Unit;
+  supplier_id: string;
+  created_at: string;
+  modified_at: string;
+}
+
+interface OrderFromDb {
+    id: string;
+    order_id: string;
+    store: StoreName;
+    supplier_id: string;
+    status: OrderStatus;
+    is_sent: boolean;
+    is_received: boolean;
+    created_at: string;
+    modified_at: string;
+    completed_at?: string;
+    items: OrderItem[];
 }
 
 const getHeaders = (key: string) => ({
@@ -26,8 +57,8 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
     if (!suppliersResponse.ok) throw new Error(`Failed to fetch suppliers: ${await suppliersResponse.text()}`);
     if (!itemsResponse.ok) throw new Error(`Failed to fetch items: ${await itemsResponse.text()}`);
 
-    const suppliersData: any[] = await suppliersResponse.json();
-    const itemsData: any[] = await itemsResponse.json();
+    const suppliersData: SupplierFromDb[] = await suppliersResponse.json();
+    const itemsData: ItemFromDb[] = await itemsResponse.json();
     
     const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
         id: s.id,
@@ -64,11 +95,13 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
     const headers = getHeaders(key);
     const supplierMap = new Map<string, Supplier>(suppliers.map(s => [s.id, s]));
 
+    // Fetch all order data, assuming 'items' is a JSONB column.
     const ordersResponse = await fetch(`${url}/rest/v1/orders?select=*`, { headers });
     if (!ordersResponse.ok) throw new Error(`Failed to fetch orders: ${await ordersResponse.text()}`);
     
-    const ordersData: any[] = await ordersResponse.json();
+    const ordersData: OrderFromDb[] = await ordersResponse.json();
     
+    // Map the database response to the application's Order type.
     return ordersData
         .filter(Boolean)
         .reduce((acc: Order[], order) => {
@@ -86,6 +119,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     createdAt: order.created_at,
                     modifiedAt: order.modified_at,
                     completedAt: order.completed_at,
+                    // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
             } else {
@@ -101,6 +135,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
     const headers = getHeaders(key);
     const { id, ...orderData } = order;
 
+    // The payload now includes the 'items' array.
     const orderPayload = {
         order_id: orderData.orderId,
         store: orderData.store,
@@ -135,6 +170,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
     const headers = getHeaders(key);
     const now = new Date().toISOString();
 
+    // The payload now includes the 'items' array.
     const orderPayload = {
         status: order.status,
         is_sent: order.isSent,
@@ -210,6 +246,7 @@ export const addSupplier = async ({ supplierName, url, key }: { supplierName: Su
     const payload = {
         name: supplierName,
     };
+    // Using on_conflict with merge-duplicates will either create a new supplier or return the existing one if the name matches.
     const response = await fetch(`${url}/rest/v1/suppliers?select=*&on_conflict=name`, {
         method: 'POST',
         headers: { ...getHeaders(key), 'Prefer': 'return=representation,resolution=merge-duplicates' },
@@ -238,6 +275,7 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
     return { ...supplier, modifiedAt: data[0].modified_at };
 };
 
+// --- SEEDING ---
 export const seedDatabase = async ({ url, key, items, suppliers }: { url: string, key: string, items: Item[], suppliers: Supplier[] }) => {
     const headers = {
         ...getHeaders(key),

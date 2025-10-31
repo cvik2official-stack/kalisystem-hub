@@ -28,8 +28,8 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
     : 'bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-800';
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-sm mx-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-xl font-bold text-white mb-2">{title}</h2>
         <p className="text-gray-300 mb-6">{message}</p>
         <div className="flex justify-end space-x-3">

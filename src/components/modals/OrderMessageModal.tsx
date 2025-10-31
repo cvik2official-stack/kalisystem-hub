@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useContext } from 'react';
 import { Order, OrderStatus } from '../../types';
 import { useToasts } from '../../context/ToastContext';
-import { sendOrderToSupplierOnTelegram } from '../../services/telegramService';
+import { AppContext } from '../../context/AppContext';
 import { generateOrderMessage } from '../../utils/messageFormatter';
+import { sendOrderToSupplierOnTelegram } from '../../services/telegramService';
 
 interface OrderMessageModalProps {
   order: Order;
@@ -12,6 +13,7 @@ interface OrderMessageModalProps {
 
 const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, onClose }) => {
     const { addToast } = useToasts();
+    const { state } = useContext(AppContext);
     const [isSending, setIsSending] = useState(false);
     
     const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain'), [order]);
@@ -20,14 +22,12 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
     const handleSendWithTelegram = async () => {
         setIsSending(true);
         try {
-            await sendOrderToSupplierOnTelegram({
-                supplierName: order.supplierName,
-                message: htmlMessage,
-            });
+            // FIX: Expected 3 arguments, but got 2. Pass Supabase credentials to the telegram service function.
+            await sendOrderToSupplierOnTelegram(order.supplierName, htmlMessage, { url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
             addToast('Order sent to Telegram!', 'success');
             onClose();
         } catch (error: any) {
-            addToast(`Failed to send order: ${error.message}`, 'error');
+            addToast(error.message || 'Failed to send to Telegram.', 'error');
         } finally {
             setIsSending(false);
         }
@@ -43,8 +43,8 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50" onClick={onClose}>
-            <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg mx-4 border-t-4 ${
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg border-t-4 ${
                 order.status === OrderStatus.DISPATCHING ? 'border-blue-500' :
                 order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' :
                 'border-green-500'

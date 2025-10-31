@@ -9,7 +9,7 @@ const CompletedOrdersTable: React.FC<{ orders: Order[] }> = ({ orders }) => {
   };
 
   return (
-    <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden lg:w-3/4 lg:mx-auto">
+    <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden md:w-1/2 md:mx-auto">
       <table className="min-w-full divide-y divide-gray-700">
         <thead className="bg-gray-800">
           <tr>

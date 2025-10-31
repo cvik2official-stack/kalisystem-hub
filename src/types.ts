@@ -32,6 +32,7 @@ export interface Supplier {
   id: string; // uuid from Supabase
   name: SupplierName;
   telegramGroupId?: string;
+  // FIX: Added modifiedAt to match the database schema and allow for timestamp tracking.
   modifiedAt?: string;
 }
 
@@ -44,7 +45,7 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id:string; // Supabase UUID
+  id: string; // Supabase UUID
   orderId: string; // Human-readable ID
   store: StoreName;
   supplierId: string; // Foreign key to the suppliers table
