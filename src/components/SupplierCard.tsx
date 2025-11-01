@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, PaymentMethod } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
@@ -8,6 +8,23 @@ import { useToasts } from '../context/ToastContext';
 import ConfirmationModal from './modals/ConfirmationModal';
 import EditItemModal from './modals/EditItemModal';
 import { generateOrderMessage } from '../utils/messageFormatter';
+
+// --- Icon Components ---
+const CardIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M4 4a2 2 0 00-2 2v1h16V6a2 2 0 00-2-2H4z" /><path fillRule="evenodd" d="M18 9H2v6a2 2 0 002 2h12a2 2 0 002-2V9zM4 13a1 1 0 011-1h1a1 1 0 110 2H5a1 1 0 01-1-1zm3 0a1 1 0 011-1h1a1 1 0 110 2H8a1 1 0 01-1-1z" clipRule="evenodd" /></svg>;
+const DollarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M8.433 7.418c.158-.103.346-.196.552-.257a.54.54 0 01.592.54v2.586c0 .297-.24.54-.54.54-.207 0-.395-.093-.552-.257l-2.028-1.294a.54.54 0 010-.884l2.028-1.294z" /><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm0 2a10 10 0 100-20 10 10 0 000 20z" clipRule="evenodd" /></svg>;
+const ZapIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" /></svg>;
+const PackageIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 00.994-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4z" clipRule="evenodd" /></svg>;
+
+const PaymentBadge: React.FC<{ paymentMethod: PaymentMethod }> = ({ paymentMethod }) => {
+    const paymentStyles: Record<PaymentMethod, string> = {
+        [PaymentMethod.ABA]: 'bg-blue-500 text-white',
+        [PaymentMethod.CASH]: 'bg-green-500 text-white',
+        [PaymentMethod.KALI]: 'bg-yellow-500 text-black',
+        [PaymentMethod.STOCK]: 'bg-gray-500 text-white',
+        [PaymentMethod.PRODUCTION]: 'bg-purple-500 text-white',
+    };
+    return <span className={`ml-2 text-xs font-semibold px-2 py-0.5 rounded-full ${paymentStyles[paymentMethod]}`}>{paymentMethod}</span>;
+}
 
 interface SupplierCardProps {
   order: Order;
@@ -195,13 +212,25 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         try {
             const spoiledItems = order.items.filter(item => item.isSpoiled);
             const receivedItems = order.items.filter(item => !item.isSpoiled);
+            
+            let paymentMethod: PaymentMethod | undefined = undefined;
+            if (order.supplierName === SupplierName.KALI || order.supplierName === SupplierName.BAKERLEE) {
+                paymentMethod = PaymentMethod.KALI;
+            } else if (order.supplierName === SupplierName.LEES) {
+                paymentMethod = PaymentMethod.ABA;
+            } else if (order.supplierName === SupplierName.STOCK) {
+                paymentMethod = PaymentMethod.STOCK;
+            } else if (order.supplierName === SupplierName.PRODUCTION) {
+                paymentMethod = PaymentMethod.PRODUCTION;
+            }
 
             await actions.updateOrder({ 
                 ...order, 
                 items: receivedItems,
                 status: OrderStatus.COMPLETED, 
                 isReceived: true, 
-                completedAt: new Date().toISOString() 
+                completedAt: new Date().toISOString(),
+                paymentMethod,
             });
 
             if (spoiledItems.length > 0) {
@@ -221,6 +250,25 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             setIsProcessing(false);
         }
     }
+
+    const handleSetPaymentMethod = async (method: PaymentMethod) => {
+        setIsProcessing(true);
+        try {
+            await actions.updateOrder({ ...order, paymentMethod: method });
+            addToast(`Order marked as paid by ${method}.`, 'success');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const handleExportToCrm = async () => {
+        setIsProcessing(true);
+        try {
+            await actions.exportOrderToCrm(order.id);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
 
     const handleItemContextMenu = (e: React.MouseEvent | React.TouchEvent, item: OrderItem) => {
         e.preventDefault();
@@ -350,12 +398,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     onMouseLeave={handleSupplierPressEnd}
                     onTouchStart={handleSupplierPressStart}
                     onTouchEnd={handleSupplierPressEnd}
-                    className="p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer"
+                    className="p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer flex items-center"
                 >
                     <h3 className="font-bold text-white text-lg select-none">
                         {order.supplierName}
                         {showStoreName && <span className="text-gray-400 font-medium text-base ml-2">({order.store})</span>}
                     </h3>
+                    {order.paymentMethod && <PaymentBadge paymentMethod={order.paymentMethod} />}
                 </div>
                  <div className="flex items-center space-x-1">
                     <button onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label={isManuallyCollapsed ? 'Expand card' : 'Collapse card'}>
@@ -398,6 +447,26 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     }
                 </div>
                 
+                {order.status === OrderStatus.COMPLETED && isManagerView && (
+                    <div className="px-2 py-2 mt-1 border-t border-gray-700/50">
+                        {!order.paymentMethod ? (
+                            <div className="flex items-center justify-around">
+                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.ABA)} title="Paid by ABA" className="p-2 text-blue-400 bg-gray-700 hover:bg-gray-600 rounded-md"><CardIcon /></button>
+                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.CASH)} title="Paid by Cash" className="p-2 text-green-400 bg-gray-700 hover:bg-gray-600 rounded-md"><DollarIcon /></button>
+                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.KALI)} title="Paid by Kali" className="p-2 text-yellow-400 bg-gray-700 hover:bg-gray-600 rounded-md"><ZapIcon /></button>
+                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.STOCK)} title="Paid by Stock" className="p-2 text-gray-400 bg-gray-700 hover:bg-gray-600 rounded-md"><PackageIcon /></button>
+                            </div>
+                        ) : (
+                            !order.exportedToCrmAt ? (
+                                <button onClick={handleExportToCrm} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm">Export to CRM</button>
+                            ) : (
+                                <button disabled className="w-full bg-gray-600 text-gray-400 font-bold py-2 px-4 rounded-md text-sm cursor-not-allowed">Exported</button>
+                            )
+                        )}
+                    </div>
+                )}
+
+
                 {showActionRow && (
                     <div className="px-2 py-1 mt-1 border-t border-gray-700/50">
                         {order.status === OrderStatus.DISPATCHING && !isManagerView && (

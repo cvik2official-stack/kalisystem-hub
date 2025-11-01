@@ -1,4 +1,4 @@
-import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
+import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum, PaymentMethod as PaymentMethodEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
 export const StoreName = StoreNameEnum;
@@ -12,6 +12,9 @@ export type Unit = UnitEnum;
 
 export const OrderStatus = OrderStatusEnum;
 export type OrderStatus = OrderStatusEnum;
+
+export const PaymentMethod = PaymentMethodEnum;
+export type PaymentMethod = PaymentMethodEnum;
 
 export interface Store {
   name: StoreName;
@@ -58,6 +61,8 @@ export interface Order {
   createdAt: string;
   modifiedAt: string;
   completedAt?: string;
+  paymentMethod?: PaymentMethod | null;
+  exportedToCrmAt?: string | null;
 }
 
 export interface ParsedItem {

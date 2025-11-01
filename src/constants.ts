@@ -18,6 +18,8 @@ export enum SupplierName {
     TAKEAWAY_SHOP = 'TAKEAWAY-SHOP',
     STOCK = 'STOCK',
     PZZA_PLUS = 'PZZA+',
+    BAKERLEE = 'BAKERLEE',
+    PRODUCTION = 'PRODUCTION',
 }
 
 
@@ -25,6 +27,14 @@ export enum OrderStatus {
   DISPATCHING = 'dispatching',
   ON_THE_WAY = 'on_the_way',
   COMPLETED = 'completed',
+}
+
+export enum PaymentMethod {
+    ABA = 'ABA',
+    CASH = 'CASH',
+    KALI = 'KALI',
+    STOCK = 'STOCK',
+    PRODUCTION = 'PRODUCTION',
 }
 
 // This now matches the unit_enum in the database
