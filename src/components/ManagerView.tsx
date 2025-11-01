@@ -16,9 +16,16 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
     (tab) => tab.id === OrderStatus.ON_THE_WAY || tab.id === OrderStatus.COMPLETED
   );
 
-  const filteredOrders = orders.filter(
-    (order) => order.store === storeName && order.status === activeStatus
-  );
+  const filteredOrders = orders.filter((order) => {
+    if (order.store !== storeName || order.status !== activeStatus) {
+      return false;
+    }
+    // Hide orders that have been exported to CRM from the completed view
+    if (activeStatus === OrderStatus.COMPLETED && order.exportedToCrmAt) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <div className="bg-gray-800 shadow-2xl w-full lg:w-3/5 lg:mx-auto min-h-screen flex flex-col">

@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, PaymentMethod } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, PaymentMethod, StoreName } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
@@ -450,12 +450,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 {order.status === OrderStatus.COMPLETED && isManagerView && (
                     <div className="px-2 py-2 mt-1 border-t border-gray-700/50">
                         {!order.paymentMethod ? (
-                            <div className="flex items-center justify-around">
-                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.ABA)} title="Paid by ABA" className="p-2 text-blue-400 bg-gray-700 hover:bg-gray-600 rounded-md"><CardIcon /></button>
-                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.CASH)} title="Paid by Cash" className="p-2 text-green-400 bg-gray-700 hover:bg-gray-600 rounded-md"><DollarIcon /></button>
-                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.KALI)} title="Paid by Kali" className="p-2 text-yellow-400 bg-gray-700 hover:bg-gray-600 rounded-md"><ZapIcon /></button>
-                                <button onClick={() => handleSetPaymentMethod(PaymentMethod.STOCK)} title="Paid by Stock" className="p-2 text-gray-400 bg-gray-700 hover:bg-gray-600 rounded-md"><PackageIcon /></button>
-                            </div>
+                            order.store === StoreName.CV2 ? (
+                                <div className="flex items-center justify-around">
+                                    <button onClick={() => handleSetPaymentMethod(PaymentMethod.ABA)} title="Paid by ABA" className="p-2 text-blue-400 bg-gray-700 hover:bg-gray-600 rounded-md"><CardIcon /></button>
+                                    <button onClick={() => handleSetPaymentMethod(PaymentMethod.CASH)} title="Paid by Cash" className="p-2 text-green-400 bg-gray-700 hover:bg-gray-600 rounded-md"><DollarIcon /></button>
+                                    <button onClick={() => handleSetPaymentMethod(PaymentMethod.KALI)} title="Paid by Kali" className="p-2 text-yellow-400 bg-gray-700 hover:bg-gray-600 rounded-md"><ZapIcon /></button>
+                                    <button onClick={() => handleSetPaymentMethod(PaymentMethod.STOCK)} title="Paid by Stock" className="p-2 text-gray-400 bg-gray-700 hover:bg-gray-600 rounded-md"><PackageIcon /></button>
+                                </div>
+                            ) : null
                         ) : (
                             !order.exportedToCrmAt ? (
                                 <button onClick={handleExportToCrm} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm">Export to CRM</button>
@@ -487,6 +489,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                             ) : (
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-2">
+                                        <button onClick={() => setAddItemModalOpen(true)} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
                                         <button onClick={handleUnsendOrder} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
                                         <button onClick={handleCopyOrderMessage} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>
                                     </div>
