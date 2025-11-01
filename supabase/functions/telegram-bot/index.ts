@@ -1,5 +1,5 @@
-// FIX: Switched from unpkg.com back to esm.sh for the type definition file to resolve the "Cannot find type definition file" error.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
+// FIX: Corrected the path for the type definitions file. The type definition file is located in the '/dist' directory.
+/// <reference types="https://unpkg.com/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { Bot, webhookCallback, InlineKeyboard } from 'https://esm.sh/grammy@1.25.1?target=deno';

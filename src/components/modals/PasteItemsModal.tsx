@@ -48,7 +48,8 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           const existingItem = state.items.find(i => i.id === pItem.matchedItemId);
           if (existingItem) {
             supplier = state.suppliers.find(s => s.id === existingItem.supplierId) || null;
-            orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: pItem.unit ?? existingItem.unit };
+            // For matched items, ALWAYS use the unit from the database, ignoring any parsed unit.
+            orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: existingItem.unit };
           }
         } else if (pItem.newItemName) {
            supplier = state.suppliers.find(s => s.name === 'MARKET') || null;

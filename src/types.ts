@@ -13,6 +13,15 @@ export type Unit = UnitEnum;
 export const OrderStatus = OrderStatusEnum;
 export type OrderStatus = OrderStatusEnum;
 
+export enum PaymentMethod {
+  ABA = 'aba',
+  CASH = 'cash',
+  KALI = 'kali',
+  STOCK = 'stock',
+}
+// FIX: Removed conflicting type alias for the PaymentMethod enum.
+// The enum declaration itself serves as the type, and this was causing a redeclaration error.
+
 export interface Store {
   name: StoreName;
 }
@@ -31,9 +40,8 @@ export interface Item {
 export interface Supplier {
   id: string; // uuid from Supabase
   name: SupplierName;
-  // FIX: Add telegramGroupId to support integration settings.
-  telegramGroupId?: string;
-  // FIX: Added modifiedAt to match the database schema and allow for timestamp tracking.
+  chatId?: string; // Replaces telegramGroupId for clarity
+  paymentMethod?: PaymentMethod; // For persisting payment choice
   modifiedAt?: string;
 }
 

@@ -1,4 +1,4 @@
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -10,6 +10,8 @@ interface SupplierFromDb {
   id: string;
   name: SupplierName;
   modified_at: string;
+  chat_id?: string;
+  payment_method?: PaymentMethod;
 }
 
 interface ItemFromDb {
@@ -88,6 +90,8 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
     const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
         id: s.id,
         name: s.name,
+        chatId: s.chat_id,
+        paymentMethod: s.payment_method,
         modifiedAt: s.modified_at,
     }]));
     
@@ -297,12 +301,17 @@ export const addSupplier = async ({ supplierName, url, key }: { supplierName: Su
     return { 
         id: newSupplierFromDb.id,
         name: newSupplierFromDb.name,
-        modifiedAt: newSupplierFromDb.modified_at
+        modifiedAt: newSupplierFromDb.modified_at,
+        chatId: newSupplierFromDb.chat_id,
+        paymentMethod: newSupplierFromDb.payment_method,
     };
 };
 
 export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplier, url: string, key: string }): Promise<Supplier> => {
-    const payload = { }; // No editable fields left
+    const payload = {
+        chat_id: supplier.chatId,
+        payment_method: supplier.paymentMethod
+    };
     const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplier.id}&select=*`, {
         method: 'PATCH',
         headers: { ...getHeaders(key), 'Prefer': 'return=representation' },
@@ -310,8 +319,15 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
     });
     if (!response.ok) throw new Error(`Failed to update supplier: ${await response.text()}`);
     const data = await response.json();
-    return { ...supplier, modifiedAt: data[0].modified_at };
+    const updated = data[0];
+    return { 
+        ...supplier, 
+        chatId: updated.chat_id,
+        paymentMethod: updated.payment_method,
+        modifiedAt: updated.modified_at 
+    };
 };
+
 
 // --- SEEDING ---
 export const seedDatabase = async ({ url, key, items, suppliers }: { url: string, key: string, items: Item[], suppliers: Supplier[] }) => {

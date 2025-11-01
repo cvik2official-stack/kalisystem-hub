@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, Supplier, PaymentMethod } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
@@ -8,6 +8,8 @@ import { useToasts } from '../context/ToastContext';
 import ConfirmationModal from './modals/ConfirmationModal';
 import EditItemModal from './modals/EditItemModal';
 import { generateOrderMessage } from '../utils/messageFormatter';
+import EditSupplierModal from './modals/EditSupplierModal';
+import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 
 interface SupplierCardProps {
   order: Order;
@@ -19,13 +21,12 @@ interface SupplierCardProps {
 }
 
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false }) => {
-    const { state, dispatch, actions } = useContext(AppContext);
+    const { state, actions } = useContext(AppContext);
     const { addToast } = useToasts();
     const { supabaseUrl, supabaseKey } = state.settings;
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
-    // FIX: Changed contextMenu state to be a single object or null, not an array of objects. This resolves both errors.
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, options: { label: string; action: () => void; isDestructive?: boolean; }[] } | null>(null);
     const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -38,6 +39,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isEditItemModalOpen, setEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
     const clickTimeout = useRef<number | null>(null);
+
+    const [isEditSupplierModalOpen, setEditSupplierModalOpen] = useState(false);
+    const supplier = state.suppliers.find(s => s.id === order.supplierId);
 
     useEffect(() => {
         return () => {
@@ -122,8 +126,17 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         if (!selectedItem) return;
         setIsProcessing(true);
         try {
+            // Update the order item first
             const newItems = order.items.map(item => item.itemId === selectedItem.itemId ? { ...item, quantity, unit } : item);
             await actions.updateOrder({ ...order, items: newItems });
+
+            // If the unit was changed, update the master item in the database as well
+            const masterItem = state.items.find(i => i.id === selectedItem.itemId);
+            if (masterItem && unit && masterItem.unit !== unit) {
+                await actions.updateItem({ ...masterItem, unit: unit });
+                addToast(`Default unit for "${masterItem.name}" updated to ${unit}.`, 'info');
+            }
+
             setNumpadOpen(false);
             setSelectedItem(null);
         } catch (error) {
@@ -317,6 +330,44 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleSupplierClick = () => {
+        if (!isManagerView && supplier && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) {
+            setEditSupplierModalOpen(true);
+        }
+    };
+    
+    const handleSaveSupplier = async (updatedSupplier: Supplier) => {
+        await actions.updateSupplier(updatedSupplier);
+    };
+
+    const handleSendToTelegram = async () => {
+        if (!supplier?.chatId) {
+            addToast('Supplier does not have a Chat ID configured.', 'error');
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            const message = generateOrderMessage(order, 'html');
+            await sendOrderToSupplierOnTelegram(
+                order.supplierName, 
+                message,
+                { url: supabaseUrl, key: supabaseKey }
+            );
+            addToast(`Order sent to ${order.supplierName} via Telegram.`, 'success');
+        } catch (error) {
+            console.error("Failed to send order via Telegram:", error);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const paymentMethodBadgeColors: Record<string, string> = {
+        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
+        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
+        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
+        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+    };
+
     const isEffectivelyCollapsed = isManuallyCollapsed || (!!draggedItem && draggedItem.sourceOrderId !== order.id);
     const canEditCard = !isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
     const isItemInteractive = canEditCard || (isManagerView && order.status === OrderStatus.ON_THE_WAY) || (order.status === OrderStatus.ON_THE_WAY);
@@ -345,6 +396,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             )}
             <div className="px-2 pt-2 flex justify-between items-start">
                 <div
+                    onClick={handleSupplierClick}
                     onMouseDown={handleSupplierPressStart}
                     onMouseUp={handleSupplierPressEnd}
                     onMouseLeave={handleSupplierPressEnd}
@@ -352,8 +404,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     onTouchEnd={handleSupplierPressEnd}
                     className="p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer"
                 >
-                    <h3 className="font-bold text-white text-lg select-none">
+                    <h3 className="font-bold text-white text-lg select-none flex items-center gap-2">
                         {order.supplierName}
+                        {supplier?.paymentMethod && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod]}`}>
+                                {supplier.paymentMethod.toUpperCase()}
+                            </span>
+                        )}
                         {showStoreName && <span className="text-gray-400 font-medium text-base ml-2">({order.store})</span>}
                     </h3>
                 </div>
@@ -412,14 +469,26 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                         {order.status === OrderStatus.ON_THE_WAY && (
                             isManagerView ? (
                                 <div className="flex items-center justify-between">
-                                    <button onClick={handleUnsendOrder} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
+                                    <div className="flex items-center space-x-2">
+                                        <button onClick={() => setAddItemModalOpen(true)} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
+                                        <button onClick={handleUnsendOrder} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
+                                    </div>
                                     <button onClick={handleMarkAsReceived} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Received'}</button>
                                 </div>
                             ) : (
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center space-x-2">
+                                        <button onClick={() => setAddItemModalOpen(true)} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
                                         <button onClick={handleUnsendOrder} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
-                                        <button onClick={handleCopyOrderMessage} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>
+                                        {supplier?.chatId ? (
+                                            <button onClick={handleSendToTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram">
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path>
+                                                </svg>
+                                            </button>
+                                        ) : (
+                                            <button onClick={handleCopyOrderMessage} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>
+                                        )}
                                     </div>
                                     <button onClick={handleMarkAsReceived} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Received'}</button>
                                 </div>
@@ -457,6 +526,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     onClose={() => setEditItemModalOpen(false)}
                     onSave={handleSaveMasterItem}
                     onDelete={handleDeleteMasterItem}
+                />
+            )}
+            {supplier && isEditSupplierModalOpen && (
+                <EditSupplierModal
+                    supplier={supplier}
+                    isOpen={isEditSupplierModalOpen}
+                    onClose={() => setEditSupplierModalOpen(false)}
+                    onSave={handleSaveSupplier}
                 />
             )}
         </div>

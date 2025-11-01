@@ -9,18 +9,20 @@ interface State {
   error: Error | null;
 }
 
+// FIX: Removed `public` keyword from state and lifecycle methods. While valid, it can sometimes interfere with tooling that infers component properties.
 class ErrorBoundary extends React.Component<Props, State> {
-  public state: State = {
+  state: State = {
     hasError: false,
     error: null,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  // FIX: Removed `public` keyword to align with the component's coding style and potentially resolve a tooling-related type error.
+  static getDerivedStateFromError(error: Error): State {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     // You can also log the error to an error reporting service
     console.error("Uncaught error:", error, errorInfo);
   }
@@ -34,7 +36,7 @@ class ErrorBoundary extends React.Component<Props, State> {
     window.location.reload();
   }
 
-  public render() {
+  render() {
     if (this.state.hasError) {
       // You can render any custom fallback UI
       return (
@@ -78,7 +80,6 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // FIX: This line was correct, but the error suggests a tooling issue. Refactoring the class to extend React.Component directly should resolve it.
     return this.props.children;
   }
 }

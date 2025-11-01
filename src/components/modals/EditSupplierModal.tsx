@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect, useContext } from 'react';
-import { Supplier } from '../../types';
+import { Supplier, PaymentMethod } from '../../types';
 import { AppContext } from '../../context/AppContext';
 
 interface EditSupplierModalProps {
@@ -12,20 +11,21 @@ interface EditSupplierModalProps {
 
 const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
     const { state } = useContext(AppContext);
-    const [name, setName] = useState<string>('');
-    const [telegramGroupId, setTelegramGroupId] = useState('');
+    const [chatId, setChatId] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | undefined>(undefined);
 
     useEffect(() => {
-        setName(supplier.name);
-        setTelegramGroupId(supplier.telegramGroupId || '');
-    }, [supplier]);
+        if (supplier) {
+            setChatId(supplier.chatId || '');
+            setPaymentMethod(supplier.paymentMethod);
+        }
+    }, [supplier, isOpen]);
 
     const handleSave = () => {
-        // Fix: Do not save the name from the local state. The name is from an enum and should not be editable.
-        // The spread `...supplier` will retain the original name with the correct type.
         onSave({
             ...supplier,
-            telegramGroupId: telegramGroupId.trim(),
+            chatId: chatId.trim(),
+            paymentMethod: paymentMethod,
         });
         onClose();
     };
@@ -51,20 +51,36 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                             type="text"
                             id="supplier-name"
                             name="supplier-name"
-                            value={name}
-                            // Fix: The name is from an enum and should not be editable. This resolves the type error on save.
+                            value={supplier.name}
                             readOnly
                             className="mt-1 w-full bg-gray-700 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500 opacity-70 cursor-not-allowed"
                         />
                     </div>
+                    
                     <div>
-                        <label htmlFor="supplier-telegram" className="block text-sm font-medium text-gray-300">Telegram Group ID</label>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">Payment Method</label>
+                        <div className="grid grid-cols-2 gap-2">
+                            {Object.values(PaymentMethod).map(method => (
+                                <button
+                                    key={method}
+                                    onClick={() => setPaymentMethod(method)}
+                                    className={`px-3 py-2 text-sm rounded-md transition-colors ${paymentMethod === method ? 'bg-indigo-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'}`}
+                                >
+                                    {method.toUpperCase()}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div>
+                        <label htmlFor="supplier-chat-id" className="block text-sm font-medium text-gray-300">Chat ID</label>
                         <input
                             type="text"
-                            id="supplier-telegram"
-                            name="supplier-telegram"
-                            value={telegramGroupId}
-                            onChange={(e) => setTelegramGroupId(e.target.value)}
+                            id="supplier-chat-id"
+                            name="supplier-chat-id"
+                            value={chatId}
+                            onChange={(e) => setChatId(e.target.value)}
+                            placeholder="e.g., -1001234567890"
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>
