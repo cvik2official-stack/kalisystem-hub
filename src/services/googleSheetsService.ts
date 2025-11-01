@@ -1,5 +1,5 @@
-
-import { KJUR } from 'jsrsasign';
+// This file now accesses KJUR from the global scope, as provided by the script in index.html
+declare const KJUR: any;
 
 type ExportType = 'CRM_SUMMARY' | 'STOCK_REPORT';
 

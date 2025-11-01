@@ -1,5 +1,5 @@
-// FIX: Add Deno types reference to resolve "Cannot find name 'Deno'" errors. This is required for Supabase Edge Functions.
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-functions.d.ts" />
+// FIX: Updated Deno types reference to a more stable URL to resolve "Cannot find name 'Deno'" errors.
+/// <reference types="https://unpkg.com/@supabase/functions-js@2.4.1/src/edge-functions.d.ts" />
 
 // supabase/functions/telegram-bot/index.ts
 
