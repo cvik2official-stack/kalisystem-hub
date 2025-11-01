@@ -12,7 +12,9 @@ const App: React.FC = () => {
   const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter } = state;
 
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.hash.slice(1).startsWith('?') ? window.location.hash.slice(2) : window.location.hash.slice(1));
+    const hash = window.location.hash;
+    const queryString = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
+    const urlParams = new URLSearchParams(queryString);
     const view = urlParams.get('view');
     const storeParam = urlParams.get('store');
 
