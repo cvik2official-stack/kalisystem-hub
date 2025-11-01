@@ -1,4 +1,4 @@
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -21,6 +21,14 @@ interface ItemFromDb {
   supplier_id: string;
   created_at: string;
   modified_at: string;
+  track_stock?: boolean;
+  stock_quantity?: number;
+}
+
+interface StoreFromDb {
+  id: string;
+  name: StoreName;
+  chat_id?: string;
 }
 
 interface OrderFromDb {
@@ -35,6 +43,7 @@ interface OrderFromDb {
     modified_at: string;
     completed_at?: string;
     items: OrderItem[];
+    invoice_url?: string;
 }
 
 
@@ -47,20 +56,29 @@ const getHeaders = (key: string) => ({
 
 // --- READ OPERATIONS ---
 
-export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[] }> => {
+export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[] }> => {
   const headers = getHeaders(key);
 
   try {
-    const [suppliersResponse, itemsResponse] = await Promise.all([
+    const [suppliersResponse, itemsResponse, storesResponse] = await Promise.all([
         fetch(`${url}/rest/v1/suppliers?select=*`, { headers }),
-        fetch(`${url}/rest/v1/items?select=*`, { headers })
+        fetch(`${url}/rest/v1/items?select=*`, { headers }),
+        fetch(`${url}/rest/v1/stores?select=*`, { headers })
     ]);
 
     if (!suppliersResponse.ok) throw new Error(`Failed to fetch suppliers: ${await suppliersResponse.text()}`);
     if (!itemsResponse.ok) throw new Error(`Failed to fetch items: ${await itemsResponse.text()}`);
+    if (!storesResponse.ok) throw new Error(`Failed to fetch stores: ${await storesResponse.text()}`);
 
     const suppliersData: SupplierFromDb[] = await suppliersResponse.json();
     const itemsData: ItemFromDb[] = await itemsResponse.json();
+    const storesData: StoreFromDb[] = await storesResponse.json();
+    
+    const stores: Store[] = storesData.map(s => ({
+      id: s.id,
+      name: s.name,
+      chatId: s.chat_id,
+    }));
     
     const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
         id: s.id,
@@ -81,12 +99,14 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
                 supplierName: supplier.name,
                 createdAt: i.created_at,
                 modifiedAt: i.modified_at,
+                trackStock: i.track_stock,
+                stockQuantity: i.stock_quantity,
             });
         }
         return acc;
     }, []);
 
-    return { items, suppliers: Array.from(supplierMap.values()) };
+    return { items, suppliers: Array.from(supplierMap.values()), stores };
 
   } catch (error) {
     console.error("Error fetching from Supabase:", error);
@@ -122,6 +142,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     createdAt: order.created_at,
                     modifiedAt: order.modified_at,
                     completedAt: order.completed_at,
+                    invoiceUrl: order.invoice_url,
                     // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
@@ -150,6 +171,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         modified_at: orderData.modifiedAt,
         completed_at: orderData.completedAt,
         items: orderData.items,
+        invoice_url: orderData.invoiceUrl,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -181,6 +203,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         modified_at: now,
         completed_at: order.completedAt,
         items: order.items,
+        invoice_url: order.invoiceUrl,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',
@@ -225,6 +248,8 @@ export const updateItem = async ({ item, url, key }: { item: Item, url: string, 
         name: item.name,
         unit: item.unit,
         supplier_id: item.supplierId,
+        track_stock: item.trackStock,
+        stock_quantity: item.stockQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
         method: 'PATCH',
@@ -271,6 +296,7 @@ export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Su
 
 export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplier, url: string, key: string }): Promise<Supplier> => {
     const payload = {
+        name: supplier.name,
         chat_id: supplier.chatId,
         payment_method: supplier.paymentMethod
     };
@@ -284,10 +310,55 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
     const updated = data[0];
     return { 
         ...supplier, 
+        name: updated.name,
         chatId: updated.chat_id,
         paymentMethod: updated.payment_method,
         modifiedAt: updated.modified_at 
     };
+};
+
+export const updateStore = async ({ store, url, key }: { store: Store; url: string; key: string }): Promise<Store> => {
+    const payload = {
+        chat_id: store.chatId,
+    };
+    const response = await fetch(`${url}/rest/v1/stores?id=eq.${store.id}&select=*`, {
+        method: 'PATCH',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Failed to update store: ${await response.text()}`);
+    const data = await response.json();
+    const updated = data[0];
+    return { 
+        ...store, 
+        chatId: updated.chat_id,
+    };
+};
+
+// --- STORAGE OPERATIONS ---
+export const uploadFileToStorage = async (
+    { bucket, filePath, file, url, key }: { bucket: string; filePath: string; file: Blob; url: string; key: string }
+): Promise<{ publicUrl: string }> => {
+    const uploadUrl = `${url}/storage/v1/object/${bucket}/${filePath}`;
+    const headers = {
+        'apikey': key,
+        'Authorization': `Bearer ${key}`,
+        'Content-Type': file.type,
+    };
+
+    const response = await fetch(uploadUrl, {
+        method: 'POST',
+        headers,
+        body: file,
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to upload file: ${await response.text()}`);
+    }
+
+    const { Key } = await response.json();
+    const publicUrl = `${url}/storage/v1/object/public/${Key}`;
+    return { publicUrl };
 };
 
 

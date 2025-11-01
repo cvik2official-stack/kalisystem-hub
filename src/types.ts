@@ -23,7 +23,9 @@ export enum PaymentMethod {
 // The enum declaration itself serves as the type, and this was causing a redeclaration error.
 
 export interface Store {
+  id: string; // uuid from Supabase
   name: StoreName;
+  chatId?: string;
 }
 
 export interface Item {
@@ -35,6 +37,8 @@ export interface Item {
   supplierName: SupplierName; 
   createdAt?: string;
   modifiedAt?: string;
+  trackStock?: boolean;
+  stockQuantity?: number;
 }
 
 export interface Supplier {
@@ -66,6 +70,7 @@ export interface Order {
   createdAt: string;
   modifiedAt: string;
   completedAt?: string;
+  invoiceUrl?: string;
 }
 
 export interface ParsedItem {

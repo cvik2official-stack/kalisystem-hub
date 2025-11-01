@@ -45,7 +45,7 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-                <h2 className="text-xl font-bold text-white mb-4">{isNew ? 'Add Supplier' : 'Edit Supplier'}</h2>
+                <h2 className="text-xl font-bold text-white mb-4">{isNew ? 'Add Supplier' : `Edit ${name}`}</h2>
                 
                 <div className="space-y-4">
                     <div>
@@ -55,9 +55,8 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                             id="supplier-name"
                             name="supplier-name"
                             value={name}
-                            readOnly={!isNew}
                             onChange={(e) => setName(e.target.value.toUpperCase() as SupplierName)}
-                            className={`mt-1 w-full border text-gray-200 rounded-md p-2 outline-none focus:ring-2 focus:ring-indigo-500 ${!isNew ? 'bg-gray-700 opacity-70 cursor-not-allowed border-gray-600' : 'bg-gray-900 border-gray-700'}`}
+                            className="mt-1 w-full bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>
                     
@@ -84,7 +83,6 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                             name="supplier-chat-id"
                             value={chatId}
                             onChange={(e) => setChatId(e.target.value)}
-                            placeholder="e.g., -1001234567890"
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>

@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, Supplier, PaymentMethod } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, Supplier, PaymentMethod, StoreName } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
@@ -208,6 +208,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         try {
             const spoiledItems = order.items.filter(item => item.isSpoiled);
             const receivedItems = order.items.filter(item => !item.isSpoiled);
+
+            // Update stock for tracked items before changing the order
+            for (const receivedItem of receivedItems) {
+                const masterItem = state.items.find(i => i.id === receivedItem.itemId);
+                if (masterItem && masterItem.trackStock) {
+                    const newStockQuantity = (masterItem.stockQuantity || 0) + receivedItem.quantity;
+                    await actions.updateItem({ ...masterItem, stockQuantity: newStockQuantity });
+                }
+            }
 
             await actions.updateOrder({ 
                 ...order, 
@@ -428,30 +437,43 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
                 <div className="flex-grow px-2 pt-2 pb-0 space-y-1">
                     {order.items.length > 0 &&
-                        order.items.map(item => (
-                            <div
-                                key={item.itemId}
-                                draggable={canEditCard}
-                                onDragStart={(e) => handleDragStart(e, item)}
-                                onDragEnd={() => setDraggedItem?.(null)}
-                                onClick={(e) => handleItemClick(e, item)}
-                                onContextMenu={(e) => handleItemContextMenu(e, item)}
-                                onMouseDown={() => handleItemPressStart(item)}
-                                onMouseUp={handleItemPressEnd}
-                                onMouseLeave={handleItemPressEnd}
-                                onTouchStart={() => handleItemPressStart(item)}
-                                onTouchEnd={handleItemPressEnd}
-                                role="button"
-                                tabIndex={isItemInteractive ? 0 : -1}
-                                className={`flex justify-between items-center px-2 py-1 rounded-md 
-                                    ${isItemInteractive ? 'cursor-pointer hover:bg-gray-700' : ''}
-                                    ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}
-                                `}
-                            >
-                                <span className={`text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>{item.name}</span>
-                                <span className="font-semibold text-white">{item.quantity}{item.unit}</span>
-                            </div>
-                        ))
+                        order.items.map(item => {
+                            const masterItem = state.items.find(i => i.id === item.itemId);
+                            const showStock = masterItem?.trackStock && 
+                                (!isManagerView || (isManagerView && order.store === StoreName.STOCK02));
+
+                            return (
+                                <div
+                                    key={item.itemId}
+                                    draggable={canEditCard}
+                                    onDragStart={(e) => handleDragStart(e, item)}
+                                    onDragEnd={() => setDraggedItem?.(null)}
+                                    onClick={(e) => handleItemClick(e, item)}
+                                    onContextMenu={(e) => handleItemContextMenu(e, item)}
+                                    onMouseDown={() => handleItemPressStart(item)}
+                                    onMouseUp={handleItemPressEnd}
+                                    onMouseLeave={handleItemPressEnd}
+                                    onTouchStart={() => handleItemPressStart(item)}
+                                    onTouchEnd={handleItemPressEnd}
+                                    role="button"
+                                    tabIndex={isItemInteractive ? 0 : -1}
+                                    className={`flex justify-between items-center px-2 py-1 rounded-md 
+                                        ${isItemInteractive ? 'cursor-pointer hover:bg-gray-700' : ''}
+                                        ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}
+                                    `}
+                                >
+                                    <span className={`text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+                                        {item.name}
+                                        {showStock && (
+                                            <span className="ml-2 text-yellow-400 font-mono text-xs">
+                                                (stock: {masterItem.stockQuantity ?? 0})
+                                            </span>
+                                        )}
+                                    </span>
+                                    <span className="font-semibold text-white">{item.quantity}{item.unit}</span>
+                                </div>
+                            );
+                        })
                     }
                 </div>
                 

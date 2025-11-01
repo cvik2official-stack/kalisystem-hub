@@ -1,5 +1,5 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { Item, ParsedItem } from '../types';
+import { GoogleGenAI, Type, Modality } from "@google/genai";
+import { Item, ParsedItem, Order } from '../types';
 
 const parseItemListWithGemini = async (
   text: string,
@@ -68,5 +68,64 @@ const parseItemListWithGemini = async (
     throw new Error("AI parsing failed. Check the browser console for more details.");
   }
 };
+
+export const generateInvoiceImage = async (order: Order, apiKey: string): Promise<string> => {
+    if (!apiKey) {
+        throw new Error("Gemini API key is not configured.");
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+        
+        const itemsList = order.items.map(item => `- ${item.name}: ${item.quantity} ${item.unit || ''}`).join('\n');
+        
+        const prompt = `Generate a professional, clean, black and white invoice image.
+        
+        Header: INVOICE
+        
+        Details Section (left aligned):
+        - Order ID: ${order.orderId}
+        - To: ${order.store}
+        - From: ${order.supplierName}
+        - Date: ${new Date(order.completedAt || order.createdAt).toLocaleDateString()}
+        
+        Items Section (a clean table):
+        The table should have three columns: "Item Description", "Quantity", and "Unit".
+        List the following items clearly in the table:
+        ${itemsList}
+        
+        Footer:
+        - Thank you for your business!
+        - Kali System Dispatch
+        
+        Design requirements:
+        - Use a clear, sans-serif font like Arial or Helvetica.
+        - The layout should be professional and easy to read.
+        - Strictly black and white, no colors.
+        - Ensure good contrast and legibility.
+        - The image aspect ratio should be portrait, like a standard A4 paper.
+        `;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: { parts: [{ text: prompt }] },
+            config: {
+                responseModalities: [Modality.IMAGE],
+            },
+        });
+
+        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+        if (!imagePart || !imagePart.inlineData) {
+            throw new Error("AI did not return an image.");
+        }
+        
+        return imagePart.inlineData.data;
+
+    } catch (error: any) {
+        console.error("Error generating invoice image with Gemini:", error);
+        throw new Error("Failed to generate invoice image.");
+    }
+};
+
 
 export default parseItemListWithGemini;

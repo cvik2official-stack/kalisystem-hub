@@ -1,5 +1,5 @@
-// FIX: Reverted to esm.sh for Supabase functions types, as it may be more reliable than other CDNs in some environments.
-/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
+// FIX: Updated the Supabase function types reference to a valid path to resolve the type definition error.
+/// <reference types="npm:@supabase/functions-js/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { Bot, webhookCallback, InlineKeyboard } from 'https://esm.sh/grammy@1.25.1?target=deno';

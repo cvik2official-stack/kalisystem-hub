@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
@@ -37,13 +37,14 @@ export type Action =
   | { type: '_DELETE_ITEM'; payload: string }
   | { type: '_ADD_SUPPLIER'; payload: Supplier }
   | { type: '_UPDATE_SUPPLIER'; payload: Supplier }
+  | { type: '_UPDATE_STORE'; payload: Store }
   | { type: 'ADD_ORDERS'; payload: Order[] }
   | { type: 'UPDATE_ORDER'; payload: Order }
   | { type: 'DELETE_ORDER'; payload: string }
   | { type: 'SAVE_SETTINGS'; payload: Partial<AppState['settings']> }
   | { type: 'REPLACE_ITEM_DATABASE'; payload: { items: Item[], suppliers: Supplier[], rawCsv: string } }
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
-  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[] } }
+  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } };
 
@@ -53,10 +54,12 @@ export interface AppContextActions {
     deleteItem: (itemId: string) => Promise<void>;
     addSupplier: (supplier: Omit<Supplier, 'id' | 'modifiedAt'>) => Promise<Supplier>;
     updateSupplier: (supplier: Supplier) => Promise<void>;
+    updateStore: (store: Store) => Promise<void>;
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
     syncWithSupabase: () => Promise<void>;
+    addItemToDispatch: (item: Item) => Promise<void>;
 }
 
 
@@ -88,6 +91,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, suppliers: [...state.suppliers, action.payload] };
     case '_UPDATE_SUPPLIER':
         return { ...state, suppliers: state.suppliers.map(s => s.id === action.payload.id ? action.payload : s) };
+    case '_UPDATE_STORE':
+        return { ...state, stores: state.stores.map(s => s.id === action.payload.id ? action.payload : s) };
     case 'ADD_ORDERS': {
         const newOrders = action.payload.filter(
             newOrder => !state.orders.some(existingOrder => existingOrder.id === newOrder.id)
@@ -119,11 +124,17 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case '_SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload, isLoading: action.payload === 'syncing' };
     case '_MERGE_DATABASE': {
-        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders } = action.payload;
+        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores } = action.payload;
+        
         const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
         state.items.forEach(localItem => !mergedItemsMap.has(localItem.id) && mergedItemsMap.set(localItem.id, localItem));
+
         const mergedSuppliersMap = new Map(remoteSuppliers.map(s => [s.id, s]));
         state.suppliers.forEach(localSupplier => !mergedSuppliersMap.has(localSupplier.id) && mergedSuppliersMap.set(localSupplier.id, localSupplier));
+
+        const mergedStoresMap = new Map(remoteStores.map(s => [s.id, s]));
+        state.stores.forEach(localStore => !mergedStoresMap.has(localStore.id) && mergedStoresMap.set(localStore.id, localStore));
+
         const localOrdersMap = new Map(state.orders.map(o => [o.id, o]));
         const mergedOrders: Order[] = [];
         for (const remoteOrder of remoteOrders) {
@@ -141,6 +152,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
             ...state, 
             items: Array.from(mergedItemsMap.values()), 
             suppliers: Array.from(mergedSuppliersMap.values()), 
+            stores: Array.from(mergedStoresMap.values()),
             orders: mergedOrders 
         };
     }
@@ -167,7 +179,7 @@ const getInitialState = (): AppState => {
   } catch (err) { console.warn("Could not load state from localStorage", err); }
 
   const initialState: AppState = {
-    stores: Object.values(StoreName).map(name => ({ name })),
+    stores: [],
     activeStore: StoreName.CV2,
     suppliers: [],
     items: [],
@@ -210,9 +222,10 @@ export const AppContext = createContext<{
       addItem: async () => { throw new Error('addItem not implemented'); },
       updateItem: async () => {}, deleteItem: async () => {},
       addSupplier: async () => { throw new Error('addSupplier not implemented'); },
-      updateSupplier: async () => {}, addOrder: async () => {},
+      updateSupplier: async () => {}, updateStore: async () => {}, addOrder: async () => {},
       updateOrder: async () => {}, deleteOrder: async () => {},
       syncWithSupabase: async () => {},
+      addItemToDispatch: async () => {},
   }
 });
 
@@ -237,10 +250,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { supabaseUrl, supabaseKey } = state.settings;
         addToast('Syncing with database...', 'info');
 
-        const { items, suppliers } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
+        const { items, suppliers, stores } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
-        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders } }); 
+        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores } }); 
         
         addToast('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -285,6 +298,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: '_UPDATE_SUPPLIER', payload: updatedSupplier });
         addToast(`Supplier "${updatedSupplier.name}" updated.`, 'success');
     },
+    updateStore: async (store) => {
+        const updatedStore = await supabaseUpdateStore({ store, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: '_UPDATE_STORE', payload: updatedStore });
+        addToast(`Store "${updatedStore.name}" updated.`, 'success');
+    },
     addOrder: async (supplier, store, items = []) => {
         let supplierToUse = supplier;
         if (supplier.id.startsWith('new_')) {
@@ -315,6 +333,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: 'DELETE_ORDER', payload: orderId });
         addToast(`Order deleted.`, 'success');
     },
+    addItemToDispatch: async (item) => {
+        const { activeStore, orders, suppliers } = state;
+        if (activeStore === 'Settings' || activeStore === 'KALI') {
+            addToast('Cannot add items to dispatch from this view.', 'info');
+            return;
+        }
+        
+        const existingOrder = orders.find(o => 
+            o.store === activeStore && 
+            o.supplierId === item.supplierId && 
+            o.status === OrderStatus.DISPATCHING
+        );
+    
+        if (existingOrder) {
+            const itemInOrder = existingOrder.items.find(i => i.itemId === item.id);
+            if (itemInOrder) {
+                addToast(`"${item.name}" is already in the dispatch list for ${item.supplierName}.`, 'info');
+                return;
+            }
+            
+            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
+            const updatedItems = [...existingOrder.items, newItem];
+            await actions.updateOrder({ ...existingOrder, items: updatedItems });
+            addToast(`Added "${item.name}" to existing order.`, 'success');
+        } else {
+            const supplier = suppliers.find(s => s.id === item.supplierId);
+            if (!supplier) {
+                addToast(`Supplier for "${item.name}" not found.`, 'error');
+                return;
+            }
+            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
+            // Awaiting `addOrder` directly here.
+            await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
+        }
+    },
     syncWithSupabase,
   };
 
@@ -322,6 +375,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const originalAction = (actions as any)[actionName];
       (actions as any)[actionName] = async (...args: any[]) => {
           try {
+              if (actionName === 'addItemToDispatch') {
+                 // The 'addItemToDispatch' action calls other wrapped actions, so we call it directly
+                 // to avoid double error handling.
+                 return await originalAction(...args);
+              }
               return await originalAction(...args);
           } catch (e: any) {
               addToast(`Error: ${e.message}`, 'error');

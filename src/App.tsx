@@ -55,7 +55,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200">
-      <div className="bg-gray-800 shadow-2xl w-full lg:w-3/5 lg:mx-auto min-h-screen flex flex-col">
+      <div className="bg-gray-800 shadow-2xl w-full md:w-1/2 md:mx-auto min-h-screen flex flex-col">
           <div className="flex-shrink-0 p-3 flex items-center justify-between border-b border-gray-700/50">
             <div className="flex items-center space-x-2">
               <div className="flex space-x-1.5">

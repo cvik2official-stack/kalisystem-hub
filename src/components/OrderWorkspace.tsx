@@ -8,14 +8,16 @@ import PasteItemsModal from './modals/PasteItemsModal';
 import AddSupplierModal from './modals/AddSupplierModal';
 import CompletedOrdersTable from './CompletedOrdersTable';
 import { useToasts } from '../context/ToastContext';
+import { exportStockReport } from '../services/reportingService';
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { addToast } = useToasts();
-  const { activeStore, activeStatus, orders, settings } = state;
+  const { activeStore, activeStatus, orders, settings, items, suppliers } = state;
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
+  const [isProcessingReport, setIsProcessingReport] = useState(false);
   const longPressTimer = useRef<number | null>(null);
 
   if (activeStore === 'Settings') return null;
@@ -109,11 +111,32 @@ const OrderWorkspace: React.FC = () => {
   
   const canCreateOrders = activeStore !== 'KALI';
 
+  const handleGenerateReport = async () => {
+    setIsProcessingReport(true);
+    addToast('Generating daily stock report...', 'info');
+    try {
+        const { supabaseUrl, supabaseKey } = settings;
+        
+        await exportStockReport({
+            items,
+            orders: state.orders,
+            date: new Date().toISOString().split('T')[0],
+            credentials: { url: supabaseUrl, key: supabaseKey }
+        });
+        
+        addToast('Daily stock report updated successfully.', 'success');
+    } catch (e: any) {
+        addToast(`Report generation failed: ${e.message}`, 'error');
+    } finally {
+        setIsProcessingReport(false);
+    }
+  };
+
   return (
     <>
       <div className="mt-4 flex flex-col flex-grow">
-        {/* Status Tabs */}
-        <div className="border-b border-gray-700">
+        {/* Status Tabs & Report Button */}
+        <div className="border-b border-gray-700 flex justify-between items-center">
           <nav className="-mb-px flex space-x-6" aria-label="Tabs">
             {STATUS_TABS.map((tab) => (
               <button
@@ -137,6 +160,15 @@ const OrderWorkspace: React.FC = () => {
               </button>
             ))}
           </nav>
+          {activeStatus === OrderStatus.COMPLETED && (
+            <button
+                onClick={handleGenerateReport}
+                disabled={isProcessingReport}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white disabled:bg-purple-800"
+            >
+                {isProcessingReport ? 'Generating...' : 'Generate Daily Report'}
+            </button>
+          )}
         </div>
         
         {/* Orders Grid */}
