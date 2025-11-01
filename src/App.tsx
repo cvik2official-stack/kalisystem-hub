@@ -5,10 +5,11 @@ import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import { OrderStatus, StoreName } from './types';
+import ManagerView from './components/ManagerView';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter } = state;
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.hash.slice(1).startsWith('?') ? window.location.hash.slice(2) : window.location.hash.slice(1));
@@ -76,6 +77,10 @@ const App: React.FC = () => {
         </div>
       </div>
     )
+  }
+
+  if (isManagerView && managerStoreFilter) {
+    return <ManagerView storeName={managerStoreFilter} />;
   }
 
   return (
