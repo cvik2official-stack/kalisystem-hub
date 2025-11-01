@@ -1,5 +1,5 @@
-// FIX: Switched from 'npm:' specifier to a direct URL from 'esm.sh' to resolve type definition file errors.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
+// FIX: Switched from esm.sh to unpkg.com for the type definition file to resolve the "Cannot find type definition file" error.
+/// <reference types="https://unpkg.com/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 

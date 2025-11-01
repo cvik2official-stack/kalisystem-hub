@@ -1,14 +1,12 @@
-// FIX: Switched from 'npm:' specifier to a direct URL from 'esm.sh' to resolve type definition file errors.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
+// FIX: Switched from esm.sh to unpkg.com for the type definition file to resolve the "Cannot find type definition file" error.
+/// <reference types="https://unpkg.com/@supabase/functions-js@2.4.1/dist/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-// FIX: Switched from deno.land to a Deno-specific bundle from esm.sh to resolve deployment permission errors in Supabase.
 import { Bot, webhookCallback, InlineKeyboard } from 'https://esm.sh/grammy@1.25.1?target=deno';
-// FIX: Pin @supabase/supabase-js to a specific version for stability.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
 
-// FIX: Declare the Deno global type to resolve TypeScript errors when the Deno
-// environment types are not automatically loaded by the editor. This resolves all `Cannot find name 'Deno'` errors.
+// Declare the Deno global type to resolve TypeScript errors when the Deno
+// environment types are not automatically loaded by the editor.
 declare const Deno: {
   env: {
     get(key: string): string | undefined;
