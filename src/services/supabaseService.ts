@@ -1,4 +1,4 @@
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -33,8 +33,6 @@ interface OrderFromDb {
     modified_at: string;
     completed_at?: string;
     items: OrderItem[];
-    payment_method?: PaymentMethod;
-    exported_to_crm_at?: string;
 }
 
 interface StoreConfigFromDb {
@@ -145,8 +143,6 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     createdAt: order.created_at,
                     modifiedAt: order.modified_at,
                     completedAt: order.completed_at,
-                    paymentMethod: order.payment_method,
-                    exportedToCrmAt: order.exported_to_crm_at,
                     // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
@@ -158,29 +154,6 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
 };
 
 // --- WRITE OPERATIONS ---
-
-export const exportOrderToCrm = async ({ orderId, url, key }: { orderId: string; url: string; key: string }): Promise<Order> => {
-    const response = await fetch(`${url}/functions/v1/crm-exporter`, {
-        method: 'POST',
-        headers: getHeaders(key),
-        body: JSON.stringify({ orderId }),
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to export order to CRM.');
-    }
-    
-    const { updatedOrder } = await response.json();
-
-    // The backend function returns the updated order snippet, so we can update the UI
-    // Note: The backend returns snake_case, so we map it here.
-    return {
-        id: updatedOrder.id,
-        exportedToCrmAt: updatedOrder.exported_to_crm_at,
-    } as Order;
-};
-
 
 export const upsertStoreConfigInSupabase = async ({ storeName, spreadsheetId, url, key }: { storeName: string; spreadsheetId: string; url: string; key: string }): Promise<void> => {
   const payload = {
@@ -213,8 +186,6 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         modified_at: orderData.modifiedAt,
         completed_at: orderData.completedAt,
         items: orderData.items,
-        payment_method: orderData.paymentMethod,
-        exported_to_crm_at: orderData.exportedToCrmAt,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -246,8 +217,6 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         modified_at: now,
         completed_at: order.completedAt,
         items: order.items,
-        payment_method: order.paymentMethod,
-        exported_to_crm_at: order.exportedToCrmAt,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',

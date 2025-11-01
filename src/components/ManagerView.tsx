@@ -5,27 +5,17 @@ import SupplierCard from './SupplierCard';
 import { OrderStatus } from '../types';
 
 const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
-  const { state, dispatch } = useContext(AppContext);
-  const { orders, activeStatus } = state;
-
-  const setActiveStatus = (status: OrderStatus) => {
-    dispatch({ type: 'SET_ACTIVE_STATUS', payload: status });
-  };
+  const { state } = useContext(AppContext);
+  const { orders } = state;
+  const [activeStatus, setActiveStatus] = React.useState<OrderStatus>(OrderStatus.ON_THE_WAY);
 
   const relevantStatuses = STATUS_TABS.filter(
     (tab) => tab.id === OrderStatus.ON_THE_WAY || tab.id === OrderStatus.COMPLETED
   );
 
-  const filteredOrders = orders.filter((order) => {
-    if (order.store !== storeName || order.status !== activeStatus) {
-      return false;
-    }
-    // Hide orders that have been exported to CRM from the completed view
-    if (activeStatus === OrderStatus.COMPLETED && order.exportedToCrmAt) {
-      return false;
-    }
-    return true;
-  });
+  const filteredOrders = orders.filter(
+    (order) => order.store === storeName && order.status === activeStatus
+  );
 
   return (
     <div className="bg-gray-800 shadow-2xl w-full lg:w-3/5 lg:mx-auto min-h-screen flex flex-col">

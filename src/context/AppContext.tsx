@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, getStoreConfigsFromSupabase, upsertStoreConfigInSupabase, exportOrderToCrm as supabaseExportOrderToCrm } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, getStoreConfigsFromSupabase, upsertStoreConfigInSupabase } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
 import { generateAndRunDailyReports } from '../services/reportingService';
 
@@ -59,7 +59,6 @@ export interface AppContextActions {
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
     updateStoreConfig: (storeName: string, spreadsheetId: string) => Promise<void>;
-    exportOrderToCrm: (orderId: string) => Promise<void>;
     syncWithSupabase: () => Promise<void>;
     runDailyReports: () => Promise<void>;
 }
@@ -101,7 +100,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case 'UPDATE_ORDER': {
         const updatedOrder = action.payload;
-        return { ...state, orders: state.orders.map(o => o.id === updatedOrder.id ? {...o, ...updatedOrder} : o) };
+        return { ...state, orders: state.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o) };
     }
     case 'DELETE_ORDER': {
         return { ...state, orders: state.orders.filter(o => o.id !== action.payload) };
@@ -227,7 +226,6 @@ export const AppContext = createContext<{
       updateSupplier: async () => {}, addOrder: async () => {},
       updateOrder: async () => {}, deleteOrder: async () => {},
       updateStoreConfig: async () => {},
-      exportOrderToCrm: async () => {},
       syncWithSupabase: async () => {},
       runDailyReports: async () => {},
   }
@@ -329,12 +327,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await supabaseDeleteOrder({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'DELETE_ORDER', payload: orderId });
         addToast(`Order deleted.`, 'success');
-    },
-    exportOrderToCrm: async (orderId: string) => {
-        addToast('Exporting to CRM...', 'info');
-        const updatedOrderFields = await supabaseExportOrderToCrm({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: 'UPDATE_ORDER', payload: { id: orderId, ...updatedOrderFields } as Order });
-        addToast('Successfully exported to CRM.', 'success');
     },
     updateStoreConfig: async (storeName, spreadsheetId) => {
         await upsertStoreConfigInSupabase({

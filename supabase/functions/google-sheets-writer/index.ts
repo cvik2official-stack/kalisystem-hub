@@ -1,5 +1,5 @@
-// FIX: Switched from unpkg.com to cdn.jsdelivr.net for the Supabase functions type definitions to resolve the "Cannot find type definition file" error.
-/// <reference types="https://cdn.jsdelivr.net/npm/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
+// FIX: Switched from unpkg.com back to esm.sh for the type definition file to resolve the "Cannot find type definition file" error.
+/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 
