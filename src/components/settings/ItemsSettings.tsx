@@ -11,7 +11,7 @@
 */
 import React, { useContext, useState, useMemo, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Item, Unit } from '../../types';
+import { Item, Unit, SupplierName } from '../../types';
 import EditItemModal from '../modals/EditItemModal';
 import ContextMenu from '../ContextMenu';
 import ConfirmationModal from '../modals/ConfirmationModal';
@@ -25,6 +25,9 @@ const ItemsSettings: React.FC = () => {
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: Item } | null>(null);
   const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
   
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editedItemData, setEditedItemData] = useState<Partial<Item>>({});
+
   const longPressTimer = useRef<number | null>(null);
 
   const handleSaveFromModal = async (item: Item | Omit<Item, 'id'>) => {
@@ -41,6 +44,31 @@ const ItemsSettings: React.FC = () => {
       await actions.deleteItem(itemToDelete.id);
       setItemToDelete(null);
     }
+  };
+  
+  const handleEditClick = (item: Item) => {
+    setEditingItemId(item.id);
+    setEditedItemData(item);
+  };
+  
+  const handleCancelEdit = () => {
+    setEditingItemId(null);
+    setEditedItemData({});
+  };
+
+  const handleInlineSave = async () => {
+    if (editingItemId && editedItemData) {
+      const supplier = state.suppliers.find(s => s.id === editedItemData.supplierId);
+      if (supplier) {
+        await actions.updateItem({ ...editedItemData, supplierName: supplier.name } as Item);
+      }
+      setEditingItemId(null);
+      setEditedItemData({});
+    }
+  };
+  
+  const handleItemDataChange = (field: keyof Item, value: any) => {
+      setEditedItemData({ ...editedItemData, [field]: value });
   };
 
   const handleAddNewItem = () => {
@@ -59,7 +87,7 @@ const ItemsSettings: React.FC = () => {
     setNewItemModalOpen(true);
   };
 
-  const handleEditItem = (item: Item) => {
+  const handleEditItemInModal = (item: Item) => {
     setItemForModal(item);
     setNewItemModalOpen(true);
   };
@@ -97,6 +125,7 @@ const ItemsSettings: React.FC = () => {
     return [
       { label: 'Add to Dispatch', action: () => actions.addItemToDispatch(item) },
       { label: item.trackStock ? 'Disable Stock Tracking' : 'Enable Stock Tracking', action: () => actions.updateItem({ ...item, trackStock: !item.trackStock }) },
+      { label: 'Edit...', action: () => handleEditItemInModal(item) },
       { label: 'Delete Item', action: () => setItemToDelete(item), isDestructive: true },
     ];
   };
@@ -129,16 +158,18 @@ const ItemsSettings: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-800 sticky top-0 z-10">
                   <tr>
-                  <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
-                  <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
+                    <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
+                    <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
-                  {filteredItems.map(item => (
+                  {filteredItems.map(item => {
+                      const isEditing = editingItemId === item.id;
+                      return (
                         <tr 
                           key={item.id}
-                          className="hover:bg-gray-700/50 cursor-pointer"
-                          onClick={() => handleEditItem(item)}
+                          className="hover:bg-gray-700/50"
                           onContextMenu={(e) => handleContextMenu(e, item)}
                           onMouseDown={(e) => handlePressStart(e, item)}
                           onMouseUp={handlePressEnd}
@@ -146,19 +177,65 @@ const ItemsSettings: React.FC = () => {
                           onTouchStart={(e) => handlePressStart(e, item)}
                           onTouchEnd={handlePressEnd}
                         >
-                            <td className="pl-4 pr-2 py-2 text-white text-sm whitespace-nowrap truncate max-w-[150px] md:max-w-xs">
-                              {item.name}
-                              {item.trackStock && (
-                                <span className="ml-2 text-yellow-400 font-mono text-xs">
-                                    (stock: {item.stockQuantity ?? 0})
-                                </span>
+                            <td className="pl-4 pr-2 py-1 text-white text-sm whitespace-nowrap">
+                              {isEditing ? (
+                                <input
+                                  type="text"
+                                  value={editedItemData.name || ''}
+                                  onChange={(e) => handleItemDataChange('name', e.target.value)}
+                                  className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
+                                />
+                              ) : (
+                                <>
+                                {item.name}
+                                {item.trackStock && (
+                                    <span className="ml-2 text-yellow-400 font-mono text-xs">
+                                        (stock: {item.stockQuantity ?? 0})
+                                    </span>
+                                )}
+                                </>
                               )}
                             </td>
-                            <td className="px-2 py-2 text-gray-300 text-sm whitespace-nowrap">
-                              {item.supplierName}
+                            <td className="px-2 py-1 text-gray-300 text-sm whitespace-nowrap">
+                              {isEditing ? (
+                                <select
+                                    value={editedItemData.supplierId || ''}
+                                    onChange={(e) => handleItemDataChange('supplierId', e.target.value)}
+                                    className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
+                                >
+                                    {state.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                </select>
+                              ) : (
+                                item.supplierName
+                              )}
+                            </td>
+                             <td className="pl-2 pr-4 py-1 text-right">
+                               <div className="flex items-center justify-end space-x-2">
+                                  {isEditing ? (
+                                    <>
+                                        <button onClick={handleInlineSave} className="p-1 rounded-full text-green-400 hover:bg-green-600 hover:text-white" aria-label="Save item">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                                        </button>
+                                        <button onClick={handleCancelEdit} className="p-1 rounded-full text-red-400 hover:bg-red-600 hover:text-white" aria-label="Cancel edit">
+                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                        </button>
+                                    </>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleEditClick(item)}
+                                      className="p-1 rounded-full text-indigo-400 hover:bg-indigo-600 hover:text-white"
+                                      aria-label="Edit item"
+                                    >
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
+                                        <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
+                                      </svg>
+                                    </button>
+                                  )}
+                                </div>
                             </td>
                         </tr>
-                    )
+                    )}
                   )}
               </tbody>
               </table>
@@ -194,7 +271,6 @@ const ItemsSettings: React.FC = () => {
                 setItemForModal(null);
             }} 
             onSave={handleSaveFromModal}
-            // FIX: Corrected function signature for onDelete to match prop type (itemId: string) => Promise<void>.
             onDelete={async (itemId: string) => {
                 const item = state.items.find(i => i.id === itemId);
                 if (item) {

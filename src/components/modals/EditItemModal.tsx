@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { Item, Unit } from '../../types';
+import { Item, Unit, SupplierName } from '../../types';
 import { AppContext } from '../../context/AppContext';
 import { useToasts } from '../../context/ToastContext';
 
@@ -30,6 +30,36 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
 
     const isNew = !state.items.some(i => i.id === item.id);
 
+    const handleSupplierChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = e.target.value;
+        if (value === '--create-new--') {
+            const newSupplierName = prompt("Enter the new supplier's name:");
+            if (newSupplierName && newSupplierName.trim()) {
+                try {
+                    if (state.suppliers.some(s => s.name.toLowerCase() === newSupplierName.trim().toLowerCase())) {
+                        addToast(`Supplier "${newSupplierName.trim()}" already exists.`, 'error');
+                        e.target.value = supplierId; // Reset dropdown to original value
+                        return;
+                    }
+                    setIsSaving(true);
+                    const newSupplier = await actions.addSupplier({
+                        name: newSupplierName.trim().toUpperCase() as SupplierName
+                    });
+                    setSupplierId(newSupplier.id);
+                } catch (err) {
+                    e.target.value = supplierId; // Reset on failure
+                } finally {
+                    setIsSaving(false);
+                }
+            } else {
+                e.target.value = supplierId; // Reset if user cancels or enters empty name
+            }
+        } else {
+            setSupplierId(value);
+        }
+    };
+
+
     const handleSave = async () => {
         setIsSaving(true);
         const selectedSupplier = state.suppliers.find(s => s.id === supplierId);
@@ -40,15 +70,12 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
         }
 
         try {
-            // This validation should only run for new items.
             if (isNew && state.items.some(i => i.name.toLowerCase() === name.toLowerCase() && i.supplierId === supplierId)) {
                 addToast(`Item "${name}" from ${selectedSupplier.name} already exists.`, 'error');
                 setIsSaving(false);
                 return;
             }
             
-            // Construct the item object to save. This will have the temporary ID for new items
-            // and the real ID for existing items. The parent component will handle the logic.
             const itemToSave: Item = {
                 ...item,
                 name,
@@ -138,12 +165,15 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                             id="item-supplier"
                             name="item-supplier"
                             value={supplierId}
-                            onChange={(e) => setSupplierId(e.target.value)}
+                            onChange={handleSupplierChange}
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
                         >
-                            {state.suppliers.map(s => (
+                            {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
                                 <option key={s.id} value={s.id}>{s.name}</option>
                             ))}
+                             <option value="--create-new--" className="text-indigo-400 font-semibold">
+                                + Create New Supplier...
+                            </option>
                         </select>
                     </div>
                     <div>

@@ -1,8 +1,8 @@
-// FIX: Updated the Supabase function types reference to a valid path to resolve the type definition error.
-/// <reference types="npm:@supabase/functions-js/src/edge-runtime.d.ts" />
+// FIX: Updated the Supabase function types URL to use a major version specifier for better stability.
+/// <reference types="https://esm.sh/@supabase/functions-js@2/dist/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { google } from 'https://deno.land/x/google_sheets@v0.1.1/mod.ts';
+import { google } from 'https://esm.sh/googleapis@140';
 
 // FIX: Added Deno type declaration to resolve 'Cannot find name Deno' error in some environments.
 declare const Deno: {
@@ -90,11 +90,12 @@ const handleStockReport = async (sheets: any, spreadsheetId: string, sheetName: 
 serve(async (req) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept, origin, x-requested-with',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
   };
 
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders, status: 204 });
   }
 
   try {
