@@ -1,10 +1,11 @@
+
 import { Order, Supplier, Item } from '../types';
 import callGoogleSheetsExporter from './googleSheetsService';
 
 interface ServiceParams {
     orders: Order[];
     date: string;
-    credentials: { url: string; key: string };
+    credentials: string; // Now accepts the raw JSON string
 }
 
 interface CrmParams extends ServiceParams {

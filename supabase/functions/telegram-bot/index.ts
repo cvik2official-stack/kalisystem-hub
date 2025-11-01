@@ -1,275 +1,150 @@
-// FIX: Updated the Supabase function types reference to a valid URL to resolve the type definition error.
-/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
+// FIX: Add Deno types reference to resolve "Cannot find name 'Deno'" errors. This is required for Supabase Edge Functions.
+/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-functions.d.ts" />
 
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { Bot, webhookCallback, InlineKeyboard } from 'https://esm.sh/grammy@1.25.1?target=deno';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.43.4';
+// supabase/functions/telegram-bot/index.ts
 
-// Declare the Deno global type to resolve TypeScript errors when the Deno
-// environment types are not automatically loaded by the editor.
-declare const Deno: {
-  env: {
-    get(key: string): string | undefined;
-  };
-};
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// Define types matching the frontend for consistency
+// Define types to match the client-side types.
+// It's better to keep them here to avoid dependencies.
+interface Order {
+  id: string;
+  orderId: string;
+  store: string; // StoreName
+  supplierId: string;
+  supplierName: string; // SupplierName
+  items: OrderItem[];
+  status: string; // OrderStatus
+  isSent: boolean;
+  isReceived: boolean;
+  createdAt: string;
+  modifiedAt: string;
+  completedAt?: string;
+  invoiceUrl?: string;
+}
+
 interface OrderItem {
   itemId: string;
   name: string;
   quantity: number;
-  unit?: string;
+  unit?: string; // Unit
   isSpoiled?: boolean;
 }
 
-interface Order {
-  id: string;
-  order_id: string; // Snake case from DB
-  store: string;
-  supplier_id: string;
-  supplierName?: string; // This will be added for context
-  items: OrderItem[];
-  status: string;
-  is_sent: boolean;
-  is_received: boolean;
-  created_at: string;
-  modified_at: string;
-  completed_at?: string;
+
+const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
+const TELEGRAM_API_URL = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}`;
+const APP_BASE_URL = Deno.env.get('APP_BASE_URL') || 'http://localhost:3000'; // Fallback for local dev
+
+// Supabase client
+const supabase = createClient(
+  Deno.env.get('SUPABASE_URL')!,
+  Deno.env.get('SUPABASE_ANON_KEY')!
+);
+
+async function sendMessage(chatId: string, text: string) {
+  const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text: text,
+      parse_mode: 'HTML',
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error('Telegram API error:', errorData);
+    throw new Error(errorData.description || 'Failed to send message.');
+  }
+  return response.json();
 }
 
-
-// --- Environment Variables & Clients ---
-const telegramBotToken = Deno.env.get('TELEGRAM_TOKEN');
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-// Hardcode Admin Chat ID as requested
-const adminChatId = '-5086720919';
-
-if (!telegramBotToken) throw new Error("TELEGRAM_TOKEN secret is not set in Supabase project settings.");
-if (!supabaseUrl) throw new Error("SUPABASE_URL is not set.");
-if (!supabaseServiceKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY is not set.");
-
-const bot = new Bot(telegramBotToken);
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// --- Helper Functions ---
-const getChatId = (name: string): string | undefined => {
-    if (!name) return undefined;
-    // Hardcode KALI chat ID for both supplier and store as requested
-    if (name.toUpperCase() === 'KALI') {
-        return '5186573916';
-    }
-    const secretName = `${name.replace(/-/g, '_').toUpperCase()}_CHAT_ID`;
-    return Deno.env.get(secretName);
-};
-
-const sendAdminNotification = async (message: string) => {
-    if (!adminChatId) {
-        console.log("Admin notification skipped: ADMIN_CHAT_ID not set.");
-        return;
-    }
-    try {
-        await bot.api.sendMessage(adminChatId, message, {
-            parse_mode: 'HTML',
-            disable_notification: true, // Send silently
-        });
-    } catch (error) {
-        console.error("Failed to send admin notification:", error);
-    }
-};
-
-const escapeHtml = (text: string): string => {
-  if (typeof text !== 'string') return '';
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-};
-
-const generateManagerMessage = (order: Order) => {
-    const header = `<b>Order for ${escapeHtml(order.store)}</b>\nFrom: ${escapeHtml(order.supplierName || 'Unknown')}\n\nItems:`;
-    const itemsList = order.items.map(item => {
-        const status = item.isSpoiled ? '<i>(Spoiled)</i> ' : '';
-        const unitText = item.unit ? ` ${escapeHtml(item.unit)}` : '';
-        const strikeOpen = item.isSpoiled ? '<s>' : '';
-        const strikeClose = item.isSpoiled ? '</s>' : '';
-        return `${strikeOpen}${status}${escapeHtml(item.name)} x${item.quantity}${unitText}${strikeClose}`;
-    }).join('\n');
-    return `${header}\n${itemsList}`;
-};
-
-const generateManagerKeyboard = (order: Order, spoiledStateBitmask: bigint): InlineKeyboard => {
-    const keyboard = new InlineKeyboard();
-    order.items.forEach((item, index) => {
-        const isSpoiled = (spoiledStateBitmask & (1n << BigInt(index))) !== 0n;
-        const buttonText = isSpoiled ? `✅ Unspoil: ${item.name}` : `❌ Spoil: ${item.name}`;
-        // 't' for toggle
-        keyboard.text(buttonText, `t:${order.id}:${index}:${spoiledStateBitmask.toString()}`).row();
-    });
-    // 'c' for confirm
-    keyboard.text('Done', `c:${order.id}:${spoiledStateBitmask.toString()}`);
-    return keyboard;
-};
-
-// --- Bot Command Handlers ---
-bot.command("start", (ctx) => ctx.reply("Kali System Bot is active."));
-bot.command("whoami", (ctx) => ctx.reply(`Your Chat ID is: ${ctx.chat.id}`));
-
-// --- Bot Callback Query Handlers (Interactive Buttons) ---
-bot.on('callback_query:data', async (ctx) => {
-    await ctx.answerCallbackQuery(); // Acknowledge the button press immediately
-    const [action, orderId, ...rest] = ctx.callbackQuery.data.split(':');
-
-    try {
-        // Fetch the latest order state from DB
-        const { data: orderFromDb, error } = await supabase.from('orders').select('*, supplier:suppliers(name)').eq('id', orderId).single();
-        if (error || !orderFromDb) throw new Error(`Order ${orderId} not found.`);
-        
-        // Enhance order with supplier name for messages
-        const orderWithSupplier = { ...orderFromDb, supplierName: orderFromDb.supplier.name };
-
-        if (orderWithSupplier.items.length >= 64) {
-            await ctx.reply("This order has too many items to be managed interactively. Please use the web app.");
-            return;
-        }
-
-        if (action === 't') { // Toggle state without saving to DB
-            const itemIndexToToggle = parseInt(rest[0], 10);
-            const currentStateBitmask = BigInt(rest[1]);
-            const newBitmask = currentStateBitmask ^ (1n << BigInt(itemIndexToToggle));
-
-            // Create a temporary order object with the new state for message generation
-            const tempOrder = { ...orderWithSupplier };
-            tempOrder.items = orderWithSupplier.items.map((item: OrderItem, index: number) => ({
-                ...item,
-                isSpoiled: (newBitmask & (1n << BigInt(index))) !== 0n,
-            }));
-            
-            // NO DB update, just edit the message to reflect the temporary state
-            await ctx.editMessageText(generateManagerMessage(tempOrder), {
-                parse_mode: 'HTML',
-                reply_markup: generateManagerKeyboard(tempOrder, newBitmask),
-            });
-
-        } else if (action === 'c') { // Confirm and save final state to DB
-            const finalStateBitmask = BigInt(rest[0]);
-
-            const finalItems = orderWithSupplier.items.map((item: OrderItem, index: number) => ({
-                ...item,
-                isSpoiled: (finalStateBitmask & (1n << BigInt(index))) !== 0n,
-            }));
-
-            const receivedItems = finalItems.filter((item: OrderItem) => !item.isSpoiled);
-            const spoiledItems = finalItems.filter((item: OrderItem) => item.isSpoiled);
-
-            // Update original order to completed with only the received items
-            const { error: updateError } = await supabase.from('orders').update({ 
-                items: receivedItems,
-                status: 'completed',
-                is_received: true,
-                completed_at: new Date().toISOString(),
-                modified_at: new Date().toISOString()
-            }).eq('id', orderId);
-            if (updateError) throw updateError;
-
-            // If there were spoiled items, create a new order for them
-            if (spoiledItems.length > 0) {
-                const now = new Date();
-                const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
-                const newOrderId = `${dateStr}_${orderWithSupplier.supplierName}_${orderWithSupplier.store}_REORDER`;
-
-                const { error: insertError } = await supabase.from('orders').insert({
-                    order_id: newOrderId,
-                    store: orderWithSupplier.store,
-                    supplier_id: orderWithSupplier.supplier_id,
-                    items: spoiledItems.map(item => ({ ...item, isSpoiled: false })),
-                    status: 'dispatching',
-                    is_sent: false,
-                    is_received: false,
-                });
-                if (insertError) throw insertError;
-            }
-            
-            const finalOrderStateForMessage = { ...orderWithSupplier, items: finalItems };
-            await ctx.editMessageText(`${generateManagerMessage(finalOrderStateForMessage)}\n\n<b>✅ Changes Confirmed & Processed.</b>`, { parse_mode: 'HTML' });
-            
-            // Send silent notification to admin
-            const adminMessage = `👤 <b>Manager Action</b>
-            
-<b>Store:</b> ${escapeHtml(orderWithSupplier.store)}
-<b>Order:</b> ${escapeHtml(orderWithSupplier.order_id)}
-<b>Status:</b> Marked as Received
-
-✅ ${receivedItems.length} items received.
-❌ ${spoiledItems.length} items spoiled (re-ordered).`;
-            await sendAdminNotification(adminMessage);
-        }
-
-    } catch (err) {
-        console.error("Callback Query Error:", err);
-        await sendAdminNotification(`<b>❗️ Bot Error (Callback)</b>\n\n<pre>${escapeHtml(err.message)}</pre>`);
-        await ctx.reply(`An error occurred: ${err.message}`);
-    }
-});
-
-
-// --- Main Server Logic ---
 serve(async (req) => {
-    const corsHeaders = {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: { 
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    } });
+  }
+
+  try {
+    const { endpoint, ...payload } = await req.json();
+
+    let chatId: string | undefined;
+
+    if (endpoint === '/send-to-supplier') {
+      const { supplierName, message } = payload;
+      if (!supplierName || !message) throw new Error('Missing supplierName or message.');
+
+      const { data: supplier, error } = await supabase
+        .from('suppliers')
+        .select('chat_id')
+        .eq('name', supplierName)
+        .single();
+      
+      if (error) throw error;
+      if (!supplier?.chat_id) throw new Error(`Chat ID for supplier ${supplierName} not found.`);
+
+      chatId = supplier.chat_id;
+      await sendMessage(chatId, message);
+      
+    } else if (endpoint === '/send-to-store') {
+      const order = payload.order as Order;
+      if (!order) throw new Error('Missing order data.');
+      
+      const { data: store, error } = await supabase
+        .from('stores')
+        .select('chat_id')
+        .eq('name', order.store)
+        .single();
+
+      if (error) throw error;
+      if (!store?.chat_id) throw new Error(`Chat ID for store ${order.store} not found.`);
+
+      chatId = store.chat_id;
+      
+      // Generate a manager-friendly message with a link
+      const managerUrl = `${APP_BASE_URL}/#/?view=manager&store=${order.store}`;
+      const message = `
+📦 <b>New Delivery</b>
+A new order for <b>${order.supplierName}</b> is on its way to <b>${order.store}</b>.
+
+Order ID: <code>${order.orderId}</code>
+Items: ${order.items.length}
+
+Please mark items as received or spoiled upon arrival.
+
+<a href="${managerUrl}">View Order Details</a>
+      `.trim();
+      
+      await sendMessage(chatId, message);
+      
+    } else {
+      throw new Error(`Invalid endpoint: ${endpoint}`);
+    }
+
+    return new Response(JSON.stringify({ success: true, chatId }), {
+      headers: { 
+        'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, accept, origin, x-requested-with',
-        'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-    };
-
-    if (req.method === 'OPTIONS') {
-        return new Response(null, { headers: corsHeaders, status: 204 });
-    }
-
-    try {
-        const reqClone = req.clone();
-        const body = await req.json().catch(() => ({}));
-
-        if (body.endpoint) {
-            const { endpoint, ...payload } = body;
-            
-            if (endpoint === '/send-to-supplier') {
-                const chatId = getChatId(payload.supplierName);
-                if (!chatId) throw new Error(`Chat ID for supplier ${payload.supplierName} not found.`);
-                await bot.api.sendMessage(chatId, payload.message, { parse_mode: 'HTML' });
-
-            } else if (endpoint === '/send-to-store') {
-                const chatId = getChatId(payload.order?.store);
-                if (!chatId) throw new Error(`Chat ID for store ${payload.order?.store} not found.`);
-                
-                const { data: supplier, error } = await supabase.from('suppliers').select('name').eq('id', payload.order.supplier_id).single();
-                if (error) throw new Error(`Could not find supplier with ID ${payload.order.supplier_id}`);
-
-                const orderForBot: Order = { ...payload.order, supplierName: supplier?.name || 'Unknown' };
-
-                let initialBitmask = 0n;
-                payload.order.items.forEach((item: OrderItem, index: number) => {
-                    if (item.isSpoiled) {
-                        initialBitmask |= (1n << BigInt(index));
-                    }
-                });
-
-                await bot.api.sendMessage(chatId, generateManagerMessage(orderForBot), {
-                    parse_mode: 'HTML',
-                    reply_markup: generateManagerKeyboard(orderForBot, initialBitmask),
-                });
-                
-            } else {
-                throw new Error("Invalid API endpoint provided.");
-            }
-            
-            return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json", ...corsHeaders }});
-        } else {
-            const response = await webhookCallback(bot, "std/http")(reqClone);
-            Object.entries(corsHeaders).forEach(([key, value]) => {
-                response.headers.set(key, value);
-            });
-            return response;
-        }
-    } catch (e) {
-        console.error("Main Server Error:", e);
-        await sendAdminNotification(`<b>❗️ Bot Error (Main)</b>\n\n<pre>${escapeHtml(e.message)}</pre>`);
-        return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders }});
-    }
-});
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      },
+      status: 200,
+    });
+  } catch (err) {
+    console.error(err);
+    return new Response(JSON.stringify({ error: err.message }), {
+      headers: { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+      },
+      status: 400,
+    });
+  }
+})

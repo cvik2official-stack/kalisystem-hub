@@ -1,3 +1,4 @@
+
 import React, { useContext, useState } from 'react';
 import { AppContext, AppState } from '../../context/AppContext';
 import { useToasts } from '../../context/ToastContext';
@@ -70,16 +71,31 @@ const OptionsSettings: React.FC = () => {
             </AccordionItem>
 
             <AccordionItem title="Integrations" id="integrations" openAccordion={openAccordion} setOpenAccordion={setOpenAccordion}>
-                 <div>
-                    <label htmlFor="gemini-api-key" className="block text-sm font-medium text-gray-300">Gemini API Key</label>
-                    <input
-                        type="password"
-                        id="gemini-api-key"
-                        name="gemini-api-key"
-                        value={state.settings.geminiApiKey || ''}
-                        onChange={(e) => handleSettingChange('geminiApiKey', e.target.value)}
-                        className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                    />
+                 <div className="space-y-4">
+                    <div>
+                        <label htmlFor="gemini-api-key" className="block text-sm font-medium text-gray-300">Gemini API Key</label>
+                        <input
+                            type="password"
+                            id="gemini-api-key"
+                            name="gemini-api-key"
+                            value={state.settings.geminiApiKey || ''}
+                            onChange={(e) => handleSettingChange('geminiApiKey', e.target.value)}
+                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="google-api-credentials" className="block text-sm font-medium text-gray-300">Google Service Account JSON</label>
+                        <textarea
+                            id="google-api-credentials"
+                            name="google-api-credentials"
+                            value={state.settings.googleApiCredentials || ''}
+                            onChange={(e) => handleSettingChange('googleApiCredentials', e.target.value)}
+                            className="mt-1 w-full h-32 bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500 font-mono text-xs"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                            <b className="text-yellow-400">Warning:</b> This key is stored in your browser and is not secure for production use.
+                        </p>
+                    </div>
                 </div>
             </AccordionItem>
         </div>

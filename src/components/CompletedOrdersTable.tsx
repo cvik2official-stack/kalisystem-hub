@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useContext } from 'react';
 import { Order, PaymentMethod, Item } from '../types';
 import { AppContext } from '../context/AppContext';
@@ -108,15 +109,19 @@ const CompletedOrdersTable: React.FC<{ orders: Order[] }> = ({ orders }) => {
     setIsProcessing(true);
     addToast(`Exporting summary for ${dateKey}...`, 'info');
     try {
+        const { googleApiCredentials } = state.settings;
+        if (!googleApiCredentials) {
+            throw new Error('Google API credentials are not set in Options.');
+        }
+
         const ordersToExport = groupedOrders[dateKey];
-        const { supabaseUrl, supabaseKey } = state.settings;
         const suppliers = state.suppliers;
 
         await exportCrmSummary({
             orders: ordersToExport,
             suppliers,
             date: dateKey === 'Today' ? new Date().toISOString().split('T')[0] : dateKey,
-            credentials: { url: supabaseUrl, key: supabaseKey }
+            credentials: googleApiCredentials,
         });
 
         addToast(`Successfully exported summary for ${dateKey}.`, 'success');

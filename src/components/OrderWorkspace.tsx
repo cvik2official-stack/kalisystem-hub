@@ -1,3 +1,4 @@
+
 // FIX: Implemented the OrderWorkspace component to replace the placeholder content.
 import React, { useContext, useState, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
@@ -115,13 +116,16 @@ const OrderWorkspace: React.FC = () => {
     setIsProcessingReport(true);
     addToast('Generating daily stock report...', 'info');
     try {
-        const { supabaseUrl, supabaseKey } = settings;
+        const { googleApiCredentials } = settings;
+        if (!googleApiCredentials) {
+            throw new Error('Google API credentials are not set in Options.');
+        }
         
         await exportStockReport({
             items,
             orders: state.orders,
             date: new Date().toISOString().split('T')[0],
-            credentials: { url: supabaseUrl, key: supabaseKey }
+            credentials: googleApiCredentials,
         });
         
         addToast('Daily stock report updated successfully.', 'success');

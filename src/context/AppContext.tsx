@@ -1,3 +1,4 @@
+
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore } from '../services/supabaseService';
@@ -21,6 +22,7 @@ export interface AppState {
     // FIX: Added optional properties to support integration settings.
     csvUrl?: string;
     geminiApiKey?: string;
+    googleApiCredentials?: string;
   };
   isLoading: boolean;
   isInitialized: boolean;
