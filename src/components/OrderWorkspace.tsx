@@ -84,7 +84,7 @@ const OrderWorkspace: React.FC = () => {
 
 
   const filteredOrders = orders.filter(order => {
-    if (activeStore === 'KALI') {
+    if (activeStore === StoreName.KALI) {
         const baseFilter = order.supplierName === SupplierName.KALI && order.status === activeStatus;
         if (state.isManagerView && state.managerStoreFilter) {
             return baseFilter && order.store === state.managerStoreFilter;
@@ -110,7 +110,7 @@ const OrderWorkspace: React.FC = () => {
       }
   };
   
-  const canCreateOrders = activeStore !== 'KALI';
+  const canCreateOrders = activeStore !== StoreName.KALI;
 
   const handleGenerateReport = async () => {
     setIsProcessingReport(true);
@@ -218,7 +218,7 @@ const OrderWorkspace: React.FC = () => {
                                     draggedItem={draggedItem}
                                     setDraggedItem={setDraggedItem}
                                     onItemDrop={handleItemDrop}
-                                    showStoreName={activeStore === 'KALI'}
+                                    showStoreName={activeStore === StoreName.KALI}
                                 />
                         ))}
                          {activeStatus === OrderStatus.DISPATCHING && canCreateOrders && (

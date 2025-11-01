@@ -3,6 +3,7 @@ export enum StoreName {
   STOCK02 = 'STOCK02',
   WB = 'WB',
   SHANTI = 'SHANTI',
+  KALI = 'KALI',
 }
 
 // This now matches the supplier_enum in the database

@@ -1,5 +1,5 @@
-// FIX: Updated Deno types reference to a more stable URL to resolve "Cannot find name 'Deno'" errors.
-/// <reference types="https://unpkg.com/@supabase/functions-js@2.4.1/src/edge-functions.d.ts" />
+// FIX: Use Deno's namespace type reference to resolve "Cannot find name 'Deno'" errors.
+/// <reference lib="deno.ns" />
 
 // supabase/functions/telegram-bot/index.ts
 

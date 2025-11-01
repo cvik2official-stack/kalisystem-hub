@@ -1,4 +1,7 @@
-// This file now accesses KJUR from the global scope, as provided by the script in index.html
+import 'jsrsasign';
+
+// This declaration tells TypeScript that KJUR is a global variable
+// provided by the jsrsasign script loaded in index.html.
 declare const KJUR: any;
 
 type ExportType = 'CRM_SUMMARY' | 'STOCK_REPORT';

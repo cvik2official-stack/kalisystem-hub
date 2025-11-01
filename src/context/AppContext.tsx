@@ -8,7 +8,7 @@ export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings' | 'KALI';
+  activeStore: StoreName | 'Settings';
   suppliers: Supplier[];
   items: Item[];
   orders: Order[];
@@ -32,7 +32,7 @@ export interface AppState {
 }
 
 export type Action =
-  | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' | 'KALI' }
+  | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' }
   | { type: 'SET_ACTIVE_STATUS'; payload: OrderStatus }
   | { type: '_ADD_ITEM'; payload: Item }
   | { type: '_UPDATE_ITEM'; payload: Item }
@@ -337,7 +337,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
     addItemToDispatch: async (item) => {
         const { activeStore, orders, suppliers } = state;
-        if (activeStore === 'Settings' || activeStore === 'KALI') {
+        if (activeStore === 'Settings') {
             addToast('Cannot add items to dispatch from this view.', 'info');
             return;
         }
