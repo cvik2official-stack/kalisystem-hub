@@ -37,11 +37,6 @@ interface OrderFromDb {
     items: OrderItem[];
 }
 
-interface StoreConfigFromDb {
-  store_name: string;
-  spreadsheet_id: string | null;
-}
-
 
 const getHeaders = (key: string) => ({
     'apikey': key,
@@ -51,26 +46,6 @@ const getHeaders = (key: string) => ({
 
 
 // --- READ OPERATIONS ---
-
-export const getStoreConfigsFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ spreadsheetIds: Record<string, string> }> => {
-  const response = await fetch(`${url}/rest/v1/stores_config?select=store_name,spreadsheet_id`, {
-    headers: getHeaders(key),
-  });
-
-  if (!response.ok) throw new Error(`Failed to fetch store configs: ${await response.text()}`);
-
-  const data: StoreConfigFromDb[] = await response.json();
-  const spreadsheetIds: Record<string, string> = {};
-
-  for (const config of data) {
-    if (config.spreadsheet_id) {
-      spreadsheetIds[config.store_name] = config.spreadsheet_id;
-    }
-  }
-
-  return { spreadsheetIds };
-};
-
 
 export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[] }> => {
   const headers = getHeaders(key);
@@ -158,21 +133,6 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
 };
 
 // --- WRITE OPERATIONS ---
-
-export const upsertStoreConfigInSupabase = async ({ storeName, spreadsheetId, url, key }: { storeName: string; spreadsheetId: string; url: string; key: string }): Promise<void> => {
-  const payload = {
-    store_name: storeName,
-    spreadsheet_id: spreadsheetId || null,
-  };
-  
-  const response = await fetch(`${url}/rest/v1/stores_config`, {
-    method: 'POST',
-    headers: { ...getHeaders(key), 'Prefer': 'resolution=merge-duplicates' }, // This is upsert
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) throw new Error(`Failed to update store config for ${storeName}: ${await response.text()}`);
-};
 
 export const addOrder = async ({ order, url, key }: { order: Order; url: string; key: string }): Promise<Order> => {
     const headers = getHeaders(key);
@@ -285,9 +245,11 @@ export const deleteItem = async ({ itemId, url, key }: { itemId: string, url: st
     if (!response.ok) throw new Error(`Failed to delete item: ${await response.text()}`);
 };
 
-export const addSupplier = async ({ supplierName, url, key }: { supplierName: SupplierName, url: string, key: string }): Promise<Supplier> => {
+export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Supplier> & { name: SupplierName }, url: string, key: string }): Promise<Supplier> => {
     const payload = {
-        name: supplierName,
+        name: supplier.name,
+        chat_id: supplier.chatId,
+        payment_method: supplier.paymentMethod
     };
     // Using on_conflict with merge-duplicates will either create a new supplier or return the existing one if the name matches.
     const response = await fetch(`${url}/rest/v1/suppliers?select=*&on_conflict=name`, {

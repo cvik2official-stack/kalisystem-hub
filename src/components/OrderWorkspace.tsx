@@ -96,16 +96,6 @@ const OrderWorkspace: React.FC = () => {
     longPressTimer.current = window.setTimeout(() => {
       if (tabId === OrderStatus.DISPATCHING) {
         setPasteModalOpen(true);
-// FIX: The component returns null if activeStore is 'Settings', so the check is redundant. This resolves the linting error.
-      } else if (tabId === OrderStatus.COMPLETED) {
-        if (activeStore !== 'KALI') {
-          const spreadsheetId = settings.spreadsheetIds?.[activeStore];
-          if (spreadsheetId) {
-            window.open(`https://docs.google.com/spreadsheets/d/${spreadsheetId}`, '_blank');
-          } else {
-            addToast(`No spreadsheet ID configured for ${activeStore}.`, 'info');
-          }
-        }
       }
     }, 500);
   };

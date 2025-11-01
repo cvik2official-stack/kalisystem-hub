@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { Supplier, PaymentMethod } from '../../types';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
+import { Supplier, PaymentMethod, SupplierName } from '../../types';
 import { AppContext } from '../../context/AppContext';
 
 interface EditSupplierModalProps {
@@ -11,11 +11,15 @@ interface EditSupplierModalProps {
 
 const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
     const { state } = useContext(AppContext);
+    const [name, setName] = useState<SupplierName>('' as SupplierName);
     const [chatId, setChatId] = useState('');
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | undefined>(undefined);
 
+    const isNew = useMemo(() => supplier.id.startsWith('new_'), [supplier.id]);
+
     useEffect(() => {
         if (supplier) {
+            setName(supplier.name || '' as SupplierName);
             setChatId(supplier.chatId || '');
             setPaymentMethod(supplier.paymentMethod);
         }
@@ -24,6 +28,7 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
     const handleSave = () => {
         onSave({
             ...supplier,
+            name: name.trim().toUpperCase() as SupplierName,
             chatId: chatId.trim(),
             paymentMethod: paymentMethod,
         });
@@ -31,8 +36,6 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
     };
     
     if (!isOpen) return null;
-
-    const isNew = !state.suppliers.some(s => s.id === supplier.id);
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
@@ -51,9 +54,10 @@ const EditSupplierModal: React.FC<EditSupplierModalProps> = ({ supplier, isOpen,
                             type="text"
                             id="supplier-name"
                             name="supplier-name"
-                            value={supplier.name}
-                            readOnly
-                            className="mt-1 w-full bg-gray-700 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500 opacity-70 cursor-not-allowed"
+                            value={name}
+                            readOnly={!isNew}
+                            onChange={(e) => setName(e.target.value.toUpperCase() as SupplierName)}
+                            className={`mt-1 w-full border text-gray-200 rounded-md p-2 outline-none focus:ring-2 focus:ring-indigo-500 ${!isNew ? 'bg-gray-700 opacity-70 cursor-not-allowed border-gray-600' : 'bg-gray-900 border-gray-700'}`}
                         />
                     </div>
                     

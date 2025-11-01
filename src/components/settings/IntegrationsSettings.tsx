@@ -23,12 +23,6 @@ const GeminiIcon: React.FC = () => (
     </svg>
 );
 
-const GoogleSheetsIcon: React.FC = () => (
-    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-500" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M15.54 11.5h2.96v2.96h-2.96zM15.54 15.54h2.96v2.96h-2.96zM11.5 15.54h2.96v2.96H11.5zM20 10.54V5a2 2 0 00-2-2H6a2 2 0 00-2 2v14a2 2 0 002 2h7.5v-3.5h-3.5v-3h3.5v-3h3.5v3h3.5z" />
-    </svg>
-);
-
 const AccordionItem: React.FC<{ title: string; id: string; icon: React.ReactNode; children: React.ReactNode; openAccordion: string | null; setOpenAccordion: (id: string | null) => void; }> = ({ title, id, icon, children, openAccordion, setOpenAccordion }) => (
     <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden">
         <button
@@ -58,7 +52,7 @@ const IntegrationsSettings: React.FC = () => {
 
     const [isSyncing, setIsSyncing] = useState(false);
     const [isSeeding, setIsSeeding] = useState(false);
-    const [openAccordion, setOpenAccordion] = useState<string | null>('csv');
+    const [openAccordion, setOpenAccordion] = useState<string | null>(null);
 
     const handleSettingChange = (key: keyof AppState['settings'], value: string | boolean) => {
         dispatch({
@@ -130,7 +124,7 @@ const IntegrationsSettings: React.FC = () => {
     };
 
     return (
-        <div className="w-full lg:w-2/3 space-y-4 pb-8">
+        <div className="w-full space-y-4 pb-8">
             <AccordionItem title="Master Item List (CSV)" id="csv" icon={<CsvIcon />} openAccordion={openAccordion} setOpenAccordion={setOpenAccordion}>
                 <div className="space-y-4">
                     <div>
@@ -164,25 +158,6 @@ const IntegrationsSettings: React.FC = () => {
             
             <AccordionItem title="Supabase" id="supabase" icon={<SupabaseIcon />} openAccordion={openAccordion} setOpenAccordion={setOpenAccordion}>
                 <div className="space-y-4">
-                     <div className="text-xs text-gray-500">
-                        <p><strong>Table Setup:</strong> Ensure you have the following tables in Supabase. Run this SQL in the Supabase SQL Editor.</p>
-                        <pre className="mt-2 text-xs bg-gray-900 rounded-md p-2 overflow-x-auto">
-                            <code>
-{`-- Create stores_config table
-CREATE TABLE public.stores_config (
-  store_name text NOT NULL,
-  telegram_chat_id text NULL,
-  spreadsheet_id text NULL,
-  CONSTRAINT stores_config_pkey PRIMARY KEY (store_name)
-);
--- Enable RLS and create policy
-ALTER TABLE public.stores_config ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all access for anon users on stores_config"
-ON public.stores_config FOR ALL TO anon USING (true) WITH CHECK (true);
-`}
-                            </code>
-                        </pre>
-                    </div>
                     <div className="flex justify-end">
                         <button onClick={handleSeedDatabase} disabled={isSeeding} className="px-4 py-2 text-sm font-medium rounded-md bg-green-600 hover:bg-green-700 text-white disabled:bg-green-800">
                             {isSeeding ? 'Seeding...' : 'Seed Database from Local Data'}
@@ -205,16 +180,6 @@ ON public.stores_config FOR ALL TO anon USING (true) WITH CHECK (true);
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
                         />
                     </div>
-                </div>
-            </AccordionItem>
-            
-            <AccordionItem title="Google Sheets" id="sheets" icon={<GoogleSheetsIcon />} openAccordion={openAccordion} setOpenAccordion={setOpenAccordion}>
-                 <div className="text-xs text-gray-500">
-                    <p><strong>Instructions:</strong> Add the following secret to your Supabase project under <strong>Project Settings &gt; Edge Functions</strong> to enable daily reporting.</p>
-                    <ul className="list-disc list-inside mt-1 space-y-1">
-                        <li><code>GOOGLE_SERVICE_ACCOUNT_JSON</code>: The full JSON content of your Google Cloud Service Account key.</li>
-                    </ul>
-                     <p className="mt-2">Ensure the service account has "Editor" access to the Google Sheets you want to write to.</p>
                 </div>
             </AccordionItem>
         </div>

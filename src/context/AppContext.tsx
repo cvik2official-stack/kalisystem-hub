@@ -1,8 +1,7 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, getStoreConfigsFromSupabase, upsertStoreConfigInSupabase } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
-import { generateAndRunDailyReports } from '../services/reportingService';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
@@ -22,7 +21,6 @@ export interface AppState {
     // FIX: Added optional properties to support integration settings.
     csvUrl?: string;
     geminiApiKey?: string;
-    spreadsheetIds?: Partial<Record<string, string>>;
   };
   isLoading: boolean;
   isInitialized: boolean;
@@ -47,20 +45,18 @@ export type Action =
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
   | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
-  | { type: 'SET_STORE_CONFIGS'; payload: { spreadsheetIds: Record<string, string> } }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } };
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
     updateItem: (item: Item) => Promise<void>;
     deleteItem: (itemId: string) => Promise<void>;
+    addSupplier: (supplier: Omit<Supplier, 'id' | 'modifiedAt'>) => Promise<Supplier>;
     updateSupplier: (supplier: Supplier) => Promise<void>;
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
-    updateStoreConfig: (storeName: string, spreadsheetId: string) => Promise<void>;
     syncWithSupabase: () => Promise<void>;
-    runDailyReports: () => Promise<void>;
 }
 
 
@@ -150,15 +146,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case 'INITIALIZATION_COMPLETE':
       return { ...state, isInitialized: true };
-    case 'SET_STORE_CONFIGS': {
-      return {
-        ...state,
-        settings: {
-          ...state.settings,
-          spreadsheetIds: action.payload.spreadsheetIds,
-        }
-      };
-    }
     case 'SET_MANAGER_VIEW':
         return {
             ...state,
@@ -191,7 +178,6 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      spreadsheetIds: {},
     },
     isLoading: false,
     isInitialized: false,
@@ -223,11 +209,10 @@ export const AppContext = createContext<{
   actions: {
       addItem: async () => { throw new Error('addItem not implemented'); },
       updateItem: async () => {}, deleteItem: async () => {},
+      addSupplier: async () => { throw new Error('addSupplier not implemented'); },
       updateSupplier: async () => {}, addOrder: async () => {},
       updateOrder: async () => {}, deleteOrder: async () => {},
-      updateStoreConfig: async () => {},
       syncWithSupabase: async () => {},
-      runDailyReports: async () => {},
   }
 });
 
@@ -253,13 +238,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addToast('Syncing with database...', 'info');
 
         const { items, suppliers } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
-        const [orders, storeConfigs] = await Promise.all([
-            getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers }),
-            getStoreConfigsFromSupabase({ url: supabaseUrl, key: supabaseKey })
-        ]);
+        const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
         dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders } }); 
-        dispatch({ type: 'SET_STORE_CONFIGS', payload: storeConfigs });
         
         addToast('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -293,6 +274,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: '_DELETE_ITEM', payload: itemId });
         addToast('Item deleted.', 'success');
     },
+    addSupplier: async (supplier) => {
+        const newSupplier = await supabaseAddSupplier({ supplier: supplier as Partial<Supplier> & { name: SupplierName }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: '_ADD_SUPPLIER', payload: newSupplier });
+        addToast(`Supplier "${newSupplier.name}" created.`, 'success');
+        return newSupplier;
+    },
     updateSupplier: async (supplier) => {
         const updatedSupplier = await supabaseUpdateSupplier({ supplier, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_UPDATE_SUPPLIER', payload: updatedSupplier });
@@ -302,7 +289,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         let supplierToUse = supplier;
         if (supplier.id.startsWith('new_')) {
             addToast(`Verifying supplier: ${supplier.name}...`, 'info');
-            const newSupplierFromDb = await supabaseAddSupplier({ supplierName: supplier.name, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+            const newSupplierFromDb = await supabaseAddSupplier({ supplier: { name: supplier.name }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
             dispatch({ type: '_ADD_SUPPLIER', payload: newSupplierFromDb });
             supplierToUse = newSupplierFromDb;
         }
@@ -327,35 +314,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await supabaseDeleteOrder({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'DELETE_ORDER', payload: orderId });
         addToast(`Order deleted.`, 'success');
-    },
-    updateStoreConfig: async (storeName, spreadsheetId) => {
-        await upsertStoreConfigInSupabase({
-            storeName,
-            spreadsheetId,
-            url: state.settings.supabaseUrl,
-            key: state.settings.supabaseKey
-        });
-
-        dispatch({
-            type: 'SAVE_SETTINGS',
-            payload: {
-                spreadsheetIds: {
-                    ...state.settings.spreadsheetIds,
-                    [storeName]: spreadsheetId.trim(),
-                },
-            }
-        });
-        addToast(`Settings for ${storeName} saved.`, 'success');
-    },
-    runDailyReports: async () => {
-        addToast('Generating daily reports...', 'info');
-        await generateAndRunDailyReports({
-            stores: state.stores,
-            orders: state.orders,
-            settings: state.settings,
-            supabaseCreds: { url: state.settings.supabaseUrl, key: state.settings.supabaseKey },
-        });
-        addToast('Daily reports completed.', 'success');
     },
     syncWithSupabase,
   };
