@@ -1,5 +1,5 @@
-// FIX: Updated the Supabase function types URL to use a major version specifier for better stability.
-/// <reference types="https://esm.sh/@supabase/functions-js@2/dist/edge-runtime.d.ts" />
+// FIX: Updated the Supabase function types reference to a valid URL to resolve the type definition error.
+/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { google } from 'https://esm.sh/googleapis@140';
@@ -10,10 +10,6 @@ declare const Deno: {
     get(key: string): string | undefined;
   };
 };
-
-// These environment variables must be set in your Supabase project's secrets
-// The GOOGLE_API_CREDENTIALS should be the JSON content of your service account key file
-const serviceAccountCredentials = JSON.parse(Deno.env.get('GOOGLE_API_CREDENTIALS') || '{}');
 
 const createSheetAndClear = async (sheets: any, spreadsheetId: string, sheetName: string) => {
     try {
@@ -29,7 +25,7 @@ const createSheetAndClear = async (sheets: any, spreadsheetId: string, sheetName
         });
     } catch (e) {
         // Ignore "duplicate sheet name" error, which means the sheet already exists.
-        if (!e.message.includes('duplicate sheet name')) {
+        if (e.message && !e.message.includes('duplicate sheet name')) {
             throw e;
         }
     }
@@ -99,6 +95,13 @@ serve(async (req) => {
   }
 
   try {
+    // FIX: Moved credential parsing inside the handler to prevent crashes on load.
+    const rawCredentials = Deno.env.get('GOOGLE_API_CREDENTIALS');
+    if (!rawCredentials) {
+        throw new Error("GOOGLE_API_CREDENTIALS secret is not set in Supabase project settings.");
+    }
+    const serviceAccountCredentials = JSON.parse(rawCredentials);
+      
     const { spreadsheetId, data, sheetName, type } = await req.json();
 
     if (!spreadsheetId || !data || !sheetName || !type) {
@@ -110,7 +113,8 @@ serve(async (req) => {
         auth: new google.auth.GoogleAuth({
             credentials: {
                 client_email: serviceAccountCredentials.client_email,
-                private_key: serviceAccountCredentials.private_key,
+                // FIX: Replace literal '\n' with actual newlines for the private key.
+                private_key: serviceAccountCredentials.private_key.replace(/\\n/g, '\n'),
             },
             scopes: ['https://www.googleapis.com/auth/spreadsheets'],
         }),
