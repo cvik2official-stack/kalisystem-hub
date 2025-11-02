@@ -24,7 +24,7 @@ const parseItemListWithGemini = async (
       1.  If a parsed item closely matches an item in the database, provide the 'matchedItemId' and its corresponding database ID. Use fuzzy matching. An item like "Angkor beer" should match "Angkor Beer (can)".
       2.  If a parsed item does not match any existing item, provide the 'newItemName' with the name you parsed from the text. These are likely unique items, special requests, or typos.
       3.  Always provide a quantity. Default to 1 if not specified.
-      4.  **CRITICAL**: For items that have a 'matchedItemId', DO NOT return a 'unit' in the JSON object. The system will use the correct unit from the database. For items with 'newItemName', you SHOULD infer the 'unit' from the text if possible (e.g., 'kg', 'pc', 'box').
+      4.  **CRITICAL UNIT HANDLING**: If an item is matched (you are returning 'matchedItemId'), you MUST NOT include the 'unit' field in the response for that item. The correct unit will be retrieved from the database. If an item is NOT matched (you are returning 'newItemName'), you SHOULD include the 'unit' field if you can parse one from the text.
       
       EXISTING ITEM DATABASE (for matching):
       ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit })))}

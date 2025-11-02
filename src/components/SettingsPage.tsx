@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import ItemsSettings from './settings/ItemsSettings';
 import SuppliersSettings from './settings/SuppliersSettings';
-import OptionsSettings from './settings/OptionsSettings';
 import StoresSettings from './settings/StoresSettings';
 
-type SettingsTab = 'items' | 'suppliers' | 'stores' | 'options';
+type SettingsTab = 'items' | 'suppliers' | 'stores';
 
 const SettingsPage: React.FC = () => {
   const [selectedTab, setSelectedTab] = useState<SettingsTab>('items');
@@ -13,7 +12,6 @@ const SettingsPage: React.FC = () => {
     { id: 'items', label: 'Items' },
     { id: 'suppliers', label: 'Suppliers' },
     { id: 'stores', label: 'Stores' },
-    { id: 'options', label: 'Options' },
   ];
 
   return (
@@ -40,7 +38,6 @@ const SettingsPage: React.FC = () => {
         {selectedTab === 'items' && <ItemsSettings />}
         {selectedTab === 'suppliers' && <SuppliersSettings />}
         {selectedTab === 'stores' && <StoresSettings />}
-        {selectedTab === 'options' && <OptionsSettings />}
       </div>
     </div>
   );

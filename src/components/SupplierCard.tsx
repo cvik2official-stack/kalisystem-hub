@@ -23,7 +23,6 @@ interface SupplierCardProps {
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false }) => {
     const { state, actions } = useContext(AppContext);
     const { addToast } = useToasts();
-    const { supabaseUrl, supabaseKey } = state.settings;
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
@@ -350,20 +349,26 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleSendToTelegram = async () => {
+        const { telegramBotToken } = state.settings;
         if (!supplier?.chatId) {
             addToast('Supplier does not have a Chat ID configured.', 'error');
+            return;
+        }
+        if (!telegramBotToken) {
+            addToast('Telegram Bot Token is not set in Options.', 'error');
             return;
         }
         setIsProcessing(true);
         try {
             const message = generateOrderMessage(order, 'html');
             await sendOrderToSupplierOnTelegram(
-                order.supplierName, 
+                supplier.chatId,
                 message,
-                { url: supabaseUrl, key: supabaseKey }
+                telegramBotToken
             );
             addToast(`Order sent to ${order.supplierName} via Telegram.`, 'success');
-        } catch (error) {
+        } catch (error: any) {
+            addToast(error.message || `Failed to send to ${order.supplierName}.`, 'error');
             console.error("Failed to send order via Telegram:", error);
         } finally {
             setIsProcessing(false);

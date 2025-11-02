@@ -12,7 +12,6 @@
     "@google/genai": "^1.27.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "jsrsasign": "11.1.0",
     "deno.ns": "^0.8.0"
   },
   "devDependencies": {

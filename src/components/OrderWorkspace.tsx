@@ -1,4 +1,5 @@
 
+
 // FIX: Implemented the OrderWorkspace component to replace the placeholder content.
 import React, { useContext, useState, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
@@ -9,7 +10,6 @@ import PasteItemsModal from './modals/PasteItemsModal';
 import AddSupplierModal from './modals/AddSupplierModal';
 import CompletedOrdersTable from './CompletedOrdersTable';
 import { useToasts } from '../context/ToastContext';
-import { exportStockReport } from '../services/reportingService';
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
@@ -18,7 +18,6 @@ const OrderWorkspace: React.FC = () => {
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [draggedItem, setDraggedItem] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
-  const [isProcessingReport, setIsProcessingReport] = useState(false);
   const longPressTimer = useRef<number | null>(null);
 
   if (activeStore === 'Settings') return null;
@@ -112,30 +111,6 @@ const OrderWorkspace: React.FC = () => {
   
   const canCreateOrders = activeStore !== StoreName.KALI;
 
-  const handleGenerateReport = async () => {
-    setIsProcessingReport(true);
-    addToast('Generating daily stock report...', 'info');
-    try {
-        const { googleApiCredentials } = settings;
-        if (!googleApiCredentials) {
-            throw new Error('Google API credentials are not set in Options.');
-        }
-        
-        await exportStockReport({
-            items,
-            orders: state.orders,
-            date: new Date().toISOString().split('T')[0],
-            credentials: googleApiCredentials,
-        });
-        
-        addToast('Daily stock report updated successfully.', 'success');
-    } catch (e: any) {
-        addToast(`Report generation failed: ${e.message}`, 'error');
-    } finally {
-        setIsProcessingReport(false);
-    }
-  };
-
   return (
     <>
       <div className="mt-4 flex flex-col flex-grow">
@@ -164,15 +139,6 @@ const OrderWorkspace: React.FC = () => {
               </button>
             ))}
           </nav>
-          {activeStatus === OrderStatus.COMPLETED && (
-            <button
-                onClick={handleGenerateReport}
-                disabled={isProcessingReport}
-                className="px-3 py-1.5 text-xs font-medium rounded-md bg-purple-600 hover:bg-purple-700 text-white disabled:bg-purple-800"
-            >
-                {isProcessingReport ? 'Generating...' : 'Generate Daily Report'}
-            </button>
-          )}
         </div>
         
         {/* Orders Grid */}

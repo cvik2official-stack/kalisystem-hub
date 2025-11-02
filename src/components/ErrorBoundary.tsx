@@ -1,81 +1,51 @@
-import React, { ReactNode, ErrorInfo } from 'react';
+import React from 'react';
 
-interface Props {
-  children: ReactNode;
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
 }
 
-interface State {
+interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
 }
 
-// FIX: Removed `public` keyword from state and lifecycle methods. While valid, it can sometimes interfere with tooling that infers component properties.
-class ErrorBoundary extends React.Component<Props, State> {
-  state: State = {
-    hasError: false,
-    error: null,
-  };
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  // FIX: Replaced constructor with a class property for state initialization.
+  // This resolves potential 'this' context issues and simplifies the component structure,
+  // addressing the reported errors about 'state' and 'props' not existing.
+  state: ErrorBoundaryState = { hasError: false, error: null };
 
-  // FIX: Removed `public` keyword to align with the component's coding style and potentially resolve a tooling-related type error.
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     // Update state so the next render will show the fallback UI.
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // You can also log the error to an error reporting service
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    // Log the error to an error reporting service
     console.error("Uncaught error:", error, errorInfo);
-  }
-
-  private handleRefresh = () => {
-    window.location.reload();
-  };
-  
-  private handleClearCacheAndRefresh = () => {
-    localStorage.clear();
-    window.location.reload();
   }
 
   render() {
     if (this.state.hasError) {
-      // You can render any custom fallback UI
+      // Fallback UI
       return (
-        <div className="min-h-screen bg-gray-900 text-gray-200 flex items-center justify-center p-4">
-          <div className="bg-gray-800 rounded-xl shadow-2xl p-8 max-w-lg w-full text-center border-t-4 border-red-500">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-red-500 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <h1 className="text-2xl font-bold text-white mb-2">Application Error</h1>
-            <p className="text-gray-400 mb-6">Sorry, the application has encountered a problem and cannot continue.</p>
-            
-            <div className="flex justify-center space-x-4">
-                <button 
-                    onClick={this.handleRefresh}
-                    className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+        <div className="min-h-screen bg-gray-900 flex items-center justify-center text-center text-gray-200">
+            <div className="bg-gray-800 p-8 rounded-lg shadow-2xl max-w-lg mx-4">
+                <h1 className="text-2xl font-bold text-red-500 mb-4">Something went wrong.</h1>
+                <p className="text-gray-300 mb-6">An unexpected error has occurred. Please try refreshing the page or clearing your local storage if the problem persists.</p>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
                 >
-                    Refresh Page
+                  Refresh Page
                 </button>
-                 <button 
-                    onClick={this.handleClearCacheAndRefresh}
-                    className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-white"
-                >
-                    Clear Data & Refresh
-                </button>
+                <details className="text-left bg-gray-900/50 p-3 rounded mt-6">
+                    <summary className="cursor-pointer text-gray-400 text-sm">Error Details</summary>
+                    <pre className="text-xs text-red-400 mt-2 overflow-auto whitespace-pre-wrap">
+                        {this.state.error?.toString()}
+                    </pre>
+                </details>
             </div>
-
-            {this.state.error && (
-              <details className="mt-6 bg-gray-900 rounded-md p-3 text-left">
-                <summary className="cursor-pointer text-sm text-gray-400 hover:text-white">Error Details</summary>
-                <pre className="mt-2 text-xs text-red-400 whitespace-pre-wrap overflow-x-auto">
-                  <code>
-                    {this.state.error.toString()}
-                    {'\n\n'}
-                    {this.state.error.stack}
-                  </code>
-                </pre>
-              </details>
-            )}
-          </div>
         </div>
       );
     }

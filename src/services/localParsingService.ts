@@ -163,7 +163,8 @@ export const parseItemListLocally = async (text: string, existingItems: Item[]):
                     parsedItems.push({
                         matchedItemId: matchedItem.id,
                         quantity: quantity,
-                        unit: unit ?? matchedItem.unit,
+                        // For matched items, ALWAYS use the unit from the database, ignoring any parsed unit.
+                        unit: matchedItem.unit,
                     });
                     duplicateTracker.set(key, newIndex);
                 }

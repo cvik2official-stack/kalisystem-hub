@@ -1,4 +1,3 @@
-
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore } from '../services/supabaseService';
@@ -22,7 +21,7 @@ export interface AppState {
     // FIX: Added optional properties to support integration settings.
     csvUrl?: string;
     geminiApiKey?: string;
-    googleApiCredentials?: string;
+    telegramBotToken?: string;
   };
   isLoading: boolean;
   isInitialized: boolean;
@@ -192,6 +191,8 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
+      geminiApiKey: 'AIzaSyDN0Z_WM4PvhMhJ0nTPF9lM06lepFrZ-qM',
+      telegramBotToken: '8347024604:AAHotssxpa41D53fMP10_8kIR6PCcVgw0i0',
     },
     isLoading: false,
     isInitialized: false,
