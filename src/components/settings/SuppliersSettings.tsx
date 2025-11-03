@@ -87,6 +87,33 @@ const SuppliersSettings: React.FC = () => {
       .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [state.suppliers, searchTerm]);
+  
+  const paymentMethodBadgeColors: Record<string, string> = {
+    [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
+    [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
+    [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
+    [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+  };
+
+  const renderCheckboxDisplay = (checked?: boolean) => (
+    <div className="flex justify-center items-center">
+      <div
+        className={`
+          h-4 w-4 rounded border flex items-center justify-center
+          ${checked
+            ? 'bg-indigo-500 border-indigo-500'
+            : 'border-gray-600'
+          }
+        `}
+      >
+        {checked && (
+          <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col flex-grow">
@@ -128,12 +155,6 @@ const SuppliersSettings: React.FC = () => {
               {filteredSuppliers.map(supplier => {
                 const isEditing = editingSupplierId === supplier.id;
                 const botSettings = isEditing ? editedSupplierData.botSettings : supplier.botSettings;
-                
-                const renderCheckmark = (value?: boolean) => (
-                    <span className={`font-bold ${value ? 'text-green-400' : 'text-red-400'}`}>
-                        {value ? '✓' : '✗'}
-                    </span>
-                );
 
                 return (
                   <tr key={supplier.id} className="hover:bg-gray-700/50">
@@ -160,7 +181,13 @@ const SuppliersSettings: React.FC = () => {
                                 {Object.values(PaymentMethod).map(m => <option key={m} value={m}>{m.toUpperCase()}</option>)}
                             </select>
                         ) : (
-                            supplier.paymentMethod?.toUpperCase() || '-'
+                             supplier.paymentMethod ? (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod] || 'bg-gray-500/50 text-gray-300'}`}>
+                                    {supplier.paymentMethod.toUpperCase()}
+                                </span>
+                            ) : (
+                                '-'
+                            )
                         )}
                     </td>
                     <td className="px-2 py-1 text-sm text-gray-300 whitespace-nowrap font-mono">
@@ -176,16 +203,16 @@ const SuppliersSettings: React.FC = () => {
                         )}
                     </td>
                     <td className="px-1 py-1 text-center">
-                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showAttachInvoice} onChange={e => handleSupplierDataChange('botSettings.showAttachInvoice', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showAttachInvoice)}
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showAttachInvoice} onChange={e => handleSupplierDataChange('botSettings.showAttachInvoice', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckboxDisplay(botSettings?.showAttachInvoice)}
                     </td>
                     <td className="px-1 py-1 text-center">
-                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showMissingItems} onChange={e => handleSupplierDataChange('botSettings.showMissingItems', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showMissingItems)}
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showMissingItems} onChange={e => handleSupplierDataChange('botSettings.showMissingItems', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckboxDisplay(botSettings?.showMissingItems)}
                     </td>
                     <td className="px-1 py-1 text-center">
-                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showOkButton} onChange={e => handleSupplierDataChange('botSettings.showOkButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showOkButton)}
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showOkButton} onChange={e => handleSupplierDataChange('botSettings.showOkButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckboxDisplay(botSettings?.showOkButton)}
                     </td>
                     <td className="px-1 py-1 text-center">
-                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showDriverOnWayButton} onChange={e => handleSupplierDataChange('botSettings.showDriverOnWayButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showDriverOnWayButton)}
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showDriverOnWayButton} onChange={e => handleSupplierDataChange('botSettings.showDriverOnWayButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckboxDisplay(botSettings?.showDriverOnWayButton)}
                     </td>
                     <td className="pl-2 pr-4 py-1 text-right">
                        <div className="flex items-center justify-end space-x-2">

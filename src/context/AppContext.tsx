@@ -1,3 +1,4 @@
+
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore } from '../services/supabaseService';
@@ -59,7 +60,7 @@ export interface AppContextActions {
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
-    syncWithSupabase: () => Promise<void>;
+    syncWithSupabase: (options?: { isInitialSync?: boolean }) => Promise<void>;
     addItemToDispatch: (item: Item) => Promise<void>;
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
 }
@@ -245,25 +246,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch(err) { console.error("Could not save state to localStorage", err); }
   }, [state]);
 
-  const syncWithSupabase = useCallback(async () => {
+  const syncWithSupabase = useCallback(async (options?: { isInitialSync?: boolean }) => {
     dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
     try {
         if (!navigator.onLine) {
-            addToast('Offline. Using cached data.', 'info');
+            if (!options?.isInitialSync) addToast('Offline. Using cached data.', 'info');
             return dispatch({ type: '_SET_SYNC_STATUS', payload: 'offline' });
         }
         const { supabaseUrl, supabaseKey } = state.settings;
-        addToast('Syncing with database...', 'info');
+        if (!options?.isInitialSync) addToast('Syncing with database...', 'info');
 
         const { items, suppliers, stores } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
         dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores } }); 
         
-        addToast('Sync complete.', 'success');
+        if (!options?.isInitialSync) addToast('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
     } catch (e: any) {
-        addToast(`Sync failed: ${e.message}. Using cache.`, 'error');
+        if (!options?.isInitialSync) addToast(`Sync failed: ${e.message}. Using cache.`, 'error');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'error' });
     }
   }, [state.settings, addToast, dispatch]);
@@ -271,7 +272,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (!state.isInitialized) {
       dispatch({ type: 'INITIALIZATION_COMPLETE' });
-      syncWithSupabase();
+      syncWithSupabase({ isInitialSync: true });
     }
   }, [state.isInitialized, syncWithSupabase]);
 

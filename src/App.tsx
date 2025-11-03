@@ -1,4 +1,5 @@
-import React, { useContext, useEffect, useState } from 'react';
+
+import React, { useContext, useEffect, useState, useRef } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
@@ -16,6 +17,21 @@ const App: React.FC = () => {
   const { addToast } = useToasts();
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
+  const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
+  // FIX: Corrected useRef call by providing an initial value of undefined and updating the generic type to allow for undefined. This resolves the error about missing arguments.
+  const prevSyncStatusRef = useRef<string | undefined>(undefined);
+
+
+  useEffect(() => {
+    if (prevSyncStatusRef.current === 'syncing' && syncStatus === 'idle') {
+      setAnimateSyncSuccess(true);
+      const timer = setTimeout(() => {
+        setAnimateSyncSuccess(false);
+      }, 1500); // Animation + color visible for 1.5s
+      return () => clearTimeout(timer);
+    }
+    prevSyncStatusRef.current = syncStatus;
+  }, [syncStatus]);
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -152,7 +168,7 @@ const App: React.FC = () => {
                       aria-label="Sync with database"
                       title="Sync with database"
                   >
-                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors duration-300 ${syncStatus === 'syncing' ? 'animate-spin' : ''} ${animateSyncSuccess ? 'text-green-400 bounce-once-animation' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                           <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                       </svg>
                   </button>

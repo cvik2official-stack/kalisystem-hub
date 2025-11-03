@@ -1,6 +1,6 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, Supplier, PaymentMethod, StoreName, Store } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, Supplier, PaymentMethod, StoreName, Store, ItemPrice } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
@@ -12,7 +12,8 @@ import EditSupplierModal from './modals/EditSupplierModal';
 import { sendOrderToSupplierOnTelegram, sendOrderUpdateToSupplierOnTelegram } from '../services/telegramService';
 import AddSupplierModal from './modals/AddSupplierModal';
 import MergeOrderModal from './modals/MergeOrderModal';
-import SetUnitPriceModal from './modals/SetUnitPriceModal';
+import PriceNumpadModal from './modals/PriceNumpadModal';
+import { upsertItemPrice } from '../services/supabaseService';
 
 interface SupplierCardProps {
   order: Order;
@@ -34,12 +35,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isProcessing, setIsProcessing] = useState(false);
     const [isConfirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
-    const longPressTimer = useRef<number | null>(null);
     const [isEditingInvoice, setIsEditingInvoice] = useState(false);
     const [invoiceAmount, setInvoiceAmount] = useState<string>('');
     const [isChangeSupplierModalOpen, setChangeSupplierModalOpen] = useState(false);
     const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
-    const [isUnitPriceModalOpen, setIsUnitPriceModalOpen] = useState(false);
+    const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
     
     const [isEditItemModalOpen, setEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
@@ -54,7 +54,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     useEffect(() => {
         return () => {
             if (clickTimeout.current) clearTimeout(clickTimeout.current);
-            if (longPressTimer.current) clearTimeout(longPressTimer.current);
         };
     }, []);
 
@@ -124,16 +123,43 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             setIsProcessing(false);
         }
     };
+    
+    const handleSaveUnitPrice = async (price: number, unit: Unit, isMaster: boolean) => {
+        if (!selectedItem) return;
+        setIsProcessing(true);
+        try {
+          const itemPrice: ItemPrice = {
+            itemId: selectedItem.itemId,
+            supplierId: order.supplierId,
+            price: price,
+            unit: unit,
+            isMaster: isMaster,
+          };
+          await upsertItemPrice({
+            itemPrice,
+            url: state.settings.supabaseUrl,
+            key: state.settings.supabaseKey
+          });
+          addToast(`Price for ${selectedItem.name} set to ${price}/${unit}.`, 'success');
+          setIsPriceNumpadOpen(false);
+          setSelectedItem(null);
+        } catch (error: any) {
+          addToast(`Failed to set price: ${error.message}`, 'error');
+        } finally {
+          setIsProcessing(false);
+        }
+    };
 
     const handleItemClick = (e: React.MouseEvent, item: OrderItem) => {
-        if (clickTimeout.current) { // Double click
-            clearTimeout(clickTimeout.current);
-            clickTimeout.current = null;
+        if (e.detail === 2) { // Double-click
             handleContextMenu(e, item);
             return;
         }
-        
-        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+
+        if (clickTimeout.current) {
+            clearTimeout(clickTimeout.current);
+            clickTimeout.current = null;
+        }
     
         clickTimeout.current = window.setTimeout(() => {
             clickTimeout.current = null;
@@ -311,7 +337,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleContextMenu = (e: React.MouseEvent | React.TouchEvent, target: 'supplier' | OrderItem) => {
-        if (isManagerView && target !== 'supplier') return; // Allow supplier context menu for managers, but not item
+        if (isManagerView && target !== 'supplier') return;
         
         e.preventDefault();
         
@@ -324,31 +350,25 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 options.push({ label: 'Drop (Cancel Order)', action: () => setConfirmDeleteOpen(true), isDestructive: true });
             }
         } else { // It's an OrderItem
-             const masterItem = state.items.find(i => i.id === target.itemId);
-             if(masterItem) {
+            const masterItem = state.items.find(i => i.id === target.itemId);
+            if (masterItem) {
                 options.push({ label: 'Edit...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
-             }
-            options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(target); setIsUnitPriceModalOpen(true); } });
-            if (order.status === OrderStatus.ON_THE_WAY) {
-                options.push({ label: 'Spoil', action: () => handleSpoilItem(target) });
             }
-            options.push({ label: 'Remove', action: () => handleDeleteItem(target), isDestructive: true });
+            options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(target); setIsPriceNumpadOpen(true); } });
+            
+            if (order.status !== OrderStatus.COMPLETED) {
+                if (order.status === OrderStatus.ON_THE_WAY) {
+                    options.push({ label: 'Spoil', action: () => handleSpoilItem(target) });
+                }
+                options.push({ label: 'Remove', action: () => handleDeleteItem(target), isDestructive: true });
+            }
         }
+
+        if(options.length === 0) return;
 
         const pageX = 'touches' in e ? e.touches[0].pageX : e.pageX;
         const pageY = 'touches' in e ? e.touches[0].pageY : e.pageY;
         setContextMenu({ x: pageX, y: pageY, options });
-    };
-    
-    const handlePressStart = (e: React.TouchEvent | React.MouseEvent, target: 'supplier' | OrderItem) => {
-        if (longPressTimer.current) clearTimeout(longPressTimer.current);
-        longPressTimer.current = window.setTimeout(() => {
-            handleContextMenu(e, target);
-        }, 500);
-    };
-
-    const handlePressEnd = () => {
-        if (longPressTimer.current) clearTimeout(longPressTimer.current);
     };
 
     const handleCopyOrderMessage = () => {
@@ -482,32 +502,32 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             <div
               className="px-2 pt-2 flex justify-between items-start"
               onContextMenu={(e) => handleContextMenu(e, 'supplier')}
-              onMouseDown={(e) => handlePressStart(e, 'supplier')}
-              onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
-              onTouchStart={(e) => handlePressStart(e, 'supplier')} onTouchEnd={handlePressEnd}
+              onDoubleClick={(e) => e.stopPropagation()}
             >
-                <div onClick={handleSupplierClick} className="p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer w-full">
-                    <h3 className="font-bold text-white text-lg select-none flex items-center gap-2 flex-wrap">
-                        <span>{order.supplierName}</span>
-                        {supplier?.paymentMethod && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod]}`}>{supplier.paymentMethod.toUpperCase()}</span>}
-                        {order.status === OrderStatus.COMPLETED && (
-                            isEditingInvoice ? (
-                                <div className="flex items-center space-x-1">
-                                    <span className="text-green-300">$</span>
-                                    <input type="number" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} onBlur={handleSaveInvoiceAmount} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setIsEditingInvoice(false); }} autoFocus className="bg-gray-900 text-white w-20 p-1 rounded-md text-sm font-mono ring-1 ring-indigo-500" placeholder="0.00" step="0.01" />
-                                </div>
-                            ) : (
-                                order.invoiceAmount != null ? (
-                                    <button onClick={(e) => { e.stopPropagation(); setIsEditingInvoice(true); }} className="text-sm font-mono bg-gray-700 px-2 py-0.5 rounded-full text-green-300 hover:bg-gray-600">${order.invoiceAmount.toFixed(2)}</button>
+                <div onClick={handleSupplierClick} className="flex-grow p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer">
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-bold text-white text-lg select-none">{order.supplierName}</h3>
+                        <div className="flex-grow flex items-center gap-2">
+                            {supplier?.paymentMethod && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod]}`}>{supplier.paymentMethod.toUpperCase()}</span>}
+                            {order.status === OrderStatus.COMPLETED && (
+                                isEditingInvoice ? (
+                                    <div className="flex items-center space-x-1">
+                                        <span className="text-green-300">$</span>
+                                        <input type="number" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} onBlur={handleSaveInvoiceAmount} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setIsEditingInvoice(false); }} autoFocus className="bg-gray-900 text-white w-20 p-1 rounded-md text-sm font-mono ring-1 ring-indigo-500" placeholder="0.00" step="0.01" />
+                                    </div>
                                 ) : (
-                                    <button onClick={(e) => { e.stopPropagation(); setIsEditingInvoice(true); }} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label="Set Invoice Amount"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M8.433 7.418c.158-.103.346-.196.567-.267v1.698a2.5 2.5 0 00-1.162-.325c-.504 0-.918.336-1.125.683a2.5 2.5 0 00-.229 1.168c0 .635.216 1.183.635 1.572a2.064 2.064 0 001.268.63c.503 0 .91-.223 1.116-.654a2.5 2.5 0 00.217-1.143v-1.7c.221.07.41.164.568.267l.252.165a.5.5 0 00.653-.653l-.62-1.026a.505.505 0 00-.745-.235l-.252.165z" /><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.256A4.535 4.535 0 009 10.592v1.314c-.841.092-1.676.358-2.2324.752-.648.395-1.002 1.05-1.002 1.798 0 .99.602 1.765 1.324 2.256A4.535 4.535 0 009 16.592V17a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 15.766 14 15.009 14 14c0-.99-.602-1.765-1.324-2.256A4.535 4.535 0 0011 11.408V10.094c.841-.092 1.676-.358 2.324-.752.648.395 1.002-1.05 1.002-1.798 0-.99-.602-1.765-1.324-2.256A4.535 4.535 0 0011 4.408V4z" clipRule="evenodd" /></svg></button>
+                                    order.invoiceAmount != null ? (
+                                        <button onClick={(e) => { e.stopPropagation(); setIsEditingInvoice(true); }} className="text-sm font-mono bg-gray-700 px-2 py-0.5 rounded-full text-green-300 hover:bg-gray-600">${order.invoiceAmount.toFixed(2)}</button>
+                                    ) : (
+                                        <button onClick={(e) => { e.stopPropagation(); setIsEditingInvoice(true); }} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label="Set Invoice Amount"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M8.433 7.418c.158-.103.346-.196.567-.267v1.698a2.5 2.5 0 00-1.162-.325c-.504 0-.918.336-1.125.683a2.5 2.5 0 00-.229 1.168c0 .635.216 1.183.635 1.572a2.064 2.064 0 001.268.63c.503 0 .91-.223 1.116-.654a2.5 2.5 0 00.217-1.143v-1.7c.221.07.41.164.568.267l.252.165a.5.5 0 00.653-.653l-.62-1.026a.505.505 0 00-.745-.235l-.252.165z" /><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.256A4.535 4.535 0 009 10.592v1.314c-.841.092-1.676.358-2.2324.752-.648.395-1.002 1.05-1.002 1.798 0 .99.602 1.765 1.324 2.256A4.535 4.535 0 009 16.592V17a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 15.766 14 15.009 14 14c0-.99-.602-1.765-1.324-2.256A4.535 4.535 0 0011 11.408V10.094c.841-.092 1.676-.358 2.324-.752.648.395 1.002-1.05 1.002-1.798 0-.99-.602-1.765-1.324-2.256A4.535 4.535 0 0011 4.408V4z" clipRule="evenodd" /></svg></button>
+                                    )
                                 )
-                            )
-                        )}
-                        {showStoreName && <span className="text-gray-400 font-medium text-base">({order.store})</span>}
-                    </h3>
+                            )}
+                            {showStoreName && <span className="text-gray-400 font-medium text-base">({order.store})</span>}
+                        </div>
+                    </div>
                 </div>
-                 <div className="flex items-center space-x-1">
+                 <div className="flex-shrink-0 flex items-center space-x-1">
                     <button onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label={isManuallyCollapsed ? 'Expand card' : 'Collapse card'}>
                         {isManuallyCollapsed ? <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg>}
                     </button>
@@ -530,7 +550,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                             className={`flex justify-between items-center px-2 py-1 rounded-md cursor-pointer hover:bg-gray-700 ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         >
                             <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
-                                {item.name}
+                                {item.isSpoiled && '🔸 '}{item.name}
                                 {item.isNew && <span className="ml-2 text-xs font-bold text-yellow-400">NEW</span>}
                             </span>
                             <div className="flex-shrink-0 flex items-center space-x-4">
@@ -603,7 +623,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={handleSaveSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
-            {isUnitPriceModalOpen && selectedItem && <SetUnitPriceModal item={selectedItem} supplierId={order.supplierId} isOpen={isUnitPriceModalOpen} onClose={() => setIsUnitPriceModalOpen(false)} />}
+            {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
         </div>
     );
 };
