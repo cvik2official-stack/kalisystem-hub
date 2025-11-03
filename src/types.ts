@@ -63,6 +63,7 @@ export interface OrderItem {
   name: string;
   quantity: number;
   unit?: Unit;
+  price?: number;
   isSpoiled?: boolean;
   isNew?: boolean;
 }

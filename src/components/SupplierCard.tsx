@@ -48,6 +48,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isEditSupplierModalOpen, setEditSupplierModalOpen] = useState(false);
     const supplier = state.suppliers.find(s => s.id === order.supplierId);
 
+    const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
+    const [editedItemPrice, setEditedItemPrice] = useState<string>('');
+
     useEffect(() => {
         return () => {
             if (clickTimeout.current) clearTimeout(clickTimeout.current);
@@ -85,34 +88,62 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             setIsProcessing(false);
         }
     };
+    
+    const handleSaveItemPrice = async (orderItem: OrderItem) => {
+        setIsProcessing(true);
+        try {
+            const newPrice = parseFloat(editedItemPrice);
+            let updatedItems;
 
-    const handleItemDoubleClick = (orderItem: OrderItem) => {
-        const masterItem = state.items.find(i => i.id === orderItem.itemId);
-        if (masterItem) {
-            setSelectedMasterItem(masterItem);
-            setEditItemModalOpen(true);
-        } else {
-            addToast(`Could not find master data for item "${orderItem.name}".`, 'error');
+            if (isNaN(newPrice) || editedItemPrice.trim() === '') {
+                updatedItems = order.items.map(i => {
+                    if (i.itemId === orderItem.itemId) {
+                        const { price, ...rest } = i;
+                        return rest as OrderItem;
+                    }
+                    return i;
+                });
+            } else {
+                updatedItems = order.items.map(i =>
+                    i.itemId === orderItem.itemId ? { ...i, price: newPrice } : i
+                );
+            }
+            
+            const newInvoiceAmount = updatedItems.reduce((total, item) => {
+                return total + ((item.price || 0) * item.quantity);
+            }, 0);
+            
+            await actions.updateOrder({ ...order, items: updatedItems, invoiceAmount: newInvoiceAmount });
+            addToast(`Price updated for ${orderItem.name}.`, 'success');
+            
+        } catch (error) {
+            console.error("Failed to save item price:", error);
+        } finally {
+            setEditingPriceItemId(null);
+            setEditedItemPrice('');
+            setIsProcessing(false);
         }
     };
 
     const handleItemClick = (e: React.MouseEvent, item: OrderItem) => {
-        if (longPressTimer.current) clearTimeout(longPressTimer.current);
         if (clickTimeout.current) { // Double click
             clearTimeout(clickTimeout.current);
             clickTimeout.current = null;
-            if (order.status !== OrderStatus.COMPLETED && !isManagerView) {
-                handleItemDoubleClick(item);
-            }
+            handleContextMenu(e, item);
             return;
         }
         
-        if (isManagerView || order.status === OrderStatus.COMPLETED) return;
-
+        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    
         clickTimeout.current = window.setTimeout(() => {
-            setSelectedItem(item);
-            setNumpadOpen(true);
             clickTimeout.current = null;
+            if (order.status === OrderStatus.COMPLETED && !isManagerView) {
+                setEditingPriceItemId(item.itemId);
+                setEditedItemPrice(item.price ? String(item.price) : '');
+            } else if (order.status !== OrderStatus.COMPLETED && !isManagerView) {
+                setSelectedItem(item);
+                setNumpadOpen(true);
+            }
         }, 250);
     };
 
@@ -280,17 +311,23 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleContextMenu = (e: React.MouseEvent | React.TouchEvent, target: 'supplier' | OrderItem) => {
-        if (isManagerView || order.status === OrderStatus.COMPLETED) return;
+        if (isManagerView && target !== 'supplier') return; // Allow supplier context menu for managers, but not item
+        
         e.preventDefault();
         
         const options: { label: string; action: () => void; isDestructive?: boolean; }[] = [];
         
         if (target === 'supplier') {
-            options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
-            options.push({ label: 'Merge...', action: () => setIsMergeModalOpen(true) });
-            options.push({ label: 'Drop (Cancel Order)', action: () => setConfirmDeleteOpen(true), isDestructive: true });
+            if (order.status !== OrderStatus.COMPLETED) {
+                options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
+                options.push({ label: 'Merge...', action: () => setIsMergeModalOpen(true) });
+                options.push({ label: 'Drop (Cancel Order)', action: () => setConfirmDeleteOpen(true), isDestructive: true });
+            }
         } else { // It's an OrderItem
-            options.push({ label: 'Edit...', action: () => handleItemDoubleClick(target) });
+             const masterItem = state.items.find(i => i.id === target.itemId);
+             if(masterItem) {
+                options.push({ label: 'Edit...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
+             }
             options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(target); setIsUnitPriceModalOpen(true); } });
             if (order.status === OrderStatus.ON_THE_WAY) {
                 options.push({ label: 'Spoil', action: () => handleSpoilItem(target) });
@@ -479,7 +516,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
                 <div className="flex-grow px-2 pt-2 pb-0 space-y-1">
-                    {order.items.map(item => (
+                    {order.items.map(item => {
+                        const isEditingPrice = editingPriceItemId === item.itemId;
+                        return (
                         <div
                             key={item.itemId}
                             draggable={canEditCard}
@@ -487,19 +526,41 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                             onDragEnd={() => setDraggedItem?.(null)}
                             onClick={(e) => handleItemClick(e, item)}
                             onContextMenu={(e) => handleContextMenu(e, item)}
-                            onMouseDown={(e) => handlePressStart(e, item)}
-                            onMouseUp={handlePressEnd} onMouseLeave={handlePressEnd}
-                            onTouchStart={(e) => handlePressStart(e, item)} onTouchEnd={handlePressEnd}
                             role="button" tabIndex={0}
                             className={`flex justify-between items-center px-2 py-1 rounded-md cursor-pointer hover:bg-gray-700 ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}`}
                         >
-                            <span className={`text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+                            <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
                                 {item.name}
                                 {item.isNew && <span className="ml-2 text-xs font-bold text-yellow-400">NEW</span>}
                             </span>
-                            <span className="font-semibold text-white">{item.quantity}{item.unit}</span>
+                            <div className="flex-shrink-0 flex items-center space-x-4">
+                                {order.status === OrderStatus.COMPLETED && !isManagerView ? (
+                                    isEditingPrice ? (
+                                        <input
+                                            type="number"
+                                            value={editedItemPrice}
+                                            onChange={(e) => setEditedItemPrice(e.target.value)}
+                                            onBlur={() => handleSaveItemPrice(item)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                                                if (e.key === 'Escape') setEditingPriceItemId(null);
+                                            }}
+                                            autoFocus
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="bg-gray-900 text-white w-24 p-1 rounded-md text-sm font-mono text-right ring-1 ring-indigo-500"
+                                            placeholder="Unit Price"
+                                            step="0.01"
+                                        />
+                                    ) : (
+                                        <span className="text-sm font-mono text-gray-400 w-24 text-right">
+                                            {item.price != null ? `$${item.price.toFixed(2)}` : ''}
+                                        </span>
+                                    )
+                                ) : null}
+                                <span className="font-semibold text-white text-right w-16">{item.quantity}{item.unit}</span>
+                            </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
                 
                 {showActionRow && (

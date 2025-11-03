@@ -165,6 +165,8 @@ const OrderWorkspace: React.FC = () => {
     });
   };
 
+  const showEmptyState = filteredOrders.length === 0 && activeStatus !== OrderStatus.DISPATCHING;
+
   return (
     <>
       <div className="mt-6 border-b border-gray-700">
@@ -208,74 +210,84 @@ const OrderWorkspace: React.FC = () => {
           </div>
         )}
 
-          {filteredOrders.length === 0 ? (
+          {showEmptyState && (
               <div className="text-center py-12">
                   <p className="text-gray-500">No orders in this category.</p>
               </div>
-          ) : activeStatus === OrderStatus.COMPLETED ? (
-              <div className="mt-4 space-y-2">
-                {sortedCompletedGroupKeys.map(key => {
-                  const isExpanded = expandedGroups.has(key);
-                  return (
-                    <div key={key}>
-                      <button
-                        onClick={() => toggleGroup(key)}
-                        className="bg-gray-900/50 px-4 py-2 flex justify-between items-center border-b border-t border-gray-700 w-full text-left"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                          </svg>
-                          <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
-                        </div>
-                      </button>
-                      {isExpanded && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
-                          {groupedCompletedOrders[key].map((order) => (
-                            <SupplierCard 
-                                key={order.id} 
-                                order={order}
-                                showStoreName={activeStore === StoreName.KALI} 
-                            />
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+          )}
+
+          {activeStatus === OrderStatus.COMPLETED ? (
+              filteredOrders.length > 0 ? (
+                <div className="mt-4 space-y-2">
+                  {sortedCompletedGroupKeys.map(key => {
+                    const isExpanded = expandedGroups.has(key);
+                    return (
+                      <div key={key}>
+                        <button
+                          onClick={() => toggleGroup(key)}
+                          className="bg-gray-900/50 px-4 py-2 flex justify-between items-center border-b border-t border-gray-700 w-full text-left"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                            <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
+                            {groupedCompletedOrders[key].map((order) => (
+                              <SupplierCard 
+                                  key={order.id} 
+                                  order={order}
+                                  showStoreName={activeStore === StoreName.KALI} 
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">No orders in this category.</p>
+                </div>
+              )
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-            {filteredOrders.map((order) => (
-                <SupplierCard 
-                    key={order.id} 
-                    order={order} 
-                    draggedItem={draggedItem}
-                    setDraggedItem={setDraggedItem}
-                    onItemDrop={handleItemDrop}
-                    showStoreName={activeStore === StoreName.KALI}
-                />
-            ))}
+              {filteredOrders.map((order) => (
+                  <SupplierCard 
+                      key={order.id} 
+                      order={order} 
+                      draggedItem={draggedItem}
+                      setDraggedItem={setDraggedItem}
+                      onItemDrop={handleItemDrop}
+                      showStoreName={activeStore === StoreName.KALI}
+                  />
+              ))}
+              {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
+                <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[10rem]">
+                    <div className="flex flex-col items-center justify-center space-y-2">
+                       <button 
+                         onClick={() => setAddSupplierModalOpen(true)} 
+                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg"
+                       >
+                         + select supplier
+                       </button>
+                       <span className="text-gray-500 text-xs">or</span>
+                       <button 
+                         onClick={() => setPasteModalOpen(true)} 
+                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg"
+                       >
+                         paste a list
+                       </button>
+                    </div>
+                </div>
+              )}
             </div>
           )}
       </div>
-
-      {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
-        <div className="flex-shrink-0 p-2 border-t border-gray-700/50 flex items-center justify-center space-x-2">
-           <button 
-             onClick={() => setAddSupplierModalOpen(true)} 
-             className="flex-1 bg-gray-700 hover:bg-gray-600 text-gray-300 font-bold py-3 px-4 rounded-md text-sm transition-colors"
-           >
-             + Add Order
-           </button>
-           <button 
-             onClick={() => setPasteModalOpen(true)} 
-             className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-md text-sm transition-colors"
-           >
-             Paste List
-           </button>
-        </div>
-      )}
 
       <AddSupplierModal
         isOpen={isAddSupplierModalOpen}
