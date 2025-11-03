@@ -1,12 +1,15 @@
 /*
   NOTE FOR DATABASE SETUP:
-  This service now supports an 'invoice_amount' for orders.
-  Please run the following SQL command in your Supabase SQL Editor:
+  This service now supports an 'invoice_amount' for orders and 'bot_settings' for suppliers.
+  Please run the following SQL commands in your Supabase SQL Editor:
 
   -- Add a numeric column to store the invoice amount
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC;
+
+  -- Add a JSONB column to store bot settings for suppliers
+  ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS bot_settings JSONB;
 */
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -20,6 +23,7 @@ interface SupplierFromDb {
   modified_at: string;
   chat_id?: string;
   payment_method?: PaymentMethod;
+  bot_settings?: SupplierBotSettings;
 }
 
 interface ItemFromDb {
@@ -95,6 +99,7 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         chatId: s.chat_id,
         paymentMethod: s.payment_method,
         modifiedAt: s.modified_at,
+        botSettings: s.bot_settings,
     }]));
     
     const items: Item[] = itemsData.reduce((acc: Item[], i) => {
@@ -286,7 +291,8 @@ export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Su
     const payload = {
         name: supplier.name,
         chat_id: supplier.chatId,
-        payment_method: supplier.paymentMethod
+        payment_method: supplier.paymentMethod,
+        bot_settings: supplier.botSettings,
     };
     // Using on_conflict with merge-duplicates will either create a new supplier or return the existing one if the name matches.
     const response = await fetch(`${url}/rest/v1/suppliers?select=*&on_conflict=name`, {
@@ -303,6 +309,7 @@ export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Su
         modifiedAt: newSupplierFromDb.modified_at,
         chatId: newSupplierFromDb.chat_id,
         paymentMethod: newSupplierFromDb.payment_method,
+        botSettings: newSupplierFromDb.bot_settings,
     };
 };
 
@@ -310,7 +317,8 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
     const payload = {
         name: supplier.name,
         chat_id: supplier.chatId,
-        payment_method: supplier.paymentMethod
+        payment_method: supplier.paymentMethod,
+        bot_settings: supplier.botSettings,
     };
     const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplier.id}&select=*`, {
         method: 'PATCH',
@@ -325,7 +333,8 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
         name: updated.name,
         chatId: updated.chat_id,
         paymentMethod: updated.payment_method,
-        modifiedAt: updated.modified_at 
+        modifiedAt: updated.modified_at,
+        botSettings: updated.bot_settings,
     };
 };
 

@@ -1,4 +1,4 @@
-import { Order, OrderItem } from '../types';
+import { Order, OrderItem, Supplier } from '../types';
 import { generateOrderMessage } from '../utils/messageFormatter';
 
 interface ReplyMarkup {
@@ -48,50 +48,78 @@ async function sendMessage(token: string, chatId: string, message: string, reply
 /**
  * Sends a formatted order message to a specific supplier's chat with interactive buttons.
  * @param order The order object.
- * @param chatId The supplier's Telegram chat ID.
+ * @param supplier The supplier object, containing the chat ID and bot settings.
  * @param message The pre-formatted order message (HTML).
  * @param token The Telegram Bot Token.
  */
 export const sendOrderToSupplierOnTelegram = async (
   order: Order,
-  chatId: string,
+  supplier: Supplier,
   message: string,
   token: string
 ): Promise<void> => {
-    // FIX: Destructure the order ID immediately to prevent issues with malformed order objects.
-    // This resolves the "Order undefined not found" error by ensuring the callback_data
-    // is always constructed with a valid ID, or fails gracefully if the ID is missing.
     const { id: orderId } = order;
     if (!orderId) {
         console.error("sendOrderToSupplierOnTelegram was called with an order that has no ID.", order);
         throw new Error("Cannot send order to Telegram: Order is missing its ID.");
     }
+    if (!supplier.chatId) {
+        throw new Error("Supplier Chat ID is missing.");
+    }
+
+    const buttons: { text: string; callback_data: string }[] = [];
+    const botSettings = supplier.botSettings;
+
+    if (botSettings?.showAttachInvoice) {
+        buttons.push({ text: "📎 Attach Invoice", callback_data: `invoice_attach_${orderId}` });
+    }
+    if (botSettings?.showMissingItems) {
+        buttons.push({ text: "❗️ Missing Item", callback_data: `missing_item_${orderId}` });
+    }
+    if (botSettings?.showOkButton) {
+        buttons.push({ text: "✅ OK", callback_data: `approve_order_${orderId}` });
+    }
+    if (botSettings?.showDriverOnWayButton) {
+        buttons.push({ text: "🚚 Driver on the way", callback_data: `driver_onway_${orderId}` });
+    }
+
+    let replyMarkup: ReplyMarkup | undefined = undefined;
+
+    if (buttons.length > 0) {
+        // Arrange buttons in rows of max 2
+        const keyboard: { text: string; callback_data: string; }[][] = [];
+        for (let i = 0; i < buttons.length; i += 2) {
+            keyboard.push(buttons.slice(i, i + 2));
+        }
+        replyMarkup = { inline_keyboard: keyboard };
+    }
     
-    const replyMarkup: ReplyMarkup = {
-        inline_keyboard: [
-            [
-                { text: "📎 Attach Invoice", callback_data: `invoice_attach_${orderId}` },
-                { text: "❗️ Missing Item", callback_data: `missing_item_${orderId}` }
-            ]
-        ]
-    };
-    await sendMessage(token, chatId, message, replyMarkup);
+    await sendMessage(token, supplier.chatId, message, replyMarkup);
 };
 
 /**
  * Sends a message to a supplier with items that were added to an existing order.
- * This message will only contain a "Missing Item" button, not an "Attach Invoice" button.
+ * This message will only contain a "Missing Item" button, if enabled for the supplier.
  * @param order The order that was updated.
  * @param newItems The list of newly added items.
- * @param chatId The supplier's Telegram chat ID.
+ * @param supplier The supplier object.
  * @param token The Telegram Bot Token.
  */
 export const sendOrderUpdateToSupplierOnTelegram = async (
     order: Order,
     newItems: OrderItem[],
-    chatId: string,
+    supplier: Supplier,
     token: string
   ): Promise<void> => {
+    const { id: orderId } = order;
+    if (!orderId) {
+        console.error("sendOrderUpdateToSupplierOnTelegram was called with an order that has no ID.", order);
+        throw new Error("Cannot send order update to Telegram: Order is missing its ID.");
+    }
+    if (!supplier.chatId) {
+        throw new Error("Supplier Chat ID is missing.");
+    }
+
     const itemsList = newItems
       .map(item => `  - ${escapeHtml(item.name)} x${item.quantity}${item.unit ? ` ${escapeHtml(item.unit)}` : ''}`)
       .join('\n');
@@ -102,15 +130,16 @@ Please add the following items to the order:
 ${itemsList}
     `.trim();
 
-    const replyMarkup: ReplyMarkup = {
-        inline_keyboard: [
-            [
-                { text: "❗️ Missing Item", callback_data: `missing_item_${order.id}` }
+    let replyMarkup: ReplyMarkup | undefined = undefined;
+    if (supplier.botSettings?.showMissingItems) {
+        replyMarkup = {
+            inline_keyboard: [
+                [{ text: "❗️ Missing Item", callback_data: `missing_item_${orderId}` }]
             ]
-        ]
-    };
+        };
+    }
   
-    await sendMessage(token, chatId, message, replyMarkup);
+    await sendMessage(token, supplier.chatId, message, replyMarkup);
 };
 
 

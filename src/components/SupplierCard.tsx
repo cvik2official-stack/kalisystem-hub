@@ -402,7 +402,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
     const handleSendToTelegram = async () => {
         const { telegramBotToken } = state.settings;
-        if (!supplier?.chatId) {
+        if (!supplier || !supplier.chatId) {
             addToast('Supplier does not have a Chat ID configured.', 'error');
             return;
         }
@@ -415,7 +415,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             const message = generateOrderMessage(order, 'html');
             await sendOrderToSupplierOnTelegram(
                 order,
-                supplier.chatId,
+                supplier,
                 message,
                 telegramBotToken
             );
@@ -435,7 +435,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
     const handleSendUpdateToTelegram = async () => {
         const { telegramBotToken } = state.settings;
-        if (!supplier?.chatId || !telegramBotToken) {
+        if (!supplier || !supplier.chatId || !telegramBotToken) {
             addToast('Supplier Chat ID or Bot Token is not configured.', 'error');
             return;
         }
@@ -448,7 +448,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
         setIsProcessing(true);
         try {
-            await sendOrderUpdateToSupplierOnTelegram(order, newItems, supplier.chatId, telegramBotToken);
+            await sendOrderUpdateToSupplierOnTelegram(order, newItems, supplier, telegramBotToken);
             
             const updatedItems = order.items.map(({ isNew, ...item }) => item);
             await actions.updateOrder({ ...order, items: updatedItems });

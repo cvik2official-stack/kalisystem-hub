@@ -41,12 +41,20 @@ export interface Item {
   stockQuantity?: number;
 }
 
+export interface SupplierBotSettings {
+  showAttachInvoice?: boolean;
+  showMissingItems?: boolean;
+  showOkButton?: boolean;
+  showDriverOnWayButton?: boolean;
+}
+
 export interface Supplier {
   id: string; // uuid from Supabase
   name: SupplierName;
   chatId?: string; // Replaces telegramGroupId for clarity
   paymentMethod?: PaymentMethod; // For persisting payment choice
   modifiedAt?: string;
+  botSettings?: SupplierBotSettings;
 }
 
 export interface OrderItem {

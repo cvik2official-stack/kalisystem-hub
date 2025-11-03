@@ -15,7 +15,7 @@
 import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import EditSupplierModal from '../modals/EditSupplierModal';
-import { Supplier, SupplierName, PaymentMethod } from '../../types';
+import { Supplier, SupplierName, PaymentMethod, SupplierBotSettings } from '../../types';
 
 const SuppliersSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
@@ -44,10 +44,19 @@ const SuppliersSettings: React.FC = () => {
     }
   };
   
-  const handleSupplierDataChange = (field: keyof Supplier, value: any) => {
+  const handleSupplierDataChange = (field: keyof Supplier | `botSettings.${keyof SupplierBotSettings}`, value: any) => {
     if (editedSupplierData) {
-      const updatedValue = field === 'name' ? value.toUpperCase() : value;
-      setEditedSupplierData({ ...editedSupplierData, [field]: updatedValue });
+        if (field.startsWith('botSettings.')) {
+            const settingKey = field.split('.')[1] as keyof SupplierBotSettings;
+            const updatedBotSettings = {
+                ...(editedSupplierData.botSettings || {}),
+                [settingKey]: value,
+            };
+            setEditedSupplierData({ ...editedSupplierData, botSettings: updatedBotSettings });
+        } else {
+            const updatedValue = field === 'name' ? value.toUpperCase() : value;
+            setEditedSupplierData({ ...editedSupplierData, [field]: updatedValue });
+        }
     }
   };
 
@@ -108,12 +117,24 @@ const SuppliersSettings: React.FC = () => {
                 <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Payment Method</th>
                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Chat ID</th>
+                <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Attach Invoice">Inv</th>
+                <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Missing Items">Mis</th>
+                <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="OK Button">OK</th>
+                <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Driver on the Way">Drv</th>
                 <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-gray-800 divide-y divide-gray-700">
               {filteredSuppliers.map(supplier => {
                 const isEditing = editingSupplierId === supplier.id;
+                const botSettings = isEditing ? editedSupplierData.botSettings : supplier.botSettings;
+                
+                const renderCheckmark = (value?: boolean) => (
+                    <span className={`font-bold ${value ? 'text-green-400' : 'text-red-400'}`}>
+                        {value ? '✓' : '✗'}
+                    </span>
+                );
+
                 return (
                   <tr key={supplier.id} className="hover:bg-gray-700/50">
                     <td className="pl-4 pr-2 py-1 text-sm text-white whitespace-nowrap">
@@ -153,6 +174,18 @@ const SuppliersSettings: React.FC = () => {
                         ) : (
                            supplier.chatId || '-'
                         )}
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showAttachInvoice} onChange={e => handleSupplierDataChange('botSettings.showAttachInvoice', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showAttachInvoice)}
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showMissingItems} onChange={e => handleSupplierDataChange('botSettings.showMissingItems', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showMissingItems)}
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showOkButton} onChange={e => handleSupplierDataChange('botSettings.showOkButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showOkButton)}
+                    </td>
+                    <td className="px-1 py-1 text-center">
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.showDriverOnWayButton} onChange={e => handleSupplierDataChange('botSettings.showDriverOnWayButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckmark(botSettings?.showDriverOnWayButton)}
                     </td>
                     <td className="pl-2 pr-4 py-1 text-right">
                        <div className="flex items-center justify-end space-x-2">
