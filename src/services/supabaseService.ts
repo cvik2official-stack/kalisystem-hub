@@ -1,3 +1,11 @@
+/*
+  NOTE FOR DATABASE SETUP:
+  This service now supports an 'invoice_amount' for orders.
+  Please run the following SQL command in your Supabase SQL Editor:
+
+  -- Add a numeric column to store the invoice amount
+  ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC;
+*/
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store } from '../types';
 
 interface SupabaseCredentials {
@@ -44,6 +52,7 @@ interface OrderFromDb {
     completed_at?: string;
     items: OrderItem[];
     invoice_url?: string;
+    invoice_amount?: number;
 }
 
 
@@ -143,6 +152,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     modifiedAt: order.modified_at,
                     completedAt: order.completed_at,
                     invoiceUrl: order.invoice_url,
+                    invoiceAmount: order.invoice_amount,
                     // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
@@ -172,6 +182,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         completed_at: orderData.completedAt,
         items: orderData.items,
         invoice_url: orderData.invoiceUrl,
+        invoice_amount: orderData.invoiceAmount,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -204,6 +215,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         completed_at: order.completedAt,
         items: order.items,
         invoice_url: order.invoiceUrl,
+        invoice_amount: order.invoiceAmount,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',

@@ -1,4 +1,3 @@
-
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -56,6 +55,7 @@ export interface OrderItem {
   quantity: number;
   unit?: Unit;
   isSpoiled?: boolean;
+  isNew?: boolean;
 }
 
 export interface Order {
@@ -72,6 +72,7 @@ export interface Order {
   modifiedAt: string;
   completedAt?: string;
   invoiceUrl?: string;
+  invoiceAmount?: number;
 }
 
 export interface ParsedItem {

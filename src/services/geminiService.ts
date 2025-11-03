@@ -24,7 +24,12 @@ const parseItemListWithGemini = async (
       1.  If a parsed item closely matches an item in the database, provide the 'matchedItemId' and its corresponding database ID. Use fuzzy matching. An item like "Angkor beer" should match "Angkor Beer (can)".
       2.  If a parsed item does not match any existing item, provide the 'newItemName' with the name you parsed from the text. These are likely unique items, special requests, or typos.
       3.  Always provide a quantity. Default to 1 if not specified.
-      4.  **CRITICAL UNIT HANDLING**: If an item is matched (you are returning 'matchedItemId'), you MUST NOT include the 'unit' field in the response for that item. The correct unit will be retrieved from the database. If an item is NOT matched (you are returning 'newItemName'), you SHOULD include the 'unit' field if you can parse one from the text.
+      4.  **CRITICAL UNIT HANDLING**: For any item that you successfully match to the database (i.e., you are returning a 'matchedItemId'), you MUST ignore any unit mentioned in the user's text for that item. The application will automatically use the correct unit from its database. Therefore, DO NOT include the 'unit' field in the JSON object for matched items. For completely new items (where you return a 'newItemName'), you should include the 'unit' if you can parse one.
+      5.  **CUSTOM ALIASING RULES**: Apply these specific aliases. If the user text contains the key, you should treat it as the value for matching purposes.
+          - "Chicken" should be treated as "Chicken breast".
+          - "Beef" should be treated as "Beef (rump)".
+          - "Mushroom can" should be treated as the item "Mushroom". This is so an input like "Mushroom can 2pc" is correctly parsed as the item "Mushroom" with a quantity of 2.
+          - "Cabbage" should be treated as "Cabbage (white)".
       
       EXISTING ITEM DATABASE (for matching):
       ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit })))}

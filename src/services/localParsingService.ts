@@ -55,12 +55,9 @@ const extractQuantityAndUnit = (line: string): { quantity: number; unit?: Unit; 
         'pc': Unit.PC, 'pcs': Unit.PC, 'piece': Unit.PC, 'pieces': Unit.PC,
         'kg': Unit.KG, 'kilo': Unit.KG, 'kilos': Unit.KG,
         'box': Unit.BOX, 'boxes': Unit.BOX,
-        'case': Unit.CASE, 'cases': Unit.CASE,
-        'ctn': Unit.CTN, 'carton': Unit.CTN, 'cartons': Unit.CTN,
         'can': Unit.CAN, 'cans': Unit.CAN,
         'roll': Unit.ROLL, 'rolls': Unit.ROLL,
         'block': Unit.BLOCK, 'blocks': Unit.BLOCK,
-        'jar': Unit.JAR, 'jars': Unit.JAR,
         'glass': Unit.GLASS,
     };
     

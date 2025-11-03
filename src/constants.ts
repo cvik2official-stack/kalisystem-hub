@@ -35,18 +35,10 @@ export enum Unit {
   L = 'L',
   ROLL = 'roll',
   BLOCK = 'block',
-  FIVE_L = '5L',
-  CASE = 'case',
   BOX = 'box',
   PK = 'pk',
-  CTN = 'ctn',
   BT = 'bt',
-  ONE_L_BT = '1Lbt',
-  JAR = 'jar',
   GLASS = 'glass',
-  SMALL = 'small',
-  BIG = 'big',
-  PC_CUT = 'pc_cut',
   CAN = 'can',
 }
 
