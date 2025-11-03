@@ -50,6 +50,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
     const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
     const [editedItemPrice, setEditedItemPrice] = useState<string>('');
+    
+    const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
     useEffect(() => {
         return () => {
@@ -151,11 +153,19 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleItemClick = (e: React.MouseEvent, item: OrderItem) => {
-        if (e.detail === 2) { // Double-click
+        // New: Manager view single-click opens context menu for non-completed orders
+        if (isManagerView && order.status !== OrderStatus.COMPLETED) {
             handleContextMenu(e, item);
             return;
         }
 
+        // Existing: Double-click always opens context menu (for operator)
+        if (e.detail === 2) { 
+            handleContextMenu(e, item);
+            return;
+        }
+
+        // Existing: Single-click with delay for operator view
         if (clickTimeout.current) {
             clearTimeout(clickTimeout.current);
             clickTimeout.current = null;
@@ -210,6 +220,48 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             setSelectedItem(null);
         } catch (error) {
             console.error("Failed to save item:", error);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const handleEditQuantityAndSpoilDifference = async (quantity: number, unit?: Unit) => {
+        if (!selectedItem) return;
+        const originalQuantity = selectedItem.quantity;
+        const difference = originalQuantity - quantity;
+    
+        if (difference < 0) {
+            addToast("Cannot increase quantity. Please add a new item instead.", 'error');
+            return;
+        }
+        
+        if (difference === 0) {
+            setNumpadOpen(false);
+            setSelectedItem(null);
+            return;
+        }
+    
+        setIsProcessing(true);
+        try {
+            const updatedItems = order.items.map(i => i.itemId === selectedItem.itemId ? { ...i, quantity } : i);
+            const finalItems = updatedItems.filter(i => i.quantity > 0);
+            await actions.updateOrder({ ...order, items: finalItems });
+    
+            const supplierForSpoiled = state.suppliers.find(s => s.id === order.supplierId);
+            if (supplierForSpoiled) {
+                const spoiledOrderItem: OrderItem = {
+                    ...selectedItem,
+                    quantity: difference,
+                    isSpoiled: false,
+                };
+                await actions.addOrder(supplierForSpoiled, order.store, [spoiledOrderItem]);
+                addToast(`Re-ordering ${difference} ${selectedItem.unit || ''} of ${selectedItem.name}.`, 'success');
+            }
+            
+            setNumpadOpen(false);
+            setSelectedItem(null);
+        } catch (error) {
+            console.error("Failed to edit quantity and handle spoiled difference:", error);
         } finally {
             setIsProcessing(false);
         }
@@ -337,8 +389,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleContextMenu = (e: React.MouseEvent | React.TouchEvent, target: 'supplier' | OrderItem) => {
-        if (isManagerView && target !== 'supplier') return;
-        
         e.preventDefault();
         
         const options: { label: string; action: () => void; isDestructive?: boolean; }[] = [];
@@ -350,25 +400,33 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 options.push({ label: 'Drop (Cancel Order)', action: () => setConfirmDeleteOpen(true), isDestructive: true });
             }
         } else { // It's an OrderItem
-            const masterItem = state.items.find(i => i.id === target.itemId);
-            if (masterItem) {
-                options.push({ label: 'Edit...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
-            }
-            options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(target); setIsPriceNumpadOpen(true); } });
-            
-            if (order.status !== OrderStatus.COMPLETED) {
-                if (order.status === OrderStatus.ON_THE_WAY) {
-                    options.push({ label: 'Spoil', action: () => handleSpoilItem(target) });
-                }
+            if (isManagerView && order.status !== OrderStatus.COMPLETED) {
+                 options.push({ label: 'Edit Quantity...', action: () => {
+                    setSelectedItem(target);
+                    setNumpadOpen(true);
+                }});
+                options.push({ label: 'Spoil', action: () => handleSpoilItem(target) });
                 options.push({ label: 'Remove', action: () => handleDeleteItem(target), isDestructive: true });
+            } else if (!isManagerView) {
+                const masterItem = state.items.find(i => i.id === target.itemId);
+                if (masterItem) {
+                    options.push({ label: 'Edit...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
+                    options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(target); setIsPriceNumpadOpen(true); } });
+                    if (order.status === OrderStatus.ON_THE_WAY) {
+                        options.push({ label: 'Spoil', action: () => handleSpoilItem(target) });
+                    }
+                    if (order.status !== OrderStatus.COMPLETED) {
+                       options.push({ label: 'Remove', action: () => handleDeleteItem(target), isDestructive: true });
+                    }
+                }
             }
         }
 
         if(options.length === 0) return;
 
-        const pageX = 'touches' in e ? e.touches[0].pageX : e.pageX;
-        const pageY = 'touches' in e ? e.touches[0].pageY : e.pageY;
-        setContextMenu({ x: pageX, y: pageY, options });
+        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+        setContextMenu({ x: clientX, y: clientY, options });
     };
 
     const handleCopyOrderMessage = () => {
@@ -411,6 +469,30 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
             onItemDrop(order.id);
         }
+    };
+    
+    const handleInternalReorderDrop = async (e: React.DragEvent<HTMLDivElement>, targetItem: OrderItem) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!draggedItem || draggedItem.sourceOrderId !== order.id || draggedItem.item.itemId === targetItem.itemId) {
+            setDragOverItemId(null);
+            return;
+        }
+
+        const currentItems = [...order.items];
+        const draggedIndex = currentItems.findIndex(i => i.itemId === draggedItem.item.itemId);
+        const targetIndex = currentItems.findIndex(i => i.itemId === targetItem.itemId);
+
+        if (draggedIndex === -1 || targetIndex === -1) return;
+
+        const [removedItem] = currentItems.splice(draggedIndex, 1);
+        currentItems.splice(targetIndex, 0, removedItem);
+
+        await actions.updateOrder({ ...order, items: currentItems });
+
+        setDragOverItemId(null);
+        setDraggedItem?.(null);
     };
 
     const handleSupplierClick = () => {
@@ -481,6 +563,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const showActionRow = order.status !== OrderStatus.COMPLETED;
     const canAcceptDrop = isDragOver && draggedItem && draggedItem.sourceOrderId !== order.id;
     const hasNewItems = order.status === OrderStatus.ON_THE_WAY && order.items.some(item => item.isNew);
+    
+    const shouldShowPaymentBadge = supplier?.paymentMethod && !(isManagerView && (order.store === StoreName.WB || order.store === StoreName.SHANTI));
 
     return (
         <div
@@ -508,7 +592,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-white text-lg select-none">{order.supplierName}</h3>
                         <div className="flex-grow flex items-center gap-2">
-                            {supplier?.paymentMethod && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod]}`}>{supplier.paymentMethod.toUpperCase()}</span>}
+                            {shouldShowPaymentBadge && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod!]}`}>{supplier.paymentMethod!.toUpperCase()}</span>}
                             {order.status === OrderStatus.COMPLETED && (
                                 isEditingInvoice ? (
                                     <div className="flex items-center space-x-1">
@@ -543,15 +627,29 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                             key={item.itemId}
                             draggable={canEditCard}
                             onDragStart={(e) => handleDragStart(e, item)}
-                            onDragEnd={() => setDraggedItem?.(null)}
+                            onDragEnd={() => { setDraggedItem?.(null); setDragOverItemId(null); }}
+                            onDragOver={(e) => {
+                                if (draggedItem && draggedItem.sourceOrderId === order.id) {
+                                    e.preventDefault();
+                                }
+                            }}
+                            onDragEnter={() => {
+                                if (draggedItem && draggedItem.sourceOrderId === order.id && draggedItem.item.itemId !== item.itemId) {
+                                    setDragOverItemId(item.itemId);
+                                }
+                            }}
+                            onDragLeave={() => setDragOverItemId(null)}
+                            onDrop={(e) => handleInternalReorderDrop(e, item)}
                             onClick={(e) => handleItemClick(e, item)}
                             onContextMenu={(e) => handleContextMenu(e, item)}
                             role="button" tabIndex={0}
-                            className={`flex justify-between items-center px-2 py-1 rounded-md cursor-pointer hover:bg-gray-700 ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                            className={`flex justify-between items-center px-2 py-1 rounded-md cursor-pointer hover:bg-gray-700 transition-all duration-150
+                                ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}
+                                ${dragOverItemId === item.itemId ? 'border-t-2 border-indigo-500' : ''}
+                            `}
                         >
                             <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
                                 {item.isSpoiled && '🔸 '}{item.name}
-                                {item.isNew && <span className="ml-2 text-xs font-bold text-yellow-400">NEW</span>}
                             </span>
                             <div className="flex-shrink-0 flex items-center space-x-4">
                                 {order.status === OrderStatus.COMPLETED && !isManagerView ? (
@@ -616,7 +714,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 )}
             </div>
             {contextMenu && <ContextMenu {...contextMenu} onClose={() => setContextMenu(null)} />}
-            {isNumpadOpen && selectedItem && <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={handleSaveItem} onDelete={() => handleDeleteItem(selectedItem)} />}
+            {isNumpadOpen && selectedItem && <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={isManagerView ? handleEditQuantityAndSpoilDifference : handleSaveItem} onDelete={() => handleDeleteItem(selectedItem)} />}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onAddItem={handleAddItem} />}
             <ConfirmationModal isOpen={isConfirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} onConfirm={async () => await actions.deleteOrder(order.id)} title="Drop Order" message={`Are you sure you want to drop the order for ${order.supplierName}?`} confirmText="Drop" isDestructive />
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={handleSaveMasterItem} onDelete={handleDeleteMasterItem} />}

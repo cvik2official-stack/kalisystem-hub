@@ -106,9 +106,9 @@ const ItemsSettings: React.FC = () => {
   const handlePressStart = (e: React.MouseEvent | React.TouchEvent, item: Item) => {
     if ('button' in e && e.button === 2) return; // Allow right-click to pass to onContextMenu
     longPressTimer.current = window.setTimeout(() => {
-      const pageX = 'touches' in e ? e.touches[0].pageX : e.pageX;
-      const pageY = 'touches' in e ? e.touches[0].pageY : e.pageY;
-      setContextMenu({ x: pageX, y: pageY, item });
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      setContextMenu({ x: clientX, y: clientY, item });
     }, 500);
   };
 
@@ -118,7 +118,7 @@ const ItemsSettings: React.FC = () => {
 
   const handleContextMenu = (e: React.MouseEvent, item: Item) => {
     e.preventDefault();
-    setContextMenu({ x: e.pageX, y: e.pageY, item });
+    setContextMenu({ x: e.clientX, y: e.clientY, item });
   };
   
   const getContextMenuOptions = (item: Item) => {
