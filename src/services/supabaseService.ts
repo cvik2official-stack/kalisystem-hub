@@ -8,8 +8,20 @@
 
   -- Add a JSONB column to store bot settings for suppliers
   ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS bot_settings JSONB;
+
+  -- Create a table to store item prices per supplier
+  CREATE TABLE IF NOT EXISTS public.item_prices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    item_id UUID NOT NULL REFERENCES public.items(id) ON DELETE CASCADE,
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE CASCADE,
+    price NUMERIC NOT NULL,
+    unit TEXT NOT NULL,
+    is_master BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(item_id, supplier_id, unit)
+  );
 */
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -213,6 +225,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
 
     // The payload now includes the 'items' array.
     const orderPayload = {
+        supplier_id: order.supplierId, // Allow supplier changes
         status: order.status,
         is_sent: order.isSent,
         is_received: order.isReceived,
@@ -355,6 +368,35 @@ export const updateStore = async ({ store, url, key }: { store: Store; url: stri
         chatId: updated.chat_id,
     };
 };
+
+export const upsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: ItemPrice; url: string; key: string }): Promise<ItemPrice> => {
+    const payload = {
+        item_id: itemPrice.itemId,
+        supplier_id: itemPrice.supplierId,
+        price: itemPrice.price,
+        unit: itemPrice.unit,
+        is_master: itemPrice.isMaster,
+    };
+
+    const response = await fetch(`${url}/rest/v1/item_prices?on_conflict=item_id,supplier_id,unit`, {
+        method: 'POST',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation,resolution=merge-duplicates' },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error(`Failed to upsert item price: ${await response.text()}`);
+    const data = await response.json();
+    const upsertedPrice = data[0];
+    return {
+        id: upsertedPrice.id,
+        itemId: upsertedPrice.item_id,
+        supplierId: upsertedPrice.supplier_id,
+        price: upsertedPrice.price,
+        unit: upsertedPrice.unit,
+        isMaster: upsertedPrice.is_master,
+    };
+};
+
 
 // --- STORAGE OPERATIONS ---
 export const uploadFileToStorage = async (

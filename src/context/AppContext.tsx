@@ -61,6 +61,7 @@ export interface AppContextActions {
     deleteOrder: (orderId: string) => Promise<void>;
     syncWithSupabase: () => Promise<void>;
     addItemToDispatch: (item: Item) => Promise<void>;
+    mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
 }
 
 
@@ -229,6 +230,7 @@ export const AppContext = createContext<{
       updateOrder: async () => {}, deleteOrder: async () => {},
       syncWithSupabase: async () => {},
       addItemToDispatch: async () => {},
+      mergeOrders: async () => {},
   }
 });
 
@@ -370,6 +372,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // Awaiting `addOrder` directly here.
             await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
         }
+    },
+    mergeOrders: async (sourceOrderId: string, destinationOrderId: string) => {
+        const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
+        const destinationOrder = state.orders.find(o => o.id === destinationOrderId);
+
+        if (!sourceOrder || !destinationOrder) {
+            addToast("Could not find orders to merge.", "error");
+            return;
+        }
+
+        const mergedItems = [...destinationOrder.items];
+        sourceOrder.items.forEach(itemToMerge => {
+            const existingItemIndex = mergedItems.findIndex(i => i.itemId === itemToMerge.itemId);
+            if (existingItemIndex > -1) {
+                mergedItems[existingItemIndex].quantity += itemToMerge.quantity;
+            } else {
+                mergedItems.push(itemToMerge);
+            }
+        });
+
+        await actions.updateOrder({ ...destinationOrder, items: mergedItems });
+        await actions.deleteOrder(sourceOrderId);
+        addToast(`Merged order into ${destinationOrder.supplierName}.`, "success");
     },
     syncWithSupabase,
   };

@@ -44,6 +44,7 @@ export interface Item {
 export interface SupplierBotSettings {
   showAttachInvoice?: boolean;
   showMissingItems?: boolean;
+
   showOkButton?: boolean;
   showDriverOnWayButton?: boolean;
 }
@@ -88,4 +89,13 @@ export interface ParsedItem {
   newItemName?: string;
   quantity: number;
   unit?: Unit;
+}
+
+export interface ItemPrice {
+    id?: string; // Supabase UUID
+    itemId: string;
+    supplierId: string;
+    price: number;
+    unit: Unit;
+    isMaster: boolean;
 }

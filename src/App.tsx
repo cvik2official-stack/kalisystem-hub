@@ -1,16 +1,21 @@
-
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
-import { OrderStatus, StoreName } from './types';
+import { OrderStatus, StoreName, SupplierName } from './types';
 import ManagerView from './components/ManagerView';
+import { generateKaliUnifyReport, generateKaliZapReport } from './utils/messageFormatter';
+import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramService';
+import { useToasts } from './context/ToastContext';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings } = state;
+  const { addToast } = useToasts();
+  const [isSendingReport, setIsSendingReport] = useState(false);
+  const [isSendingZapReport, setIsSendingZapReport] = useState(false);
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -38,6 +43,72 @@ const App: React.FC = () => {
     if (activeStore !== 'Settings') {
         dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: true, store: activeStore } });
         dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.ON_THE_WAY });
+    }
+  };
+
+  const handleSendKaliUnifyReport = async () => {
+    setIsSendingReport(true);
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const todaysKaliOrders = orders.filter(order => {
+            const completedDate = order.completedAt ? new Date(order.completedAt) : null;
+            if (!completedDate) return false;
+            completedDate.setHours(0, 0, 0, 0);
+
+            return order.supplierName === SupplierName.KALI &&
+                   order.status === OrderStatus.COMPLETED &&
+                   completedDate.getTime() === today.getTime();
+        });
+
+        if (todaysKaliOrders.length === 0) {
+            addToast('No completed KALI orders found for today.', 'info');
+            return;
+        }
+
+        if (!settings.telegramBotToken) {
+            addToast('Telegram Bot Token is not set in Options.', 'error');
+            return;
+        }
+
+        const message = generateKaliUnifyReport(todaysKaliOrders);
+        await sendKaliUnifyReport(message, settings.telegramBotToken);
+        addToast('Kali Unify Report sent successfully!', 'success');
+
+    } catch (error: any) {
+        addToast(`Failed to send report: ${error.message}`, 'error');
+    } finally {
+        setIsSendingReport(false);
+    }
+  };
+  
+  const handleSendKaliZapReport = async () => {
+    setIsSendingZapReport(true);
+    try {
+        const onTheWayKaliOrders = orders.filter(order => 
+            order.supplierName === SupplierName.KALI &&
+            order.status === OrderStatus.ON_THE_WAY
+        );
+
+        if (onTheWayKaliOrders.length === 0) {
+            addToast('No KALI orders are currently on the way.', 'info');
+            return;
+        }
+        
+        if (!settings.telegramBotToken) {
+            addToast('Telegram Bot Token is not set in Options.', 'error');
+            return;
+        }
+
+        const message = generateKaliZapReport(onTheWayKaliOrders);
+        await sendKaliZapReport(message, settings.telegramBotToken);
+        addToast('Kali "On the Way" report sent!', 'success');
+        
+    } catch (error: any) {
+        addToast(`Failed to send Zap report: ${error.message}`, 'error');
+    } finally {
+        setIsSendingZapReport(false);
     }
   };
 
@@ -83,6 +154,28 @@ const App: React.FC = () => {
                   >
                       <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                           <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                      </svg>
+                  </button>
+                  <button
+                      onClick={handleSendKaliZapReport}
+                      disabled={isSendingZapReport}
+                      className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+                      aria-label="Send Kali On The Way Report"
+                      title="Send Kali On The Way Report"
+                  >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M11.983 1.904a1.25 1.25 0 00-2.262 0l-5.25 10.5a1.25 1.25 0 001.131 1.85h3.331l-2.006 4.512a1.25 1.25 0 002.262 1.004l5.25-10.5a1.25 1.25 0 00-1.13-1.85h-3.332l2.006-4.512z" />
+                      </svg>
+                  </button>
+                  <button
+                      onClick={handleSendKaliUnifyReport}
+                      disabled={isSendingReport}
+                      className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+                      aria-label="Send Kali Unify Report"
+                      title="Send Kali Unify Report"
+                  >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
                       </svg>
                   </button>
                    <button 

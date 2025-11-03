@@ -3,7 +3,7 @@ import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
 import SupplierCard from './SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
-import { Order, OrderItem, OrderStatus, Supplier } from '../types';
+import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod } from '../types';
 import PasteItemsModal from './modals/PasteItemsModal';
 
 const formatDateGroupHeader = (key: string): string => {
@@ -24,7 +24,7 @@ const formatDateGroupHeader = (key: string): string => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, activeStatus, orders } = state;
+  const { activeStore, activeStatus, orders, suppliers } = state;
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
@@ -115,10 +115,22 @@ const OrderWorkspace: React.FC = () => {
 
   const filteredOrders = useMemo(() => {
     if (activeStore === 'Settings') return [];
-    return orders
-      .filter(order => order.store === activeStore && order.status === activeStatus)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [orders, activeStore, activeStatus]);
+
+    let filtered: Order[];
+
+    if (activeStore === StoreName.KALI) {
+        // Special filter for the KALI tab: show all orders with KALI payment method
+        filtered = orders.filter(order => {
+            const supplier = suppliers.find(s => s.id === order.supplierId);
+            return supplier?.paymentMethod === PaymentMethod.KALI && order.status === activeStatus;
+        });
+    } else {
+        // Default filter for all other store tabs
+        filtered = orders.filter(order => order.store === activeStore && order.status === activeStatus);
+    }
+    
+    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [orders, activeStore, activeStatus, suppliers]);
   
   const groupedCompletedOrders = useMemo(() => {
     if (activeStatus !== OrderStatus.COMPLETED) return {};
@@ -220,7 +232,11 @@ const OrderWorkspace: React.FC = () => {
                       {isExpanded && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
                           {groupedCompletedOrders[key].map((order) => (
-                            <SupplierCard key={order.id} order={order} />
+                            <SupplierCard 
+                                key={order.id} 
+                                order={order}
+                                showStoreName={activeStore === StoreName.KALI} 
+                            />
                           ))}
                         </div>
                       )}
@@ -237,6 +253,7 @@ const OrderWorkspace: React.FC = () => {
                     draggedItem={draggedItem}
                     setDraggedItem={setDraggedItem}
                     onItemDrop={handleItemDrop}
+                    showStoreName={activeStore === StoreName.KALI}
                 />
             ))}
             </div>

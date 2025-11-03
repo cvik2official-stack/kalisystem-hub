@@ -171,3 +171,42 @@ Please mark items as received or spoiled upon arrival.
 
     await sendMessage(token, storeChatId, message);
 };
+
+/**
+ * Sends the consolidated Kali Unify Report to a specific Telegram channel.
+ * @param message The pre-formatted report message.
+ * @param token The Telegram Bot Token.
+ */
+export const sendKaliUnifyReport = async (
+    message: string,
+    token: string
+): Promise<void> => {
+    const KALI_UNIFY_CHAT_ID = "-1003065576801";
+    const today = new Date().toISOString().split('T')[0];
+
+    const replyMarkup: ReplyMarkup = {
+        inline_keyboard: [
+            [
+                { text: "Add Topup", callback_data: `unify_add_topup_${today}` },
+                { text: "Set Store Ticket", callback_data: `unify_set_ticket_${today}` }
+            ]
+        ]
+    };
+
+    // The unify report uses plain text, so we send it as HTML without any tags.
+    await sendMessage(token, KALI_UNIFY_CHAT_ID, message, replyMarkup);
+};
+
+/**
+ * Sends the consolidated Kali "On the Way" report to a specific Telegram chat.
+ * @param message The pre-formatted report message (HTML).
+ * @param token The Telegram Bot Token.
+ */
+export const sendKaliZapReport = async (
+    message: string,
+    token: string
+): Promise<void> => {
+    const KALI_ZAP_CHAT_ID = "5186573916";
+    // Send a simple HTML message with no buttons
+    await sendMessage(token, KALI_ZAP_CHAT_ID, message);
+};
