@@ -1,5 +1,3 @@
-
-
 import React, { useContext, useMemo, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -156,7 +154,7 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
                         </div>
                       </button>
                       {isExpanded && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
                           {groupedCompletedOrders[key].map((order) => (
                             <SupplierCard key={order.id} order={order} isManagerView={true} />
                           ))}

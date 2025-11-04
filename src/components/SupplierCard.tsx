@@ -1,18 +1,200 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, SupplierName, Supplier, PaymentMethod, StoreName, Store, ItemPrice } from '../types';
+import { Order, OrderItem, OrderStatus, Unit, Item, Supplier, PaymentMethod, StoreName, ItemPrice } from '../types';
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
 import { useToasts } from '../context/ToastContext';
 import ConfirmationModal from './modals/ConfirmationModal';
 import EditItemModal from './modals/EditItemModal';
-import { generateOrderMessage } from '../utils/messageFormatter';
+import { generateOrderMessage, generateReceiptMessage } from '../utils/messageFormatter';
 import EditSupplierModal from './modals/EditSupplierModal';
-import { sendOrderToSupplierOnTelegram, sendOrderUpdateToSupplierOnTelegram } from '../services/telegramService';
+import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram } from '../services/telegramService';
 import AddSupplierModal from './modals/AddSupplierModal';
 import MergeOrderModal from './modals/MergeOrderModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
+import { generateInvoiceImage } from '../services/geminiService';
+import InvoicePreviewModal from './modals/InvoicePreviewModal';
+
+// --- SUB-COMPONENTS START ---
+
+const CardHeader: React.FC<{
+  order: Order;
+  supplier?: Supplier;
+  isManuallyCollapsed: boolean;
+  onToggleCollapse: () => void;
+  onHeaderContextMenu: (e: React.MouseEvent | React.TouchEvent) => void;
+  onHeaderClick: () => void;
+  showStoreName?: boolean;
+  isDraggableForMerge: boolean;
+  onMergeDragStart: (e: React.DragEvent) => void;
+  showActionsButton?: boolean;
+  onActionsClick?: (e: React.MouseEvent) => void;
+}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderContextMenu, onHeaderClick, showStoreName, isDraggableForMerge, onMergeDragStart, showActionsButton, onActionsClick }) => {
+    const paymentMethodBadgeColors: Record<string, string> = {
+        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
+        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
+        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
+        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+    };
+    const isManagerView = !!showStoreName;
+    const shouldShowPaymentBadge = supplier?.paymentMethod && !(isManagerView && (order.store === StoreName.WB || order.store === StoreName.SHANTI));
+
+    return (
+        <div
+            className="px-2 pt-2 flex justify-between items-start"
+            onContextMenu={onHeaderContextMenu}
+            onDoubleClick={(e) => e.stopPropagation()}
+            draggable={isDraggableForMerge}
+            onDragStart={isDraggableForMerge ? onMergeDragStart : undefined}
+        >
+            <div className="flex-grow">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {showActionsButton && (
+                        <button onClick={onActionsClick} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Order Actions">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                        </button>
+                    )}
+                    <h3 onClick={onHeaderClick} className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer">{order.supplierName}</h3>
+                    <div className="flex-grow flex items-center gap-2">
+                        {shouldShowPaymentBadge && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod!]}`}>{supplier.paymentMethod!.toUpperCase()}</span>}
+                        {showStoreName && <span className="text-gray-400 font-medium text-base">({order.store})</span>}
+                    </div>
+                </div>
+            </div>
+            <div className="flex-shrink-0 flex items-center space-x-1">
+                <button onClick={onToggleCollapse} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label={isManuallyCollapsed ? 'Expand card' : 'Collapse card'}>
+                    {isManuallyCollapsed ? <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg>}
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const OrderItemRow: React.FC<{
+  item: OrderItem;
+  order: Order;
+  isDraggable: boolean;
+  dragHandleProps: any;
+  onQuantityClick: () => void;
+  onContextMenuClick: (e: React.MouseEvent) => void;
+  isEditingPrice: boolean;
+  editedItemPrice: string;
+  onPriceChange: (value: string) => void;
+  onPriceSave: () => void;
+  onPriceCancel: () => void;
+  displayPrice?: number;
+  dropZoneProps: any;
+}> = ({ item, isDraggable, dragHandleProps, onQuantityClick, onContextMenuClick, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps }) => {
+    return (
+        <div
+            {...dropZoneProps}
+            className={`flex items-center py-1 rounded-md transition-all duration-150 group ${dropZoneProps.className}`}
+        >
+            <div
+                {...(isDraggable ? dragHandleProps : {})}
+                className={`flex-shrink-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500 pr-1' : 'text-transparent'}`}
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
+                    <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+                </svg>
+            </div>
+            <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+                {item.isSpoiled && '🔸 '}{item.name}
+            </span>
+            <div className="flex-shrink-0 flex items-center space-x-2">
+                {isEditingPrice ? (
+                     <input
+                        type="number"
+                        value={editedItemPrice}
+                        onChange={(e) => onPriceChange(e.target.value)}
+                        onBlur={onPriceSave}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                            if (e.key === 'Escape') onPriceCancel();
+                        }}
+                        autoFocus
+                        onClick={(e) => e.stopPropagation()}
+                        className="bg-gray-900 text-white w-24 p-1 rounded-md text-sm font-mono text-right ring-1 ring-indigo-500"
+                        placeholder="Unit Price"
+                        step="0.01"
+                    />
+                ) : (
+                    displayPrice != null && (
+                         <span className="text-sm font-mono text-gray-400 w-24 text-right">
+                           {`$${displayPrice.toFixed(2)}`}
+                         </span>
+                    )
+                )}
+                <div
+                    onClick={onQuantityClick}
+                    className="font-semibold text-white text-right w-16 p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer"
+                >
+                    {item.quantity}{item.unit}
+                </div>
+                <button
+                    onClick={onContextMenuClick}
+                    className="p-1 text-gray-500 rounded-full hover:bg-gray-700 hover:text-white"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+    );
+};
+
+const CardFooter: React.FC<{
+  order: Order;
+  isManagerView: boolean;
+  isProcessing: boolean;
+  onAddItem: () => void;
+  onSend: () => void;
+  onUnsend: () => void;
+  onReceive: () => void;
+  onTelegram: () => void;
+  onCopy: () => void;
+}> = ({ order, isManagerView, isProcessing, onAddItem, onSend, onUnsend, onReceive, onTelegram, onCopy }) => {
+    if (order.status === OrderStatus.COMPLETED) return null;
+
+    if (order.status === OrderStatus.DISPATCHING && !isManagerView) {
+        return (
+            <div className="px-2 py-1 mt-1 border-t border-gray-700/50">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                        <button onClick={onAddItem} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
+                        <button onClick={onTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg></button>
+                        <button onClick={onCopy} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>
+                    </div>
+                    <button onClick={onSend} disabled={order.items.length === 0 || isProcessing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-indigo-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Send'}</button>
+                </div>
+            </div>
+        );
+    }
+    
+    if (order.status === OrderStatus.ON_THE_WAY) {
+        return (
+            <div className="px-2 py-1 mt-1 border-t border-gray-700/50">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                        {!isManagerView && <button onClick={onAddItem} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>}
+                        <button onClick={onUnsend} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
+                        {!isManagerView && <button onClick={onTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg></button>}
+                    </div>
+                    <button onClick={onReceive} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Received'}</button>
+                </div>
+            </div>
+        );
+    }
+    
+    return null;
+};
+
+// --- SUB-COMPONENTS END ---
+
 
 interface SupplierCardProps {
   order: Order;
@@ -30,7 +212,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, options: { label: string; action: () => void; isDestructive?: boolean; }[] } | null>(null);
-    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(order.status === OrderStatus.COMPLETED);
+    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() => order.items.length === 0 && order.status === OrderStatus.DISPATCHING);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isConfirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
@@ -39,10 +221,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isChangeSupplierModalOpen, setChangeSupplierModalOpen] = useState(false);
     const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
+    const [isSpoilMode, setIsSpoilMode] = useState(false);
     
     const [isEditItemModalOpen, setEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
-    const clickTimeout = useRef<number | null>(null);
 
     const [isEditSupplierModalOpen, setEditSupplierModalOpen] = useState(false);
     const supplier = state.suppliers.find(s => s.id === order.supplierId);
@@ -52,11 +234,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
     const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
-    useEffect(() => {
-        return () => {
-            if (clickTimeout.current) clearTimeout(clickTimeout.current);
-        };
-    }, []);
+    const [invoicePreview, setInvoicePreview] = useState<{ isOpen: boolean; image: string | null }>({ isOpen: false, image: null });
+
 
     useEffect(() => {
         if (isEditingInvoice) {
@@ -82,18 +261,20 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     addToast('Invalid amount entered.', 'error');
                 }
             }
-        } catch (error) {
-            console.error("Failed to save invoice amount:", error);
         } finally {
             setIsEditingInvoice(false);
             setIsProcessing(false);
         }
     };
     
-    const handleSaveItemPrice = async (orderItem: OrderItem) => {
+    const handleSaveItemPrice = async () => {
+        if (!editingPriceItemId) return;
         setIsProcessing(true);
         try {
             const newPrice = parseFloat(editedItemPrice);
+            const orderItem = order.items.find(i => i.itemId === editingPriceItemId);
+            if (!orderItem) return;
+
             let updatedItems;
 
             if (isNaN(newPrice) || editedItemPrice.trim() === '') {
@@ -106,20 +287,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 });
             } else {
                 const priceToSave = newPrice > 1000 ? newPrice / 4000 : newPrice;
-                updatedItems = order.items.map(i =>
-                    i.itemId === orderItem.itemId ? { ...i, price: priceToSave } : i
-                );
+                updatedItems = order.items.map(i => i.itemId === orderItem.itemId ? { ...i, price: priceToSave } : i );
             }
             
-            const newInvoiceAmount = updatedItems.reduce((total, item) => {
-                return total + ((item.price || 0) * item.quantity);
-            }, 0);
+            const newInvoiceAmount = updatedItems.reduce((total, item) => total + ((item.price || 0) * item.quantity), 0);
             
             await actions.updateOrder({ ...order, items: updatedItems, invoiceAmount: newInvoiceAmount });
             addToast(`Price updated for ${orderItem.name}.`, 'success');
             
-        } catch (error) {
-            console.error("Failed to save item price:", error);
         } finally {
             setEditingPriceItemId(null);
             setEditedItemPrice('');
@@ -131,59 +306,27 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         if (!selectedItem) return;
         setIsProcessing(true);
         try {
-          const itemPrice: ItemPrice = {
-            itemId: selectedItem.itemId,
-            supplierId: order.supplierId,
-            price: price,
-            unit: unit,
-            isMaster: isMaster,
-          };
+          const itemPrice: ItemPrice = { itemId: selectedItem.itemId, supplierId: order.supplierId, price, unit, isMaster };
           await actions.upsertItemPrice(itemPrice);
           addToast(`Price for ${selectedItem.name} set to ${price}/${unit}.`, 'success');
+        } finally {
           setIsPriceNumpadOpen(false);
           setSelectedItem(null);
-        } catch (error: any) {
-          addToast(`Failed to set price: ${error.message}`, 'error');
-        } finally {
           setIsProcessing(false);
         }
     };
-
-    const handleItemClick = (e: React.MouseEvent, item: OrderItem) => {
-        // New: Manager view single-click opens context menu for non-completed orders
-        if (isManagerView && order.status !== OrderStatus.COMPLETED) {
-            handleContextMenu(e, item);
-            return;
-        }
-
-        // Existing: Double-click always opens context menu (for operator)
-        if (e.detail === 2) { 
-            handleContextMenu(e, item);
-            return;
-        }
-
-        // Existing: Single-click with delay for operator view
-        if (clickTimeout.current) {
-            clearTimeout(clickTimeout.current);
-            clickTimeout.current = null;
-        }
     
-        clickTimeout.current = window.setTimeout(() => {
-            clickTimeout.current = null;
-            if (order.status === OrderStatus.COMPLETED && !isManagerView) {
-                setEditingPriceItemId(item.itemId);
-                const masterPrice = state.itemPrices.find(p =>
-                    p.itemId === item.itemId &&
-                    p.supplierId === order.supplierId &&
-                    p.isMaster
-                )?.price;
-                const priceForEditing = item.price ?? masterPrice;
-                setEditedItemPrice(priceForEditing != null ? String(priceForEditing) : '');
-            } else if (order.status !== OrderStatus.COMPLETED && !isManagerView) {
-                setSelectedItem(item);
-                setNumpadOpen(true);
-            }
-        }, 250);
+    const handleQuantityClick = (item: OrderItem) => {
+        setSelectedItem(item);
+        if (order.status === OrderStatus.COMPLETED && !isManagerView) {
+            setEditingPriceItemId(item.itemId);
+            const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+            const priceForEditing = item.price ?? masterPrice;
+            setEditedItemPrice(priceForEditing != null ? String(priceForEditing) : '');
+        } else if (order.status !== OrderStatus.COMPLETED) {
+            setIsSpoilMode(false); // Default is quantity edit
+            setNumpadOpen(true);
+        }
     };
 
     const handleSpoilItemWithQuantity = async (quantity: number) => {
@@ -191,77 +334,46 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         const spoilQuantity = isNaN(quantity) ? selectedItem.quantity : quantity;
     
         if (spoilQuantity <= 0 || spoilQuantity > selectedItem.quantity) {
-            addToast('Invalid spoil quantity.', 'error');
-            setNumpadOpen(false);
-            setSelectedItem(null);
-            return;
+            addToast('Invalid spoil quantity.', 'error'); return;
         }
     
         setIsProcessing(true);
         try {
             const originalItem = selectedItem;
             const remainingQuantity = originalItem.quantity - spoilQuantity;
-    
-            // Find if there's already a spoiled version of this item
             const existingSpoiledItemIndex = order.items.findIndex(i => i.itemId === originalItem.itemId && i.isSpoiled);
-    
             let updatedItems = [...order.items];
-    
-            // Update original item
             const originalItemIndex = updatedItems.findIndex(i => i.itemId === originalItem.itemId && !i.isSpoiled);
+            
             if (originalItemIndex !== -1) {
-                if (remainingQuantity > 0) {
-                    updatedItems[originalItemIndex] = { ...updatedItems[originalItemIndex], quantity: remainingQuantity };
-                } else {
-                    // Remove original if all of it is spoiled
-                    updatedItems.splice(originalItemIndex, 1);
-                }
+                if (remainingQuantity > 0) updatedItems[originalItemIndex] = { ...updatedItems[originalItemIndex], quantity: remainingQuantity };
+                else updatedItems.splice(originalItemIndex, 1);
             }
     
-            // Update or add spoiled item
-            if (existingSpoiledItemIndex !== -1) {
-                updatedItems[existingSpoiledItemIndex].quantity += spoilQuantity;
-            } else {
-                updatedItems.push({
-                    ...originalItem,
-                    quantity: spoilQuantity,
-                    isSpoiled: true,
-                });
-            }
+            if (existingSpoiledItemIndex !== -1) updatedItems[existingSpoiledItemIndex].quantity += spoilQuantity;
+            else updatedItems.push({ ...originalItem, quantity: spoilQuantity, isSpoiled: true });
             
             await actions.updateOrder({ ...order, items: updatedItems });
             addToast(`${spoilQuantity} ${originalItem.unit || ''} of ${originalItem.name} marked as spoiled.`, 'success');
-    
-        } catch (error) {
-            console.error("Failed to spoil item with quantity:", error);
         } finally {
-            setNumpadOpen(false);
-            setSelectedItem(null);
             setIsProcessing(false);
         }
     };
     
     const handleSaveItem = async (quantity: number, unit?: Unit) => {
         if (!selectedItem) return;
-
         const masterItem = state.items.find(i => i.id === selectedItem.itemId);
         const isUnitChangedForMaster = masterItem && unit && masterItem.unit !== unit;
 
         setIsProcessing(true);
         try {
-            const newItems = order.items.map(item =>
-                item.itemId === selectedItem.itemId ? { ...item, quantity, unit } : item
-            );
+            const newItems = order.items.map(item => item.itemId === selectedItem.itemId ? { ...item, quantity, unit } : item );
             await actions.updateOrder({ ...order, items: newItems });
 
             if (isUnitChangedForMaster) {
                 await actions.updateItem({ ...masterItem, unit: unit! });
                 addToast(`Default unit for "${masterItem.name}" updated to ${unit}.`, 'info');
             }
-            setNumpadOpen(false);
-            setSelectedItem(null);
-        } catch (error) {
-            console.error("Failed to save item:", error);
         } finally {
             setIsProcessing(false);
         }
@@ -272,72 +384,38 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         const originalQuantity = selectedItem.quantity;
         const difference = originalQuantity - quantity;
     
-        if (difference < 0) {
-            addToast("Cannot increase quantity. Please spoil and re-order.", 'error');
-            return;
-        }
-        
-        if (difference === 0) {
-            setNumpadOpen(false);
-            setSelectedItem(null);
-            return;
-        }
+        if (difference < 0) { addToast("Cannot increase quantity.", 'error'); return; }
+        if (difference === 0) return;
     
         setIsProcessing(true);
         try {
             const currentItems = [...order.items];
-    
-            // Find and update the original (non-spoiled) item
             const originalItemIndex = currentItems.findIndex(i => i.itemId === selectedItem.itemId && !i.isSpoiled);
-            if (originalItemIndex !== -1) {
-                currentItems[originalItemIndex].quantity = quantity;
-            }
+            if (originalItemIndex !== -1) currentItems[originalItemIndex].quantity = quantity;
     
-            // Find if there's an existing spoiled item to update
             const existingSpoiledItemIndex = currentItems.findIndex(i => i.itemId === selectedItem.itemId && i.isSpoiled);
-            if (existingSpoiledItemIndex !== -1) {
-                currentItems[existingSpoiledItemIndex].quantity += difference;
-            } else {
-                // Otherwise, add a new spoiled item
-                currentItems.push({ ...selectedItem, quantity: difference, isSpoiled: true });
-            }
+            if (existingSpoiledItemIndex !== -1) currentItems[existingSpoiledItemIndex].quantity += difference;
+            else currentItems.push({ ...selectedItem, quantity: difference, isSpoiled: true });
             
-            // Filter out items with zero quantity
             const finalItems = currentItems.filter(i => i.quantity > 0);
     
             await actions.updateOrder({ ...order, items: finalItems });
             addToast(`${difference} ${selectedItem.unit || ''} of ${selectedItem.name} marked as spoiled.`, 'success');
-            
-            setNumpadOpen(false);
-            setSelectedItem(null);
-        } catch (error) {
-            console.error("Failed to edit quantity and handle spoiled difference:", error);
         } finally {
             setIsProcessing(false);
         }
     };
 
-
     const handleAddItem = async (item: OrderItem) => {
         setIsProcessing(true);
         try {
-            const existingItem = order.items.find(i => i.itemId === item.itemId && !i.isSpoiled); // Only merge with non-spoiled items
-            let newItems;
-    
-            if (existingItem) {
-                newItems = order.items.map(i => 
-                    (i.itemId === item.itemId && !i.isSpoiled)
-                    ? { ...i, quantity: i.quantity + item.quantity }
-                    : i
-                );
-            } else {
-                newItems = [...order.items, item ];
-            }
+            const existingItem = order.items.find(i => i.itemId === item.itemId && !i.isSpoiled);
+            const newItems = existingItem
+                ? order.items.map(i => (i.itemId === item.itemId && !i.isSpoiled) ? { ...i, quantity: i.quantity + item.quantity } : i)
+                : [...order.items, item];
             
             await actions.updateOrder({ ...order, items: newItems });
             addToast(`Added ${item.name}`, 'success');
-        } catch (error) {
-            console.error("Failed to add item:", error);
         } finally {
             setIsProcessing(false);
         }
@@ -347,14 +425,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             const newItems = order.items.filter(i => !(i.itemId === item.itemId && i.isSpoiled === item.isSpoiled));
-            if (newItems.length === 0 && order.status === OrderStatus.ON_THE_WAY) {
-                await actions.deleteOrder(order.id);
-                addToast(`Order for ${order.supplierName} removed as it became empty.`, 'success');
-            } else {
-                await actions.updateOrder({ ...order, items: newItems });
-            }
-        } catch (error) {
-            console.error("Failed to delete item:", error);
+            if (newItems.length === 0 && order.status !== OrderStatus.DISPATCHING) await actions.deleteOrder(order.id);
+            else await actions.updateOrder({ ...order, items: newItems });
         } finally {
             setIsProcessing(false);
         }
@@ -364,50 +436,21 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
-        } catch (error) {
-            console.error("Failed to send order:", error);
-        } finally {
-            setIsProcessing(false);
-        }
+        } finally { setIsProcessing(false); }
     }
 
     const handleUnsendOrder = async () => {
         setIsProcessing(true);
         try {
             await actions.updateOrder({ ...order, status: OrderStatus.DISPATCHING, isSent: false });
-        } catch (error) {
-            console.error("Failed to un-send order:", error);
-        } finally {
-            setIsProcessing(false);
-        }
+        } finally { setIsProcessing(false); }
     }
 
     const handleMarkAsReceived = async () => {
         setIsProcessing(true);
         try {
-            // No longer need to create a new order for spoiled items as they are tracked on the same card.
-            const receivedItems = order.items.filter(item => !item.isSpoiled);
-
-            for (const receivedItem of receivedItems) {
-                const masterItem = state.items.find(i => i.id === receivedItem.itemId);
-                if (masterItem && masterItem.trackStock) {
-                    const newStockQuantity = (masterItem.stockQuantity || 0) + receivedItem.quantity;
-                    await actions.updateItem({ ...masterItem, stockQuantity: newStockQuantity });
-                }
-            }
-
-            await actions.updateOrder({ 
-                ...order, 
-                status: OrderStatus.COMPLETED, 
-                isReceived: true, 
-                completedAt: new Date().toISOString() 
-            });
-
-        } catch (error) {
-            console.error("Failed to mark order as received:", error);
-        } finally {
-            setIsProcessing(false);
-        }
+            await actions.updateOrder({ ...order, status: OrderStatus.COMPLETED, isReceived: true, completedAt: new Date().toISOString() });
+        } finally { setIsProcessing(false); }
     }
 
     const handleChangeSupplier = async (newSupplier: Supplier) => {
@@ -426,128 +469,105 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsMergeModalOpen(false);
     };
 
-    const handleContextMenu = (e: React.MouseEvent | React.TouchEvent, target: 'supplier' | OrderItem) => {
+    const handleGenerateReceipt = async () => {
+        const { geminiApiKey } = state.settings;
+        if (!geminiApiKey) {
+            addToast('Gemini API Key is not set in Settings.', 'error');
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            const imageBase64 = await generateInvoiceImage(order, geminiApiKey);
+            setInvoicePreview({ isOpen: true, image: imageBase64 });
+        } catch (error: any) {
+            addToast(`Failed to generate receipt: ${error.message}`, 'error');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSendTelegramReceipt = async () => {
+        const { telegramBotToken } = state.settings;
+        if (!supplier || !supplier.chatId || !telegramBotToken) {
+            addToast('Supplier Chat ID or Bot Token is not configured.', 'error');
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            const message = generateReceiptMessage(order, state.itemPrices);
+            await sendReceiptOnTelegram(order, supplier, message, telegramBotToken);
+            addToast(`Receipt sent to ${order.supplierName}.`, 'success');
+        } catch (error: any) {
+            addToast(error.message || `Failed to send receipt.`, 'error');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleHeaderActionsClick = (e: React.MouseEvent) => {
         e.preventDefault();
+        e.stopPropagation();
         
-        const options: { label: string; action: () => void; isDestructive?: boolean; }[] = [];
-        
-        if (target === 'supplier') {
-            if (order.status !== OrderStatus.COMPLETED) {
-                options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
-                options.push({ label: 'Merge...', action: () => setIsMergeModalOpen(true) });
-                options.push({ label: 'Drop (Cancel Order)', action: () => setConfirmDeleteOpen(true), isDestructive: true });
-            }
-        } else { // It's an OrderItem
-            if (isManagerView && order.status === OrderStatus.ON_THE_WAY) {
-                 options.push({ label: 'Edit Quantity...', action: () => {
-                    setSelectedItem(target);
-                    setNumpadOpen(true);
-                }});
-                options.push({ label: 'Spoil...', action: () => {
-                    setSelectedItem(target);
-                    setNumpadOpen(true);
-                }});
-                options.push({ label: 'Remove', action: () => handleDeleteItem(target), isDestructive: true });
-            } else if (!isManagerView) {
-                const masterItem = state.items.find(i => i.id === target.itemId);
-                if (masterItem) {
-                    if (order.status !== OrderStatus.COMPLETED) {
-                        options.push({ label: 'Edit...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
-                    }
-                    options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(target); setIsPriceNumpadOpen(true); } });
-                    if (order.status === OrderStatus.ON_THE_WAY) {
-                        options.push({ label: 'Spoil', action: () => { setSelectedItem(target); setNumpadOpen(true); } });
-                    }
-                    if (order.status !== OrderStatus.COMPLETED) {
-                       options.push({ label: 'Remove', action: () => handleDeleteItem(target), isDestructive: true });
-                    }
-                }
-            }
+        let options: { label: string; action: () => void; isDestructive?: boolean; }[] = [];
+
+        switch (order.status) {
+            case OrderStatus.COMPLETED:
+                options = [
+                    { label: 'Receipt', action: handleGenerateReceipt },
+                    { label: 'Telegram Receipt', action: handleSendTelegramReceipt },
+                    { label: 'Drop', action: () => setConfirmDeleteOpen(true), isDestructive: true }
+                ];
+                break;
+            case OrderStatus.DISPATCHING:
+            case OrderStatus.ON_THE_WAY:
+                options = [
+                    { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) },
+                    { label: 'Drop', action: () => setConfirmDeleteOpen(true), isDestructive: true }
+                ];
+                break;
         }
 
-        if(options.length === 0) return;
+        if (options.length > 0) {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setContextMenu({ x: rect.left, y: rect.bottom + 5, options });
+        }
+    };
+
+    const handleHeaderContextMenu = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        // With the universal actions button, disable right-click on the header for consistency.
+        return;
+    };
+
+    const handleItemContextMenu = (e: React.MouseEvent, item: OrderItem) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const options: { label: string; action: () => void; isDestructive?: boolean; }[] = [];
+        const masterItem = state.items.find(i => i.id === item.itemId);
+
+        if (isManagerView && order.status === OrderStatus.ON_THE_WAY) {
+            options.push({ label: 'Edit Quantity...', action: () => handleQuantityClick(item) });
+            options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
+        } else if (!isManagerView && masterItem) {
+            if (order.status !== OrderStatus.COMPLETED) {
+                options.push({ label: 'Edit Master Item...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
+            }
+            options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(item); setIsPriceNumpadOpen(true); } });
+            if (order.status === OrderStatus.ON_THE_WAY) {
+                options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
+            }
+        }
+        if (order.status !== OrderStatus.COMPLETED) {
+            options.push({ label: 'Drop', action: () => handleDeleteItem(item), isDestructive: true });
+        }
         
-        const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-        const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-        setContextMenu({ x: clientX, y: clientY, options });
+        if (options.length > 0) setContextMenu({ x: e.clientX, y: e.clientY, options });
     };
 
     const handleCopyOrderMessage = () => {
-        navigator.clipboard.writeText(generateOrderMessage(order, 'plain')).then(() => {
-            addToast('Order copied to clipboard!', 'success');
-        });
+        navigator.clipboard.writeText(generateOrderMessage(order, 'plain')).then(() => addToast('Order copied!', 'success'));
     };
     
-    const handleSaveMasterItem = async (itemToSave: Item | Omit<Item, 'id'>) => {
-        if ('id' in itemToSave) await actions.updateItem(itemToSave as Item);
-        else addToast('Error: Cannot save an item without an ID from this view.', 'error');
-    };
-
-    const handleDeleteMasterItem = async (itemId: string) => {
-        await actions.deleteItem(itemId);
-    };
-
-    const handleDragStart = (e: React.DragEvent<HTMLDivElement>, item: OrderItem) => {
-        if (setDraggedItem) {
-            e.dataTransfer.setData('text/plain', item.itemId);
-            e.dataTransfer.effectAllowed = "move";
-            setDraggedItem({ item, sourceOrderId: order.id });
-        }
-    };
-
-    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        if (draggedItem && draggedItem.sourceOrderId !== order.id) setIsDragOver(true);
-    };
-
-    const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        setIsDragOver(false);
-    };
-
-    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
-        if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
-            onItemDrop(order.id);
-        }
-    };
-    
-    const handleInternalReorderDrop = async (e: React.DragEvent<HTMLDivElement>, targetItem: OrderItem) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (!draggedItem || draggedItem.sourceOrderId !== order.id || draggedItem.item.itemId === targetItem.itemId) {
-            setDragOverItemId(null);
-            return;
-        }
-
-        const currentItems = [...order.items];
-        const draggedIndex = currentItems.findIndex(i => i.itemId === draggedItem.item.itemId);
-        const targetIndex = currentItems.findIndex(i => i.itemId === targetItem.itemId);
-
-        if (draggedIndex === -1 || targetIndex === -1) return;
-
-        const [removedItem] = currentItems.splice(draggedIndex, 1);
-        currentItems.splice(targetIndex, 0, removedItem);
-
-        await actions.updateOrder({ ...order, items: currentItems });
-
-        setDragOverItemId(null);
-        setDraggedItem?.(null);
-    };
-
-    const handleSupplierClick = () => {
-        if (!isManagerView && supplier && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) {
-            setEditSupplierModalOpen(true);
-        }
-    };
-    
-    const handleSaveSupplier = async (updatedSupplier: Supplier) => {
-        await actions.updateSupplier(updatedSupplier);
-    };
-
     const handleSendToTelegram = async () => {
         const { telegramBotToken } = state.settings;
         if (!supplier || !supplier.chatId || !telegramBotToken) {
@@ -557,231 +577,166 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html'), telegramBotToken);
-            addToast(`Order sent to ${order.supplierName} via Telegram.`, 'success');
+            addToast(`Order sent to ${order.supplierName}.`, 'success');
             if (order.status === OrderStatus.DISPATCHING) {
                 await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
             }
         } catch (error: any) {
-            addToast(error.message || `Failed to send to ${order.supplierName}.`, 'error');
-        } finally {
-            setIsProcessing(false);
+            addToast(error.message || `Failed to send.`, 'error');
+        } finally { setIsProcessing(false); }
+    };
+    
+    const handleItemDragStart = (e: React.DragEvent, item: OrderItem) => {
+        if (setDraggedItem) {
+            e.dataTransfer.setData('text/plain', item.itemId);
+            e.dataTransfer.effectAllowed = "move";
+            setDraggedItem({ item, sourceOrderId: order.id });
         }
     };
-
-    const handleSendUpdateToTelegram = async () => {
-        const { telegramBotToken } = state.settings;
-        if (!supplier || !supplier.chatId || !telegramBotToken) {
-            addToast('Supplier Chat ID or Bot Token is not configured.', 'error');
-            return;
-        }
     
-        const newItems = order.items.filter(item => item.isNew);
-        if (newItems.length === 0) {
-            addToast('No new items to send.', 'info');
-            return;
-        }
-    
-        setIsProcessing(true);
-        try {
-            await sendOrderUpdateToSupplierOnTelegram(order, newItems, supplier, telegramBotToken);
-            const updatedItems = order.items.map(({ isNew, ...item }) => item);
-            await actions.updateOrder({ ...order, items: updatedItems });
-            addToast(`Update sent to ${order.supplierName}.`, 'success');
-        } catch (error: any) {
-            addToast(error.message || `Failed to send update to ${order.supplierName}.`, 'error');
-        } finally {
-            setIsProcessing(false);
-        }
+    const handleMergeDragStart = (e: React.DragEvent) => {
+        if (setDraggedItem) setDraggedItem(null); // Critical to differentiate from item drag
+        e.dataTransfer.setData('application/x-order-merge', order.id);
+        e.dataTransfer.effectAllowed = 'move';
     };
 
-    const paymentMethodBadgeColors: Record<string, string> = {
-        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
-        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
-        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
-        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+    const handleInternalReorderDrop = async (e: React.DragEvent, targetItem: OrderItem) => {
+        e.preventDefault(); e.stopPropagation();
+        if (!draggedItem || draggedItem.sourceOrderId !== order.id || draggedItem.item.itemId === targetItem.itemId) {
+            setDragOverItemId(null); return;
+        }
+        const currentItems = [...order.items];
+        const draggedIndex = currentItems.findIndex(i => i.itemId === draggedItem.item.itemId);
+        const targetIndex = currentItems.findIndex(i => i.itemId === targetItem.itemId);
+        if (draggedIndex === -1 || targetIndex === -1) return;
+        const [removedItem] = currentItems.splice(draggedIndex, 1);
+        currentItems.splice(targetIndex, 0, removedItem);
+        await actions.updateOrder({ ...order, items: currentItems });
+        setDragOverItemId(null);
+        setDraggedItem?.(null);
     };
 
     const isEffectivelyCollapsed = isManuallyCollapsed || (!!draggedItem && draggedItem.sourceOrderId !== order.id);
     const canEditCard = !isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
-    const showActionRow = order.status !== OrderStatus.COMPLETED;
-    const canAcceptDrop = isDragOver && draggedItem && draggedItem.sourceOrderId !== order.id;
     
-    const shouldShowPaymentBadge = supplier?.paymentMethod && !(isManagerView && (order.store === StoreName.WB || order.store === StoreName.SHANTI));
-
     return (
         <div
-            onDragOver={canEditCard ? handleDragOver : undefined}
-            onDragLeave={canEditCard ? handleDragLeave : undefined}
-            onDrop={canEditCard ? handleDrop : undefined}
-            className={`relative bg-gray-800 rounded-xl shadow-lg flex flex-col border-t-4 transition-all duration-300 md:max-w-sm
-                ${order.status === OrderStatus.DISPATCHING ? 'border-blue-500' : ''}
-                ${order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' : ''}
-                ${order.status === OrderStatus.COMPLETED ? 'border-green-500' : ''}
-                ${canAcceptDrop ? 'border-2 border-dashed border-indigo-400' : ''}
+            onDragOver={(e) => {
+                e.preventDefault();
+                const isItemDrag = !!(draggedItem && draggedItem.sourceOrderId !== order.id);
+                const isOrderDrag = e.dataTransfer.types.includes('application/x-order-merge');
+                if (isItemDrag || isOrderDrag) {
+                    setIsDragOver(true);
+                }
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setIsDragOver(false);
+
+                const sourceOrderId = e.dataTransfer.getData('application/x-order-merge');
+                if (sourceOrderId && sourceOrderId !== order.id) {
+                    const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
+                    if (sourceOrder && sourceOrder.store === order.store && sourceOrder.status === order.status) {
+                        actions.mergeOrders(sourceOrderId, order.id);
+                    } else {
+                        addToast('Cannot merge these orders.', 'error');
+                    }
+                } else if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
+                    onItemDrop(order.id);
+                }
+            }}
+            className={`relative rounded-xl shadow-lg flex flex-col transition-all duration-300
+                ${isDragOver ? 'bg-indigo-900/50' : 'bg-gray-800'}
+                ${order.status === OrderStatus.DISPATCHING ? 'border-t-4 border-blue-500' : ''}
+                ${order.status === OrderStatus.ON_THE_WAY ? 'border-t-4 border-yellow-500' : ''}
+                ${order.status === OrderStatus.COMPLETED ? 'border-t-4 border-green-500' : ''}
             `}
         >
-            {isProcessing && (
-                <div className="absolute inset-0 bg-gray-900 bg-opacity-60 flex items-center justify-center z-10 rounded-xl">
-                    <svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                </div>
-            )}
-            <div
-              className="px-2 pt-2 flex justify-between items-start"
-              onContextMenu={(e) => handleContextMenu(e, 'supplier')}
-              onDoubleClick={(e) => e.stopPropagation()}
-            >
-                <div onClick={handleSupplierClick} className="flex-grow p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer">
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-bold text-white text-lg select-none">{order.supplierName}</h3>
-                        <div className="flex-grow flex items-center gap-2">
-                            {shouldShowPaymentBadge && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod!]}`}>{supplier.paymentMethod!.toUpperCase()}</span>}
-                            {order.status === OrderStatus.COMPLETED && (
-                                isEditingInvoice ? (
-                                    <div className="flex items-center space-x-1">
-                                        <span className="text-green-300">$</span>
-                                        <input type="number" value={invoiceAmount} onChange={(e) => setInvoiceAmount(e.target.value)} onBlur={handleSaveInvoiceAmount} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); if (e.key === 'Escape') setIsEditingInvoice(false); }} autoFocus className="bg-gray-900 text-white w-20 p-1 rounded-md text-sm font-mono ring-1 ring-indigo-500" placeholder="0.00" step="0.01" />
-                                    </div>
-                                ) : (
-                                    order.invoiceAmount != null ? (
-                                        <button onClick={(e) => { e.stopPropagation(); setIsEditingInvoice(true); }} className="text-sm font-mono bg-gray-700 px-2 py-0.5 rounded-full text-green-300 hover:bg-gray-600">${order.invoiceAmount.toFixed(2)}</button>
-                                    ) : (
-                                        <button onClick={(e) => { e.stopPropagation(); setIsEditingInvoice(true); }} className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label="Set Invoice Amount"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M8.433 7.418c.158-.103.346-.196.567-.267v1.698a2.5 2.5 0 00-1.162-.325c-.504 0-.918.336-1.125.683a2.5 2.5 0 00-.229 1.168c0 .635.216 1.183.635 1.572a2.064 2.064 0 001.268.63c.503 0 .91-.223 1.116-.654a2.5 2.5 0 00.217-1.143v-1.7c.221.07.41.164.568.267l.252.165a.5.5 0 00.653-.653l-.62-1.026a.505.505 0 00-.745-.235l-.252.165z" /><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.256A4.535 4.535 0 009 10.592v1.314c-.841.092-1.676.358-2.2324.752-.648.395-1.002 1.05-1.002 1.798 0 .99.602 1.765 1.324 2.256A4.535 4.535 0 009 16.592V17a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 15.766 14 15.009 14 14c0-.99-.602-1.765-1.324-2.256A4.535 4.535 0 0011 11.408V10.094c.841-.092 1.676-.358 2.324-.752.648.395 1.002-1.05 1.002-1.798 0-.99-.602-1.765-1.324-2.256A4.535 4.535 0 0011 4.408V4z" clipRule="evenodd" /></svg></button>
-                                    )
-                                )
-                            )}
-                            {showStoreName && <span className="text-gray-400 font-medium text-base">({order.store})</span>}
-                        </div>
-                    </div>
-                </div>
-                 <div className="flex-shrink-0 flex items-center space-x-1">
-                    <button onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label={isManuallyCollapsed ? 'Expand card' : 'Collapse card'}>
-                        {isManuallyCollapsed ? <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg>}
-                    </button>
-                </div>
-            </div>
+            {isProcessing && <div className="absolute inset-0 bg-gray-900/60 flex items-center justify-center z-10 rounded-xl"><svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>}
+            
+            <CardHeader
+                order={order}
+                supplier={supplier}
+                isManuallyCollapsed={isEffectivelyCollapsed}
+                onToggleCollapse={() => setIsManuallyCollapsed(!isManuallyCollapsed)}
+                onHeaderContextMenu={handleHeaderContextMenu}
+                onHeaderClick={() => {}}
+                showStoreName={showStoreName}
+                isDraggableForMerge={isEffectivelyCollapsed && order.status !== OrderStatus.COMPLETED}
+                onMergeDragStart={handleMergeDragStart}
+                showActionsButton={!isManagerView && (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.COMPLETED)}
+                onActionsClick={handleHeaderActionsClick}
+            />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
-                <div className="flex-grow px-2 pt-2 pb-0 space-y-1">
+                <div className={`flex-grow pt-2 pb-0 space-y-1 ${order.status === OrderStatus.COMPLETED && !isManagerView ? 'px-1' : 'px-2'}`}>
                     {order.items.map(item => {
-                        const isEditingPrice = editingPriceItemId === item.itemId;
-                        const masterPrice = state.itemPrices.find(p =>
-                            p.itemId === item.itemId &&
-                            p.supplierId === order.supplierId &&
-                            p.isMaster
-                        )?.price;
-                        const displayPrice = item.price ?? masterPrice;
+                         const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+                         const displayPrice = (order.status === OrderStatus.COMPLETED && !isManagerView) ? (item.price ?? masterPrice) : undefined;
                         return (
-                        <div
-                            key={`${item.itemId}-${item.isSpoiled ? 'spoiled' : 'ok'}`}
-                            draggable={canEditCard}
-                            onDragStart={(e) => handleDragStart(e, item)}
-                            onDragEnd={() => { setDraggedItem?.(null); setDragOverItemId(null); }}
-                            onDragOver={(e) => {
-                                if (draggedItem && draggedItem.sourceOrderId === order.id) {
-                                    e.preventDefault();
-                                }
-                            }}
-                            onDragEnter={() => {
-                                if (draggedItem && draggedItem.sourceOrderId === order.id && draggedItem.item.itemId !== item.itemId) {
-                                    setDragOverItemId(item.itemId);
-                                }
-                            }}
-                            onDragLeave={() => setDragOverItemId(null)}
-                            onDrop={(e) => handleInternalReorderDrop(e, item)}
-                            onClick={(e) => handleItemClick(e, item)}
-                            onContextMenu={(e) => handleContextMenu(e, item)}
-                            role="button" tabIndex={0}
-                            className={`flex justify-between items-center px-2 py-1 rounded-md cursor-pointer hover:bg-gray-700 transition-all duration-150
-                                ${canEditCard ? 'cursor-grab active:cursor-grabbing' : ''}
-                                ${dragOverItemId === item.itemId ? 'border-t-2 border-indigo-500' : ''}
-                            `}
-                        >
-                            <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
-                                {item.isSpoiled && '🔸 '}{item.name}
-                            </span>
-                            <div className="flex-shrink-0 flex items-center space-x-4">
-                                {order.status === OrderStatus.COMPLETED && !isManagerView ? (
-                                    isEditingPrice ? (
-                                        <input
-                                            type="number"
-                                            value={editedItemPrice}
-                                            onChange={(e) => setEditedItemPrice(e.target.value)}
-                                            onBlur={() => handleSaveItemPrice(item)}
-                                            onKeyDown={(e) => {
-                                                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                                if (e.key === 'Escape') setEditingPriceItemId(null);
-                                            }}
-                                            autoFocus
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="bg-gray-900 text-white w-24 p-1 rounded-md text-sm font-mono text-right ring-1 ring-indigo-500"
-                                            placeholder="Unit Price"
-                                            step="0.01"
-                                        />
-                                    ) : (
-                                        <span className="text-sm font-mono text-gray-400 w-24 text-right">
-                                            {displayPrice != null ? `$${displayPrice.toFixed(2)}` : ''}
-                                        </span>
-                                    )
-                                ) : null}
-                                <span className="font-semibold text-white text-right w-16">{item.quantity}{item.unit}</span>
-                            </div>
-                        </div>
-                    )})}
+                            <OrderItemRow
+                                key={`${item.itemId}-${item.isSpoiled ? 'spoiled' : 'ok'}`}
+                                item={item}
+                                order={order}
+                                isDraggable={canEditCard}
+                                dragHandleProps={{
+                                    draggable: true,
+                                    onDragStart: (e: React.DragEvent) => handleItemDragStart(e, item),
+                                    onDragEnd: () => { setDraggedItem?.(null); setDragOverItemId(null); },
+                                    className: order.status === OrderStatus.COMPLETED ? 'pr-0' : 'pr-1',
+                                }}
+                                onQuantityClick={() => handleQuantityClick(item)}
+                                onContextMenuClick={(e) => handleItemContextMenu(e, item)}
+                                isEditingPrice={editingPriceItemId === item.itemId}
+                                editedItemPrice={editedItemPrice}
+                                onPriceChange={setEditedItemPrice}
+                                onPriceSave={handleSaveItemPrice}
+                                onPriceCancel={() => setEditingPriceItemId(null)}
+                                displayPrice={displayPrice}
+                                dropZoneProps={{
+                                    className: dragOverItemId === item.itemId ? 'border-t-2 border-indigo-500' : '',
+                                    onDragOver: (e: React.DragEvent) => { if (draggedItem && draggedItem.sourceOrderId === order.id) e.preventDefault(); },
+                                    onDragEnter: () => { if (draggedItem && draggedItem.sourceOrderId === order.id && draggedItem.item.itemId !== item.itemId) setDragOverItemId(item.itemId); },
+                                    onDragLeave: () => setDragOverItemId(null),
+                                    onDrop: (e: React.DragEvent) => handleInternalReorderDrop(e, item),
+                                }}
+                            />
+                        )
+                    })}
                 </div>
                 
-                {showActionRow && (
-                    <div className="px-2 py-1 mt-1 border-t border-gray-700/50">
-                        {order.status === OrderStatus.DISPATCHING && !isManagerView && (
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center space-x-2">
-                                    <button onClick={() => setAddItemModalOpen(true)} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
-                                    {supplier?.chatId ? <button onClick={handleSendToTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg></button> : <button onClick={handleCopyOrderMessage} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>}
-                                </div>
-                                <button onClick={handleSendOrder} disabled={order.items.length === 0 || isProcessing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-indigo-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Send'}</button>
-                            </div>
-                        )}
-                        {order.status === OrderStatus.ON_THE_WAY && (
-                            isManagerView ? (
-                                <div className="flex items-center justify-between">
-                                    <button onClick={handleUnsendOrder} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
-                                    <button onClick={handleMarkAsReceived} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Received'}</button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center space-x-2">
-                                        <button onClick={() => setAddItemModalOpen(true)} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
-                                        <button onClick={handleUnsendOrder} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
-                                        
-                                        {supplier?.chatId ? <button onClick={handleSendToTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg></button> : <button onClick={handleCopyOrderMessage} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>}
-                                    </div>
-                                    <button onClick={handleMarkAsReceived} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Received'}</button>
-                                </div>
-                            )
-                        )}
-                    </div>
-                )}
+                <CardFooter
+                    order={order}
+                    isManagerView={isManagerView}
+                    isProcessing={isProcessing}
+                    onAddItem={() => setAddItemModalOpen(true)}
+                    onSend={handleSendOrder}
+                    onUnsend={handleUnsendOrder}
+                    onReceive={handleMarkAsReceived}
+                    onTelegram={handleSendToTelegram}
+                    onCopy={handleCopyOrderMessage}
+                />
             </div>
             {contextMenu && <ContextMenu {...contextMenu} onClose={() => setContextMenu(null)} />}
             {isNumpadOpen && selectedItem && (
               <NumpadModal 
                   item={selectedItem} 
                   isOpen={isNumpadOpen} 
-                  onClose={() => setNumpadOpen(false)} 
-                  onSave={
-                      isManagerView ? handleEditQuantityManager :
-                      (selectedItem.isSpoiled || (order.status === OrderStatus.ON_THE_WAY && contextMenu)) ? handleSpoilItemWithQuantity : 
-                      handleSaveItem
-                  }
+                  onClose={() => { setNumpadOpen(false); setIsSpoilMode(false); }} 
+                  onSave={ isManagerView ? handleEditQuantityManager : isSpoilMode ? handleSpoilItemWithQuantity : handleSaveItem }
                   onDelete={() => handleDeleteItem(selectedItem)} 
               />
             )}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onAddItem={handleAddItem} />}
-            <ConfirmationModal isOpen={isConfirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} onConfirm={async () => await actions.deleteOrder(order.id)} title="Drop Order" message={`Are you sure you want to drop the order for ${order.supplierName}?`} confirmText="Drop" isDestructive />
-            {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={handleSaveMasterItem} onDelete={handleDeleteMasterItem} />}
-            {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={handleSaveSupplier} />}
+            <ConfirmationModal isOpen={isConfirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} onConfirm={() => actions.deleteOrder(order.id)} title="Drop Order" message={`Drop order for ${order.supplierName}?`} confirmText="Drop" isDestructive />
+            {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
+            {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={actions.updateSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
             {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
+            <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, image: null })} base64Image={invoicePreview.image} />
         </div>
     );
 };

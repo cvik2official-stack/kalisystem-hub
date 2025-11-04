@@ -89,16 +89,6 @@ const OrderWorkspace: React.FC = () => {
     setDraggedItem(null);
   };
   
-  const handleDropOnEmptySpace = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (draggedItem) {
-      setItemForNewOrder(draggedItem);
-      setAddSupplierModalOpen(true);
-    }
-    setIsDragOverEmpty(false);
-    setDraggedItem(null);
-  };
-
   const handleCreateOrderFromDrop = async (supplier: Supplier) => {
     if (!itemForNewOrder || activeStore === 'Settings') return;
 
@@ -188,28 +178,8 @@ const OrderWorkspace: React.FC = () => {
       </div>
       
       <div
-        className={`flex-grow pt-2 pb-4 overflow-y-auto hide-scrollbar relative transition-all duration-200
-          ${isDragOverEmpty ? 'border-2 border-dashed border-indigo-500 bg-gray-800/50 rounded-lg' : 'border-2 border-transparent'}
-        `}
-        onDragOver={(e) => {
-          if (draggedItem && activeStatus === OrderStatus.DISPATCHING && e.target === e.currentTarget) {
-            e.preventDefault();
-            setIsDragOverEmpty(true);
-          }
-        }}
-        onDragLeave={(e) => {
-          if (e.target === e.currentTarget) {
-            setIsDragOverEmpty(false);
-          }
-        }}
-        onDrop={handleDropOnEmptySpace}
+        className="flex-grow pt-2 pb-4 overflow-y-auto hide-scrollbar relative transition-all duration-200"
       >
-        {isDragOverEmpty && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <p className="text-indigo-400 font-semibold">Drop to create new order</p>
-          </div>
-        )}
-
           {showEmptyState && (
               <div className="text-center py-12">
                   <p className="text-gray-500">No orders in this category.</p>
@@ -235,11 +205,14 @@ const OrderWorkspace: React.FC = () => {
                           </div>
                         </button>
                         {isExpanded && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
                             {groupedCompletedOrders[key].map((order) => (
                               <SupplierCard 
                                   key={order.id} 
                                   order={order}
+                                  draggedItem={draggedItem}
+                                  setDraggedItem={setDraggedItem}
+                                  onItemDrop={handleItemDrop}
                                   showStoreName={activeStore === StoreName.KALI} 
                               />
                             ))}
@@ -267,18 +240,40 @@ const OrderWorkspace: React.FC = () => {
                   />
               ))}
               {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
-                <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[10rem]">
-                    <div className="flex flex-col items-center justify-center space-y-2">
+                <div
+                  className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200
+                    ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
+                  `}
+                   onDragOver={(e) => {
+                    if (draggedItem) {
+                      e.preventDefault();
+                      setIsDragOverEmpty(true);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    setIsDragOverEmpty(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedItem) {
+                      setItemForNewOrder(draggedItem);
+                      setAddSupplierModalOpen(true);
+                    }
+                    setIsDragOverEmpty(false);
+                    setDraggedItem(null);
+                  }}
+                >
+                    <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
                        <button 
                          onClick={() => setAddSupplierModalOpen(true)} 
-                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg"
+                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
                        >
                          + select supplier
                        </button>
                        <span className="text-gray-500 text-xs">or</span>
                        <button 
                          onClick={() => setPasteModalOpen(true)} 
-                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg"
+                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
                        >
                          paste a list
                        </button>

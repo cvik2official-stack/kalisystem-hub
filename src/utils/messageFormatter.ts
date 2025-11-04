@@ -37,6 +37,37 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): st
     return `${header}${itemsList}`;
 };
 
+export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[]): string => {
+    let grandTotal = 0;
+
+    const itemsList = order.items.map(item => {
+        // Find price: first from the order item, then fallback to master price list
+        const price = item.price ?? itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+        
+        const itemName = escapeHtml(item.name);
+        const quantityText = `${item.quantity}${item.unit ? escapeHtml(item.unit) : ''}`;
+        
+        let line = `- ${itemName} (${quantityText})`;
+
+        if (price !== undefined) {
+            const itemTotal = price * item.quantity;
+            grandTotal += itemTotal;
+            line += ` @ $${price.toFixed(2)} = <b>$${itemTotal.toFixed(2)}</b>`;
+        }
+        return line;
+    }).join('\n');
+
+    const header = `🧾 <b>Receipt for Order <code>${escapeHtml(order.orderId)}</code></b>\n` +
+                 `<b>Store:</b> ${escapeHtml(order.store)}\n` +
+                 `<b>Supplier:</b> ${escapeHtml(order.supplierName)}\n` +
+                 `<b>Date:</b> ${new Date(order.completedAt || order.createdAt).toLocaleDateString()}`;
+
+    const footer = `\n---------------------\n` +
+                   `<b>Grand Total: $${grandTotal.toFixed(2)}</b>`;
+
+    return `${header}\n\n${itemsList}\n${footer}`;
+};
+
 export const generateKaliUnifyReport = (orders: Order[]): string => {
     const today = new Date();
     const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}`;

@@ -98,6 +98,26 @@ export const sendOrderToSupplierOnTelegram = async (
 };
 
 /**
+ * Sends a formatted text receipt to a supplier's chat.
+ * @param order The completed order object.
+ * @param supplier The supplier object containing the chat ID.
+ * @param message The pre-formatted receipt message (HTML).
+ * @param token The Telegram Bot Token.
+ */
+export const sendReceiptOnTelegram = async (
+    order: Order,
+    supplier: Supplier,
+    message: string,
+    token: string
+): Promise<void> => {
+    if (!supplier.chatId) {
+        throw new Error("Supplier Chat ID is missing.");
+    }
+    // Simple message with no buttons
+    await sendMessage(token, supplier.chatId, message);
+};
+
+/**
  * Sends a message to a supplier with items that were added to an existing order.
  * This message will only contain a "Missing Item" button, if enabled for the supplier.
  * @param order The order that was updated.
