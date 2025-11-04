@@ -1,4 +1,4 @@
-import { Order, SupplierName, StoreName, OrderItem, Unit } from '../types';
+import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice } from '../types';
 
 const escapeHtml = (text: string): string => {
   if (typeof text !== 'string') return '';
@@ -96,7 +96,7 @@ export const generateKaliUnifyReport = (orders: Order[]): string => {
     return message;
 };
 
-export const generateKaliZapReport = (orders: Order[]): string => {
+export const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]): string => {
     // 1. Group orders by store
     const ordersByStore = orders.reduce((acc, order) => {
         if (!acc[order.store]) {
@@ -106,33 +106,93 @@ export const generateKaliZapReport = (orders: Order[]): string => {
         return acc;
     }, {} as Record<string, Order[]>);
 
+    let totalReportSum = 0;
+
     // 2. Process each store group
     const storeBlocks = Object.keys(ordersByStore).map(storeName => {
         const storeOrders = ordersByStore[storeName as StoreName];
         
         // 3. Aggregate items within the store
-        const aggregatedItems = new Map<string, { name: string; quantity: number; unit?: Unit }>();
+        const aggregatedItems = new Map<string, { name: string; quantity: number; unit?: Unit; itemId: string; supplierId: string }>();
         storeOrders.forEach(order => {
             order.items.forEach(item => {
-                if (aggregatedItems.has(item.itemId)) {
-                    aggregatedItems.get(item.itemId)!.quantity += item.quantity;
+                if (item.isSpoiled) return; // Exclude spoiled items
+
+                const key = `${item.itemId}-${item.unit}`;
+                const existing = aggregatedItems.get(key);
+
+                if (existing) {
+                    existing.quantity += item.quantity;
                 } else {
-                    // Create a copy to avoid mutating the original item
-                    aggregatedItems.set(item.itemId, { name: item.name, quantity: item.quantity, unit: item.unit });
+                    aggregatedItems.set(key, { 
+                        name: item.name, 
+                        quantity: item.quantity, 
+                        unit: item.unit, 
+                        itemId: item.itemId,
+                        supplierId: order.supplierId,
+                    });
                 }
             });
         });
 
-        // 4. Format the item list for the store
-        const itemsList = Array.from(aggregatedItems.values()).map(item => {
-            const unitText = item.unit ? escapeHtml(item.unit) : '';
-            return `${escapeHtml(item.name)} x${item.quantity}${unitText}`;
-        }).join('\n');
+        // 4. Calculate total amount for the store and format item lines
+        let storeTotalAmount = 0;
+        const itemsListContent: string[] = [];
+
+        Array.from(aggregatedItems.values()).forEach(item => {
+            let totalDisplay = '-';
+            let unitPriceDisplay = '-';
+            
+            // Look up the master price from the provided itemPrices array
+            let priceInfo: ItemPrice | undefined = undefined;
+            if (item.unit) {
+                priceInfo = itemPrices.find(p => 
+                    p.itemId === item.itemId && 
+                    p.supplierId === item.supplierId && 
+                    p.unit === item.unit &&
+                    p.isMaster
+                );
+            }
+            if (!priceInfo) {
+                 priceInfo = itemPrices.find(p => 
+                    p.itemId === item.itemId && 
+                    p.supplierId === item.supplierId &&
+                    p.isMaster
+                );
+            }
+
+            if (priceInfo) {
+                const total = priceInfo.price * item.quantity;
+                storeTotalAmount += total;
+                totalDisplay = total.toFixed(2);
+                unitPriceDisplay = priceInfo.price.toFixed(2);
+            }
+            
+            const nameDisplay = escapeHtml(item.name);
+            const quantityDisplay = `${item.quantity}${item.unit ? escapeHtml(item.unit) : ''}`;
+            
+            // Format: total, item name, unit price, quantity
+            itemsListContent.push(`${totalDisplay}, ${nameDisplay}, ${unitPriceDisplay}, ${quantityDisplay}`);
+        });
+        
+        // Accumulate the total for the entire report
+        totalReportSum += storeTotalAmount;
         
         // 5. Create the store block
-        return `<b>${escapeHtml(storeName)}</b>\n${itemsList}`;
+        const storeHeader = `<b>${escapeHtml(storeName)}${storeTotalAmount > 0 ? ` ${storeTotalAmount.toFixed(2)}` : ''}</b>`;
+        const itemsList = itemsListContent.join('\n');
+
+        return `${storeHeader}\n${itemsList}`;
     });
 
-    // 6. Join blocks and return
-    return storeBlocks.join('\n\n');
+    // 6. Get current date and format it
+    const today = new Date();
+    const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}`;
+    
+    // 7. Construct the final report message
+    const reportHeader = `Date ${formattedDate}\nEST. report sum ${totalReportSum.toFixed(2)}`;
+    const separator = '_________________';
+    const existingMessage = storeBlocks.join('\n\n');
+
+    return `${reportHeader}\n${separator}\n${existingMessage}\n${separator}`;
 };

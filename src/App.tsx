@@ -1,4 +1,3 @@
-
 import React, { useContext, useEffect, useState, useRef } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
@@ -13,12 +12,11 @@ import { useToasts } from './context/ToastContext';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices } = state;
   const { addToast } = useToasts();
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
   const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
-  // FIX: Corrected useRef call by providing an initial value of undefined and updating the generic type to allow for undefined. This resolves the error about missing arguments.
   const prevSyncStatusRef = useRef<string | undefined>(undefined);
 
 
@@ -117,7 +115,7 @@ const App: React.FC = () => {
             return;
         }
 
-        const message = generateKaliZapReport(onTheWayKaliOrders);
+        const message = generateKaliZapReport(onTheWayKaliOrders, itemPrices);
         await sendKaliZapReport(message, settings.telegramBotToken);
         addToast('Kali "On the Way" report sent!', 'success');
         

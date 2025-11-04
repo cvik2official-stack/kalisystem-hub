@@ -13,7 +13,6 @@ import { sendOrderToSupplierOnTelegram, sendOrderUpdateToSupplierOnTelegram } fr
 import AddSupplierModal from './modals/AddSupplierModal';
 import MergeOrderModal from './modals/MergeOrderModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
-import { upsertItemPrice } from '../services/supabaseService';
 
 interface SupplierCardProps {
   order: Order;
@@ -139,11 +138,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             unit: unit,
             isMaster: isMaster,
           };
-          await upsertItemPrice({
-            itemPrice,
-            url: state.settings.supabaseUrl,
-            key: state.settings.supabaseKey
-          });
+          await actions.upsertItemPrice(itemPrice);
           addToast(`Price for ${selectedItem.name} set to ${price}/${unit}.`, 'success');
           setIsPriceNumpadOpen(false);
           setSelectedItem(null);
@@ -177,7 +172,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             clickTimeout.current = null;
             if (order.status === OrderStatus.COMPLETED && !isManagerView) {
                 setEditingPriceItemId(item.itemId);
-                setEditedItemPrice(item.price ? String(item.price) : '');
+                const masterPrice = state.itemPrices.find(p =>
+                    p.itemId === item.itemId &&
+                    p.supplierId === order.supplierId &&
+                    p.isMaster
+                )?.price;
+                const priceForEditing = item.price ?? masterPrice;
+                setEditedItemPrice(priceForEditing != null ? String(priceForEditing) : '');
             } else if (order.status !== OrderStatus.COMPLETED && !isManagerView) {
                 setSelectedItem(item);
                 setNumpadOpen(true);
@@ -663,6 +664,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 <div className="flex-grow px-2 pt-2 pb-0 space-y-1">
                     {order.items.map(item => {
                         const isEditingPrice = editingPriceItemId === item.itemId;
+                        const masterPrice = state.itemPrices.find(p =>
+                            p.itemId === item.itemId &&
+                            p.supplierId === order.supplierId &&
+                            p.isMaster
+                        )?.price;
+                        const displayPrice = item.price ?? masterPrice;
                         return (
                         <div
                             key={`${item.itemId}-${item.isSpoiled ? 'spoiled' : 'ok'}`}
@@ -712,7 +719,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                         />
                                     ) : (
                                         <span className="text-sm font-mono text-gray-400 w-24 text-right">
-                                            {item.price != null ? `$${item.price.toFixed(2)}` : ''}
+                                            {displayPrice != null ? `$${displayPrice.toFixed(2)}` : ''}
                                         </span>
                                     )
                                 ) : null}

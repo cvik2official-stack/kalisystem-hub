@@ -1,7 +1,6 @@
-
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore } from '../services/supabaseService';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice } from '../types';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
@@ -11,6 +10,7 @@ export interface AppState {
   activeStore: StoreName | 'Settings';
   suppliers: Supplier[];
   items: Item[];
+  itemPrices: ItemPrice[];
   orders: Order[];
   activeStatus: OrderStatus;
   orderIdCounters: Record<string, number>;
@@ -23,6 +23,9 @@ export interface AppState {
     csvUrl?: string;
     geminiApiKey?: string;
     telegramBotToken?: string;
+    aiParsingRules?: {
+      aliases: Record<string, string>;
+    };
   };
   isLoading: boolean;
   isInitialized: boolean;
@@ -46,9 +49,10 @@ export type Action =
   | { type: 'SAVE_SETTINGS'; payload: Partial<AppState['settings']> }
   | { type: 'REPLACE_ITEM_DATABASE'; payload: { items: Item[], suppliers: Supplier[], rawCsv: string } }
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
-  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[] } }
+  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
-  | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } };
+  | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
+  | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice };
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
@@ -63,6 +67,7 @@ export interface AppContextActions {
     syncWithSupabase: (options?: { isInitialSync?: boolean }) => Promise<void>;
     addItemToDispatch: (item: Item) => Promise<void>;
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
+    upsertItemPrice: (itemPrice: ItemPrice) => Promise<void>;
 }
 
 
@@ -127,7 +132,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case '_SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload, isLoading: action.payload === 'syncing' };
     case '_MERGE_DATABASE': {
-        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores } = action.payload;
+        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores, itemPrices: remoteItemPrices } = action.payload;
         
         const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
         state.items.forEach(localItem => !mergedItemsMap.has(localItem.id) && mergedItemsMap.set(localItem.id, localItem));
@@ -151,12 +156,16 @@ const appReducer = (state: AppState, action: Action): AppState => {
         }
         localOrdersMap.forEach(localOrder => mergedOrders.push(localOrder));
 
+        const mergedItemPricesMap = new Map(remoteItemPrices.map(p => [p.id, p]));
+        state.itemPrices.forEach(localPrice => !mergedItemPricesMap.has(localPrice.id) && mergedItemPricesMap.set(localPrice.id, localPrice));
+
         return { 
             ...state, 
             items: Array.from(mergedItemsMap.values()), 
             suppliers: Array.from(mergedSuppliersMap.values()), 
             stores: Array.from(mergedStoresMap.values()),
-            orders: mergedOrders 
+            orders: mergedOrders,
+            itemPrices: Array.from(mergedItemPricesMap.values()),
         };
     }
     case 'INITIALIZATION_COMPLETE':
@@ -167,6 +176,17 @@ const appReducer = (state: AppState, action: Action): AppState => {
             isManagerView: action.payload.isManager,
             managerStoreFilter: action.payload.store,
         };
+    case 'UPSERT_ITEM_PRICE': {
+        const newPrice = action.payload;
+        const priceExists = state.itemPrices.some(p => p.id === newPrice.id);
+        let newItemPrices;
+        if (priceExists) {
+            newItemPrices = state.itemPrices.map(p => p.id === newPrice.id ? newPrice : p);
+        } else {
+            newItemPrices = [...state.itemPrices, newPrice];
+        }
+        return { ...state, itemPrices: newItemPrices };
+    }
     default:
       return state;
   }
@@ -186,6 +206,7 @@ const getInitialState = (): AppState => {
     activeStore: StoreName.CV2,
     suppliers: [],
     items: [],
+    itemPrices: [],
     orders: [],
     activeStatus: OrderStatus.DISPATCHING,
     orderIdCounters: {},
@@ -195,6 +216,14 @@ const getInitialState = (): AppState => {
       isAiEnabled: true,
       geminiApiKey: 'AIzaSyDN0Z_WM4PvhMhJ0nTPF9lM06lepFrZ-qM',
       telegramBotToken: '8347024604:AAHotssxpa41D53fMP10_8kIR6PCcVgw0i0',
+      aiParsingRules: {
+        aliases: {
+          "Chicken": "Chicken breast",
+          "Beef": "Beef (rump)",
+          "Mushroom can": "Mushroom",
+          "Cabbage": "Cabbage (white)",
+        }
+      },
     },
     isLoading: false,
     isInitialized: false,
@@ -232,6 +261,7 @@ export const AppContext = createContext<{
       syncWithSupabase: async () => {},
       addItemToDispatch: async () => {},
       mergeOrders: async () => {},
+      upsertItemPrice: async () => {},
   }
 });
 
@@ -256,10 +286,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { supabaseUrl, supabaseKey } = state.settings;
         if (!options?.isInitialSync) addToast('Syncing with database...', 'info');
 
-        const { items, suppliers, stores } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
+        const { items, suppliers, stores, itemPrices } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
-        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores } }); 
+        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices } }); 
         
         if (!options?.isInitialSync) addToast('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -340,11 +370,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addToast(`Order deleted.`, 'success');
     },
     addItemToDispatch: async (item) => {
-        const { activeStore, orders, suppliers } = state;
+        const { activeStore, orders, suppliers, itemPrices } = state;
         if (activeStore === 'Settings') {
             addToast('Cannot add items to dispatch from this view.', 'info');
             return;
         }
+        
+        const masterPrice = itemPrices.find(p => p.itemId === item.id && p.supplierId === item.supplierId && p.isMaster)?.price;
         
         const existingOrder = orders.find(o => 
             o.store === activeStore && 
@@ -359,7 +391,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 return;
             }
             
-            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
+            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
             addToast(`Added "${item.name}" to existing order.`, 'success');
@@ -369,7 +401,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 addToast(`Supplier for "${item.name}" not found.`, 'error');
                 return;
             }
-            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
+            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
             // Awaiting `addOrder` directly here.
             await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
         }
@@ -396,6 +428,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await actions.updateOrder({ ...destinationOrder, items: mergedItems });
         await actions.deleteOrder(sourceOrderId);
         addToast(`Merged order into ${destinationOrder.supplierName}.`, "success");
+    },
+    upsertItemPrice: async (itemPrice) => {
+        const savedPrice = await supabaseUpsertItemPrice({ itemPrice, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: 'UPSERT_ITEM_PRICE', payload: savedPrice });
     },
     syncWithSupabase,
   };

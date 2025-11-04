@@ -1,15 +1,25 @@
 import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { Item, ParsedItem, Order } from '../types';
+import { Item, ParsedItem, Order, Unit } from '../types';
 
 const parseItemListWithGemini = async (
   text: string,
   existingItems: Item[],
-  apiKey: string // The API key is now passed directly
+  apiKey: string,
+  aiRules?: { aliases: Record<string, string> }
 ): Promise<ParsedItem[]> => {
   if (!apiKey) {
     throw new Error("Gemini API key is not configured. Please add it in Settings.");
   }
   
+  const validUnits = Object.values(Unit);
+
+  let aliasingRulesString = "No custom aliases provided.";
+  if (aiRules && aiRules.aliases && Object.keys(aiRules.aliases).length > 0) {
+      aliasingRulesString = Object.entries(aiRules.aliases)
+          .map(([key, value]) => `- "${key}" should be treated as "${value}".`)
+          .join('\n');
+  }
+
   try {
     // Initialize the Gemini client on the fly with the provided key
     const ai = new GoogleGenAI({ apiKey });
@@ -24,12 +34,18 @@ const parseItemListWithGemini = async (
       1.  If a parsed item closely matches an item in the database, provide the 'matchedItemId' and its corresponding database ID. Use fuzzy matching. An item like "Angkor beer" should match "Angkor Beer (can)".
       2.  If a parsed item does not match any existing item, provide the 'newItemName' with the name you parsed from the text. These are likely unique items, special requests, or typos.
       3.  Always provide a quantity. Default to 1 if not specified.
-      4.  **CRITICAL UNIT HANDLING**: For any item that you successfully match to the database (i.e., you are returning a 'matchedItemId'), you MUST ignore any unit mentioned in the user's text for that item. The application will automatically use the correct unit from its database. Therefore, DO NOT include the 'unit' field in the JSON object for matched items. For completely new items (where you return a 'newItemName'), you should include the 'unit' if you can parse one.
+      4.  **CRITICAL UNIT RULE**: This is the most important rule. You must follow it precisely.
+          -   **For Matched Items (using 'matchedItemId'):** You MUST OMIT the 'unit' field entirely in the JSON output. The database already has the correct unit. Do NOT return a unit for these items.
+          -   **For New Items (using 'newItemName'):** If you can identify a unit, you MUST normalize it to one of the following exact, lowercase, singular values: ${validUnits.join(', ')}.
+          -   **MANDATORY NORMALIZATION EXAMPLES:**
+              -   User input like "pcs", "pieces", "piece" MUST become "pc".
+              -   User input like "kgs", "kilos", "kilogram" MUST become "kg".
+              -   User input like "boxs", "bx" MUST become "box".
+              -   User input like "rolls" MUST become "roll".
+              -   User input like "btls", "bottle", "bottles" MUST become "bt".
+          -   If no unit is found for a new item, omit the 'unit' field.
       5.  **CUSTOM ALIASING RULES**: Apply these specific aliases. If the user text contains the key, you should treat it as the value for matching purposes.
-          - "Chicken" should be treated as "Chicken breast".
-          - "Beef" should be treated as "Beef (rump)".
-          - "Mushroom can" should be treated as the item "Mushroom". This is so an input like "Mushroom can 2pc" is correctly parsed as the item "Mushroom" with a quantity of 2.
-          - "Cabbage" should be treated as "Cabbage (white)".
+          ${aliasingRulesString}
       
       EXISTING ITEM DATABASE (for matching):
       ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit })))}
@@ -49,7 +65,7 @@ const parseItemListWithGemini = async (
               matchedItemId: { type: Type.STRING, description: "The ID of the matched item from the database." },
               newItemName: { type: Type.STRING, description: "The name of the item if no match was found." },
               quantity: { type: Type.NUMBER, description: "The quantity of the item." },
-              unit: { type: Type.STRING, description: "The unit of the item (e.g., kg, pc, box)." },
+              unit: { type: Type.STRING, description: `The unit of the item (e.g., kg, pc, box). IMPORTANT: Provide this ONLY for new items (when using 'newItemName'). Omit this field entirely for matched items (when using 'matchedItemId'). If provided, the value MUST be one of: ${validUnits.join(', ')}.` },
             },
           },
         },

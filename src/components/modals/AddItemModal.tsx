@@ -33,11 +33,14 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
   }, [search, state.items, order.items]);
 
   const handleItemClick = (item: Item) => {
+    // FIX: Look for the price from the ORDER's supplier, not the item's default supplier.
+    const masterPrice = state.itemPrices.find(p => p.itemId === item.id && p.supplierId === order.supplierId && p.isMaster);
     onAddItem({
       itemId: item.id,
       name: item.name,
       quantity: 1,
       unit: item.unit,
+      price: masterPrice?.price,
     });
     setSearch('');
     onClose();
@@ -55,30 +58,37 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
             return;
         }
 
-        const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase() && i.supplierId === supplier.id);
+        // Find any item with this name, regardless of its primary supplier
+        const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase());
         
+        let itemToAdd: Item;
+
         if (existingItemInDb) {
-            addToast(`"${trimmedSearch}" already exists for ${supplier.name}. Adding it to the order.`, 'info');
-            onAddItem({
-                itemId: existingItemInDb.id,
-                name: existingItemInDb.name,
-                quantity: 1,
-                unit: existingItemInDb.unit,
-            });
+            // A master item with this name already exists. We'll use it.
+            itemToAdd = existingItemInDb;
         } else {
-            const newItemFromDb = await actions.addItem({
+            // No master item found. Create a new one with the current order's supplier as its primary.
+            addToast(`Creating new master item: ${trimmedSearch}`, 'info');
+            itemToAdd = await actions.addItem({
                 name: trimmedSearch,
                 supplierId: supplier.id,
                 supplierName: supplier.name,
                 unit: Unit.PC, // Default unit
             });
-            onAddItem({
-                itemId: newItemFromDb.id,
-                name: newItemFromDb.name,
-                quantity: 1,
-                unit: newItemFromDb.unit,
-            });
         }
+        
+        // Now, regardless of whether the item was found or created, look for its price
+        // from the CURRENT order's supplier.
+        const masterPrice = state.itemPrices.find(p => p.itemId === itemToAdd.id && p.supplierId === order.supplierId && p.isMaster);
+
+        onAddItem({
+            itemId: itemToAdd.id,
+            name: itemToAdd.name,
+            quantity: 1, // default quantity
+            unit: itemToAdd.unit,
+            price: masterPrice?.price,
+        });
+        
         setSearch('');
         onClose();
     } catch (e) {

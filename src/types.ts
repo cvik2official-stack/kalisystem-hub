@@ -19,8 +19,6 @@ export enum PaymentMethod {
   KALI = 'kali',
   STOCK = 'stock',
 }
-// FIX: Removed conflicting type alias for the PaymentMethod enum.
-// The enum declaration itself serves as the type, and this was causing a redeclaration error.
 
 export interface Store {
   id: string; // uuid from Supabase

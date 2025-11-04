@@ -71,6 +71,15 @@ interface OrderFromDb {
     invoice_amount?: number;
 }
 
+interface ItemPriceFromDb {
+    id: string;
+    item_id: string;
+    supplier_id: string;
+    price: number;
+    unit: Unit;
+    is_master: boolean;
+}
+
 
 const getHeaders = (key: string) => ({
     'apikey': key,
@@ -81,23 +90,26 @@ const getHeaders = (key: string) => ({
 
 // --- READ OPERATIONS ---
 
-export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[] }> => {
+export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[], itemPrices: ItemPrice[] }> => {
   const headers = getHeaders(key);
 
   try {
-    const [suppliersResponse, itemsResponse, storesResponse] = await Promise.all([
+    const [suppliersResponse, itemsResponse, storesResponse, itemPricesResponse] = await Promise.all([
         fetch(`${url}/rest/v1/suppliers?select=*`, { headers }),
         fetch(`${url}/rest/v1/items?select=*`, { headers }),
-        fetch(`${url}/rest/v1/stores?select=*`, { headers })
+        fetch(`${url}/rest/v1/stores?select=*`, { headers }),
+        fetch(`${url}/rest/v1/item_prices?select=*`, { headers }),
     ]);
 
     if (!suppliersResponse.ok) throw new Error(`Failed to fetch suppliers: ${await suppliersResponse.text()}`);
     if (!itemsResponse.ok) throw new Error(`Failed to fetch items: ${await itemsResponse.text()}`);
     if (!storesResponse.ok) throw new Error(`Failed to fetch stores: ${await storesResponse.text()}`);
+    if (!itemPricesResponse.ok) throw new Error(`Failed to fetch item prices: ${await itemPricesResponse.text()}`);
 
     const suppliersData: SupplierFromDb[] = await suppliersResponse.json();
     const itemsData: ItemFromDb[] = await itemsResponse.json();
     const storesData: StoreFromDb[] = await storesResponse.json();
+    const itemPricesData: ItemPriceFromDb[] = await itemPricesResponse.json();
     
     const stores: Store[] = storesData.map(s => ({
       id: s.id,
@@ -132,7 +144,16 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         return acc;
     }, []);
 
-    return { items, suppliers: Array.from(supplierMap.values()), stores };
+    const itemPrices: ItemPrice[] = itemPricesData.map(p => ({
+        id: p.id,
+        itemId: p.item_id,
+        supplierId: p.supplier_id,
+        price: p.price,
+        unit: p.unit,
+        isMaster: p.is_master,
+    }));
+
+    return { items, suppliers: Array.from(supplierMap.values()), stores, itemPrices };
 
   } catch (error) {
     console.error("Error fetching from Supabase:", error);
@@ -369,7 +390,7 @@ export const updateStore = async ({ store, url, key }: { store: Store; url: stri
     };
 };
 
-export const upsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: ItemPrice; url: string; key: string }): Promise<ItemPrice> => {
+export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: ItemPrice; url: string; key: string }): Promise<ItemPrice> => {
     const payload = {
         item_id: itemPrice.itemId,
         supplier_id: itemPrice.supplierId,
