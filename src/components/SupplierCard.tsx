@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useEffect } from 'react';
+import React, { useContext, useState, useRef, useEffect, useMemo } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderItem, OrderStatus, Unit, Item, Supplier, PaymentMethod, StoreName, ItemPrice } from '../types';
 import NumpadModal from './modals/NumpadModal';
@@ -15,6 +15,7 @@ import MergeOrderModal from './modals/MergeOrderModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
 import { generateInvoiceImage } from '../services/geminiService';
 import InvoicePreviewModal from './modals/InvoicePreviewModal';
+import PaymentMethodModal from './modals/PaymentMethodModal';
 
 // --- SUB-COMPONENTS START ---
 
@@ -25,12 +26,14 @@ const CardHeader: React.FC<{
   onToggleCollapse: () => void;
   onHeaderContextMenu: (e: React.MouseEvent | React.TouchEvent) => void;
   onHeaderClick: () => void;
+  onPaymentBadgeClick: () => void;
   showStoreName?: boolean;
   isDraggableForMerge: boolean;
   onMergeDragStart: (e: React.DragEvent) => void;
   showActionsButton?: boolean;
   onActionsClick?: (e: React.MouseEvent) => void;
-}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderContextMenu, onHeaderClick, showStoreName, isDraggableForMerge, onMergeDragStart, showActionsButton, onActionsClick }) => {
+  orderTotal?: number | null;
+}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderContextMenu, onHeaderClick, onPaymentBadgeClick, showStoreName, isDraggableForMerge, onMergeDragStart, showActionsButton, onActionsClick, orderTotal }) => {
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
@@ -38,7 +41,10 @@ const CardHeader: React.FC<{
         [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
     };
     const isManagerView = !!showStoreName;
-    const shouldShowPaymentBadge = supplier?.paymentMethod && !(isManagerView && (order.store === StoreName.WB || order.store === StoreName.SHANTI));
+    const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
+    const canChangePayment = !isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
+    const shouldShowPaymentBadge = displayPaymentMethod && !(isManagerView && (order.store === StoreName.WB || order.store === StoreName.SHANTI));
+
 
     return (
         <div
@@ -59,7 +65,20 @@ const CardHeader: React.FC<{
                     )}
                     <h3 onClick={onHeaderClick} className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer">{order.supplierName}</h3>
                     <div className="flex-grow flex items-center gap-2">
-                        {shouldShowPaymentBadge && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[supplier.paymentMethod!]}`}>{supplier.paymentMethod!.toUpperCase()}</span>}
+                        {shouldShowPaymentBadge && (
+                            <button
+                                onClick={canChangePayment ? onPaymentBadgeClick : undefined}
+                                disabled={!canChangePayment}
+                                className={`px-2 py-0.5 rounded-full text-xs font-semibold transition-opacity ${paymentMethodBadgeColors[displayPaymentMethod!]} ${canChangePayment ? 'hover:opacity-80' : 'cursor-default'}`}
+                            >
+                                {displayPaymentMethod!.toUpperCase()}
+                            </button>
+                        )}
+                         {order.status === OrderStatus.COMPLETED && orderTotal != null && orderTotal > 0 && (
+                            <span className="font-mono text-xs text-gray-300 bg-gray-700/50 px-2 py-0.5 rounded-full">
+                                ${orderTotal.toFixed(2)}
+                            </span>
+                        )}
                         {showStoreName && <span className="text-gray-400 font-medium text-base">({order.store})</span>}
                     </div>
                 </div>
@@ -87,22 +106,24 @@ const OrderItemRow: React.FC<{
   onPriceCancel: () => void;
   displayPrice?: number;
   dropZoneProps: any;
-}> = ({ item, isDraggable, dragHandleProps, onQuantityClick, onContextMenuClick, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps }) => {
+}> = ({ item, order, isDraggable, dragHandleProps, onQuantityClick, onContextMenuClick, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps }) => {
     return (
         <div
             {...dropZoneProps}
             className={`flex items-center py-1 rounded-md transition-all duration-150 group ${dropZoneProps.className}`}
         >
-            <div
-                {...(isDraggable ? dragHandleProps : {})}
-                className={`flex-shrink-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500 pr-1' : 'text-transparent'}`}
-            >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
-                    <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
-                </svg>
-            </div>
-            <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
-                {item.isSpoiled && '🔸 '}{item.name}
+            {order.status !== OrderStatus.COMPLETED && (
+                <div
+                    {...(isDraggable ? dragHandleProps : {})}
+                    className={`flex-shrink-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500' : 'text-transparent'} pr-1`}
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
+                        <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
+                    </svg>
+                </div>
+            )}
+            <span className={`flex-grow text-gray-300 flex items-center ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+                {item.isSpoiled && <span className="h-2 w-2 bg-red-500 rounded-full mr-2"></span>}{item.name}
             </span>
             <div className="flex-shrink-0 flex items-center space-x-2">
                 {isEditingPrice ? (
@@ -167,7 +188,7 @@ const CardFooter: React.FC<{
                     <div className="flex items-center space-x-2">
                         <button onClick={onAddItem} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Add Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></button>
                         <button onClick={onTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg></button>
-                        <button onClick={onCopy} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>
+                        <button onClick={onCopy} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Copy Order Text"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002 2V9a2 2 0 00-2-2h-3l-4 4-4-4zM15 3v4" /></svg></button>
                     </div>
                     <button onClick={onSend} disabled={order.items.length === 0 || isProcessing} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-indigo-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Send'}</button>
                 </div>
@@ -212,7 +233,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, options: { label: string; action: () => void; isDestructive?: boolean; }[] } | null>(null);
-    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() => order.items.length === 0 && order.status === OrderStatus.DISPATCHING);
+    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() =>
+        (order.items.length === 0 && order.status === OrderStatus.DISPATCHING) ||
+        order.status === OrderStatus.COMPLETED
+    );
     const [isProcessing, setIsProcessing] = useState(false);
     const [isConfirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
@@ -235,7 +259,22 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
     const [invoicePreview, setInvoicePreview] = useState<{ isOpen: boolean; image: string | null }>({ isOpen: false, image: null });
+    const [isPaymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
 
+    const orderTotal = useMemo(() => {
+        if (order.status !== OrderStatus.COMPLETED) {
+            return null;
+        }
+        const total = order.items.reduce((acc, item) => {
+            if (item.isSpoiled) {
+                return acc;
+            }
+            const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+            const price = item.price ?? masterPrice ?? 0;
+            return acc + (price * item.quantity);
+        }, 0);
+        return total;
+    }, [order.status, order.items, order.supplierId, state.itemPrices]);
 
     useEffect(() => {
         if (isEditingInvoice) {
@@ -616,6 +655,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setDraggedItem?.(null);
     };
 
+    const handlePaymentMethodChange = async (newMethod: PaymentMethod) => {
+        setIsProcessing(true);
+        try {
+            await actions.updateOrder({ ...order, paymentMethod: newMethod });
+            addToast(`Payment method for ${order.supplierName} set to ${newMethod.toUpperCase()}.`, 'success');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const isEffectivelyCollapsed = isManuallyCollapsed || (!!draggedItem && draggedItem.sourceOrderId !== order.id);
     const canEditCard = !isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
     
@@ -663,15 +712,17 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 onToggleCollapse={() => setIsManuallyCollapsed(!isManuallyCollapsed)}
                 onHeaderContextMenu={handleHeaderContextMenu}
                 onHeaderClick={() => {}}
+                onPaymentBadgeClick={() => setPaymentMethodModalOpen(true)}
                 showStoreName={showStoreName}
                 isDraggableForMerge={isEffectivelyCollapsed && order.status !== OrderStatus.COMPLETED}
                 onMergeDragStart={handleMergeDragStart}
                 showActionsButton={!isManagerView && (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.COMPLETED)}
                 onActionsClick={handleHeaderActionsClick}
+                orderTotal={orderTotal}
             />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
-                <div className={`flex-grow pt-2 pb-0 space-y-1 ${order.status === OrderStatus.COMPLETED && !isManagerView ? 'px-1' : 'px-2'}`}>
+                <div className={`flex-grow pt-2 pb-0 space-y-1 ${order.status === OrderStatus.COMPLETED ? 'px-0' : 'px-2'}`}>
                     {order.items.map(item => {
                          const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
                          const displayPrice = (order.status === OrderStatus.COMPLETED && !isManagerView) ? (item.price ?? masterPrice) : undefined;
@@ -685,7 +736,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                     draggable: true,
                                     onDragStart: (e: React.DragEvent) => handleItemDragStart(e, item),
                                     onDragEnd: () => { setDraggedItem?.(null); setDragOverItemId(null); },
-                                    className: order.status === OrderStatus.COMPLETED ? 'pr-0' : 'pr-1',
                                 }}
                                 onQuantityClick={() => handleQuantityClick(item)}
                                 onContextMenuClick={(e) => handleItemContextMenu(e, item)}
@@ -737,6 +787,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
             {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
             <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, image: null })} base64Image={invoicePreview.image} />
+            <PaymentMethodModal isOpen={isPaymentMethodModalOpen} onClose={() => setPaymentMethodModalOpen(false)} onSelect={handlePaymentMethodChange} order={order} />
         </div>
     );
 };

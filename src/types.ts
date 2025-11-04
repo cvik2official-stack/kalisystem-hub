@@ -81,6 +81,7 @@ export interface Order {
   completedAt?: string;
   invoiceUrl?: string;
   invoiceAmount?: number;
+  paymentMethod?: PaymentMethod;
 }
 
 export interface ParsedItem {

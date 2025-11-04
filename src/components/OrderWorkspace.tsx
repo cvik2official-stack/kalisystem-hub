@@ -35,7 +35,7 @@ const OrderWorkspace: React.FC = () => {
   const [isDragOverEmpty, setIsDragOverEmpty] = useState(false);
 
   // State for completed orders view
-  const [expandedGroups, setExpandedGroups] = useState(new Set<string>());
+  const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
 
 
   const handleStatusChange = (status: OrderStatus) => {

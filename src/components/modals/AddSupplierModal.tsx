@@ -1,4 +1,3 @@
-
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Supplier, SupplierName } from '../../types';
@@ -29,7 +28,22 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
       ? availableSuppliers
       : availableSuppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
       
-    return searchFiltered.sort((a, b) => a.name.localeCompare(b.name));
+    const prioritySuppliers = ['OUDOM', 'KALI', 'MIKHAIL', 'STOCK'];
+      
+    return searchFiltered.sort((a, b) => {
+      const aIsPriority = prioritySuppliers.includes(a.name);
+      const bIsPriority = prioritySuppliers.includes(b.name);
+
+      if (aIsPriority && !bIsPriority) return -1;
+      if (!aIsPriority && bIsPriority) return 1;
+      
+      // If both are priority or both are not, sort by priority order then alphabetically
+      if (aIsPriority && bIsPriority) {
+        return prioritySuppliers.indexOf(a.name) - prioritySuppliers.indexOf(b.name);
+      }
+      
+      return a.name.localeCompare(b.name);
+    });
   }, [search, suppliers, orders, activeStore, activeStatus]);
   
   const handleSelect = (supplier: Supplier) => {

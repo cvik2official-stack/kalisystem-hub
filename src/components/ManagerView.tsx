@@ -8,7 +8,7 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
   const { state, dispatch } = useContext(AppContext);
   const { orders } = state;
   const [activeStatus, setActiveStatus] = useState<OrderStatus>(OrderStatus.ON_THE_WAY);
-  const [expandedGroups, setExpandedGroups] = useState(new Set<string>());
+  const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
 
   const relevantStatuses = STATUS_TABS.filter(
     (tab) => tab.id === OrderStatus.ON_THE_WAY || tab.id === OrderStatus.COMPLETED

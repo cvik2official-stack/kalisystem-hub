@@ -20,6 +20,9 @@
     created_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(item_id, supplier_id, unit)
   );
+
+  -- Add a text column to store an order-specific payment method override
+  ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -69,6 +72,7 @@ interface OrderFromDb {
     items: OrderItem[];
     invoice_url?: string;
     invoice_amount?: number;
+    payment_method?: PaymentMethod;
 }
 
 interface ItemPriceFromDb {
@@ -191,6 +195,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     completedAt: order.completed_at,
                     invoiceUrl: order.invoice_url,
                     invoiceAmount: order.invoice_amount,
+                    paymentMethod: order.payment_method,
                     // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
@@ -221,6 +226,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         items: orderData.items,
         invoice_url: orderData.invoiceUrl,
         invoice_amount: orderData.invoiceAmount,
+        payment_method: orderData.paymentMethod,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -255,6 +261,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         items: order.items,
         invoice_url: order.invoiceUrl,
         invoice_amount: order.invoiceAmount,
+        payment_method: order.paymentMethod,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',
