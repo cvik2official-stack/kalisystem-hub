@@ -99,3 +99,17 @@ export interface ItemPrice {
     unit: Unit;
     isMaster: boolean;
 }
+
+export interface AppSettings {
+    supabaseUrl: string;
+    supabaseKey: string;
+    isAiEnabled?: boolean;
+    lastSyncedCsvContent?: string;
+    csvUrl?: string;
+    geminiApiKey?: string;
+    telegramBotToken?: string;
+    aiParsingRules?: {
+      aliases: Record<string, string>;
+    };
+    receiptTemplates?: Record<string, string>; // e.g. { 'default': '<html>...' }
+}

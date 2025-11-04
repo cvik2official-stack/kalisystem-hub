@@ -5,6 +5,40 @@ const escapeHtml = (text: string): string => {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 };
 
+export const renderReceiptTemplate = (template: string, order: Order, itemPrices: ItemPrice[]): string => {
+    let grandTotal = 0;
+
+    const itemRows = order.items
+        .filter(item => !item.isSpoiled)
+        .map(item => {
+            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+            const price = item.price ?? masterPrice ?? 0;
+            const itemTotal = price * item.quantity;
+            grandTotal += itemTotal;
+
+            return `
+                <tr>
+                    <td>${escapeHtml(item.name)}</td>
+                    <td>${item.quantity}${escapeHtml(item.unit || '')}</td>
+                    <td>${price.toFixed(2)}</td>
+                    <td>${itemTotal.toFixed(2)}</td>
+                </tr>
+            `;
+        }).join('');
+
+    let renderedHtml = template;
+    renderedHtml = renderedHtml.replace(/{{store}}/g, escapeHtml(order.store));
+    renderedHtml = renderedHtml.replace(/{{supplierName}}/g, escapeHtml(order.supplierName));
+    renderedHtml = renderedHtml.replace(/{{orderId}}/g, escapeHtml(order.orderId));
+    renderedHtml = renderedHtml.replace(/{{date}}/g, new Date(order.completedAt || order.createdAt).toLocaleDateString());
+    renderedHtml = renderedHtml.replace(/{{items}}/g, itemRows);
+    renderedHtml = renderedHtml.replace(/{{grandTotal}}/g, grandTotal.toFixed(2));
+    renderedHtml = renderedHtml.replace(/{{paymentMethod}}/g, escapeHtml(order.paymentMethod?.toUpperCase() || 'N/A'));
+    
+    return renderedHtml;
+};
+
+
 export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): string => {
     const isHtml = format === 'html';
 

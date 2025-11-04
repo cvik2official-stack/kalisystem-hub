@@ -1,92 +1,152 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { useToasts } from '../../context/ToastContext';
+import EditReceiptTemplateModal from './EditReceiptTemplateModal';
+
+declare const html2canvas: any;
 
 interface InvoicePreviewModalProps {
   isOpen: boolean;
   onClose: () => void;
-  base64Image: string | null;
+  receiptHtml: string | null;
+  receiptTemplate: string;
 }
 
-const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({ isOpen, onClose, base64Image }) => {
+const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({ isOpen, onClose, receiptHtml, receiptTemplate }) => {
   const { addToast } = useToasts();
-  
-  if (!isOpen || !base64Image) return null;
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [isTemplateEditorOpen, setTemplateEditorOpen] = useState(false);
 
-  const imageUrl = `data:image/png;base64,${base64Image}`;
+  if (!isOpen || !receiptHtml) return null;
 
   const handlePrint = () => {
-    const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head><title>Print Invoice</title></head>
-          <body style="margin:0; padding:0;">
-            <img src="${imageUrl}" style="max-width:100%;" onload="window.print(); setTimeout(function(){window.close();}, 100);" />
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
+    if (iframeRef.current && iframeRef.current.contentWindow) {
+      iframeRef.current.contentWindow.focus();
+      iframeRef.current.contentWindow.print();
     }
   };
 
-  const handleDownload = () => {
-    const link = document.createElement('a');
-    link.href = imageUrl;
-    link.download = `invoice-${new Date().toISOString().split('T')[0]}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const getCanvas = async (): Promise<HTMLCanvasElement | null> => {
+    if (iframeRef.current && iframeRef.current.contentDocument?.body) {
+      try {
+        const canvas = await html2canvas(iframeRef.current.contentDocument.body, {
+            scale: 2 // Higher scale for better quality
+        });
+        return canvas;
+      } catch (error) {
+        console.error('Error generating canvas:', error);
+        addToast('Failed to generate image.', 'error');
+        return null;
+      }
+    }
+    return null;
   };
   
+  const handleDownload = async () => {
+    const canvas = await getCanvas();
+    if (canvas) {
+        const link = document.createElement('a');
+        link.href = canvas.toDataURL('image/png');
+        link.download = `invoice-${new Date().toISOString().split('T')[0]}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+  };
+
   const handleShare = async () => {
-    if (!navigator.share) {
-      addToast('Web Share API is not supported in your browser.', 'info');
-      try {
-        const blob = await (await fetch(imageUrl)).blob();
-        await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob })
-        ]);
-        addToast('Invoice image copied to clipboard.', 'success');
-      } catch (error) {
-        addToast('Could not copy image to clipboard.', 'error');
-      }
-      return;
-    }
+    const canvas = await getCanvas();
+    if (!canvas) return;
 
-    try {
-      const blob = await (await fetch(imageUrl)).blob();
-      const file = new File([blob], 'invoice.png', { type: 'image/png' });
+    canvas.toBlob(async (blob) => {
+        if (!blob) {
+            addToast('Could not create image blob.', 'error');
+            return;
+        }
 
-      await navigator.share({
-        title: 'Invoice',
-        text: 'Here is the invoice for the order.',
-        files: [file],
-      });
-    } catch (error) {
-      console.error('Error sharing:', error);
-      addToast('Could not share the image.', 'error');
-    }
+        const file = new File([blob], 'invoice.png', { type: 'image/png' });
+        
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            try {
+                await navigator.share({
+                    title: 'Invoice',
+                    text: 'Here is the invoice for the order.',
+                    files: [file],
+                });
+            } catch (error) {
+                console.error('Error sharing:', error);
+                // Don't show an error if user cancels the share dialog
+                if ((error as Error).name !== 'AbortError') {
+                    addToast('Could not share the image.', 'error');
+                }
+            }
+        } else {
+             try {
+                await navigator.clipboard.write([
+                    new ClipboardItem({ 'image/png': blob })
+                ]);
+                addToast('Web Share not supported. Invoice image copied to clipboard.', 'success');
+              } catch (error) {
+                addToast('Could not copy image to clipboard.', 'error');
+              }
+        }
+    }, 'image/png');
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg border-t-4 border-green-500" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
+    <>
+      <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+        <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-xl border-t-4 border-green-500 flex flex-col" onClick={(e) => e.stopPropagation()}>
+          <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
-        <h2 className="text-xl font-bold text-white mb-4">Receipt Preview</h2>
-        
-        <div className="bg-gray-900 rounded-md p-2 max-h-[60vh] overflow-y-auto">
-          <img src={imageUrl} alt="Generated Invoice" className="w-full h-auto rounded" />
-        </div>
+          </button>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-bold text-white">Receipt Preview</h2>
+            <div className="flex items-center space-x-2">
+                <button onClick={() => setZoom(z => Math.max(0.5, z - 0.1))} className="p-1 bg-gray-700 rounded-md hover:bg-gray-600" title="Zoom Out">-</button>
+                <span className="text-sm font-mono w-10 text-center">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="p-1 bg-gray-700 rounded-md hover:bg-gray-600" title="Zoom In">+</button>
+            </div>
+          </div>
+          
+          <div className="bg-gray-700 rounded-md p-2 flex-grow min-h-0 overflow-auto">
+            <div className="flex justify-center items-start">
+               <iframe
+                    ref={iframeRef}
+                    srcDoc={receiptHtml}
+                    title="Receipt Preview"
+                    className="bg-white rounded-sm border-none origin-top"
+                    style={{
+                        width: '302px', // 80mm paper width approx
+                        height: '1000px', // A tall default height
+                        transform: `scale(${zoom})`,
+                        transformOrigin: 'top center',
+                    }}
+                    onLoad={() => {
+                        // Adjust height after content loads
+                        if (iframeRef.current && iframeRef.current.contentWindow) {
+                            const body = iframeRef.current.contentWindow.document.body;
+                            const html = iframeRef.current.contentWindow.document.documentElement;
+                            const height = Math.max( body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight );
+                            iframeRef.current.style.height = `${height + 20}px`;
+                        }
+                    }}
+               />
+            </div>
+          </div>
 
-        <div className="mt-6 flex justify-end items-center space-x-2">
-          <button onClick={handlePrint} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">Print</button>
-          <button onClick={handleDownload} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">Download</button>
-          <button onClick={handleShare} className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white">Share</button>
+          <div className="mt-6 flex justify-between items-center">
+            <button onClick={() => setTemplateEditorOpen(true)} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">Edit Template</button>
+            <div className="flex items-center space-x-2">
+              <button onClick={handlePrint} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">Print</button>
+              <button onClick={handleDownload} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">Download</button>
+              <button onClick={handleShare} className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white">Share</button>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+      <EditReceiptTemplateModal isOpen={isTemplateEditorOpen} onClose={() => setTemplateEditorOpen(false)} template={receiptTemplate} />
+    </>
   );
 };
 

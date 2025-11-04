@@ -1,5 +1,5 @@
-import { GoogleGenAI, Type, Modality } from "@google/genai";
-import { Item, ParsedItem, Order, Unit } from '../types';
+import { GoogleGenAI, Type } from "@google/genai";
+import { Item, ParsedItem, Unit } from '../types';
 
 const parseItemListWithGemini = async (
   text: string,
@@ -21,10 +21,8 @@ const parseItemListWithGemini = async (
   }
 
   try {
-    // Initialize the Gemini client on the fly with the provided key
     const ai = new GoogleGenAI({ apiKey });
 
-    // The prompt is now executed on the client-side
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: `Parse the following user-provided text into a list of items. For each item, identify its name, quantity, and unit.
@@ -90,63 +88,80 @@ const parseItemListWithGemini = async (
   }
 };
 
-export const generateInvoiceImage = async (order: Order, apiKey: string): Promise<string> => {
+export const generateReceiptTemplateHtml = async (apiKey: string): Promise<string> => {
     if (!apiKey) {
         throw new Error("Gemini API key is not configured.");
     }
 
-    try {
-        const ai = new GoogleGenAI({ apiKey });
-        
-        const itemsList = order.items.map(item => `- ${item.name}: ${item.quantity} ${item.unit || ''}`).join('\n');
-        
-        const prompt = `Generate a professional, clean, black and white invoice image.
-        
-        Header: INVOICE
-        
-        Details Section (left aligned):
-        - Order ID: ${order.orderId}
-        - To: ${order.store}
-        - From: ${order.supplierName}
-        - Date: ${new Date(order.completedAt || order.createdAt).toLocaleDateString()}
-        
-        Items Section (a clean table):
-        The table should have three columns: "Item Description", "Quantity", and "Unit".
-        List the following items clearly in the table:
-        ${itemsList}
-        
-        Footer:
-        - Thank you for your business!
-        - Kali System Dispatch
-        
-        Design requirements:
-        - Use a clear, sans-serif font like Arial or Helvetica.
-        - The layout should be professional and easy to read.
-        - Strictly black and white, no colors.
-        - Ensure good contrast and legibility.
-        - The image aspect ratio should be portrait, like a standard A4 paper.
-        `;
+    // FIX: Initialize the Gemini client outside the try...catch block to ensure it's properly scoped.
+    const ai = new GoogleGenAI({ apiKey });
 
+    try {
+        // FIX: The prompt string was potentially causing parsing errors.
+        // Re-written to ensure placeholders are treated as plain text by the TypeScript compiler.
+        const prompt = `
+        Generate a single block of HTML and inline CSS for a receipt template.
+        The design should mimic a receipt from an 80mm thermal printer: narrow, single-column, and using a monospace font.
+        The template MUST be self-contained (no external stylesheets) and use placeholders for dynamic content.
+
+        **CRITICAL INSTRUCTIONS:**
+        1.  The entire output must be a single HTML string.
+        2.  Use a common monospace font like 'Courier New', 'Lucida Console', or 'monospace'.
+        3.  The layout must be narrow, simulating an 80mm receipt. Use a container div with a 'max-width' of around 300px.
+        4.  Use the EXACT placeholders specified below, enclosed in double curly braces, e.g., {{store}}.
+
+        **Required Placeholders:**
+        -   {{store}}: The name of the store receiving the order.
+        -   {{supplierName}}: The name of the supplier.
+        -   {{orderId}}: The human-readable order ID.
+        -   {{date}}: The completion date of the order.
+        -   {{items}}: This is a placeholder for the table body rows. It will be replaced by a series of '<tr>...</tr>' strings.
+        -   {{grandTotal}}: The final total amount of the invoice.
+        -   {{paymentMethod}}: The payment method used (e.g., CASH, KALI).
+
+        **Template Structure:**
+        -   A header with the title "INVOICE".
+        -   A section for details (Order ID, To, From, Date).
+        -   A table for items with columns: "Item", "Qty", "Price", "Total".
+        -   The table body should contain only the {{items}} placeholder.
+        -   A footer section displaying the "GRAND TOTAL" and the "PAID BY" information.
+        -   A final closing message, like "Thank you for your business!".
+
+        Here is an example of the kind of HTML structure I expect for the items table:
+        \`\`\`html
+        <table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{items}}
+            </tbody>
+        </table>
+        \`\`\`
+        Now, generate the complete HTML document based on these requirements.
+        `;
+        
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: { parts: [{ text: prompt }] },
-            config: {
-                responseModalities: [Modality.IMAGE],
-            },
+            model: 'gemini-2.5-flash',
+            contents: prompt,
         });
 
-        const imagePart = response.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
-        if (!imagePart || !imagePart.inlineData) {
-            throw new Error("AI did not return an image.");
-        }
+        const template = response.text
+          .replace(/```html/g, '')
+          .replace(/```/g, '')
+          .trim();
         
-        return imagePart.inlineData.data;
+        return template;
 
     } catch (error: any) {
-        console.error("Error generating invoice image with Gemini:", error);
-        throw new Error("Failed to generate invoice image.");
+        console.error("Error generating receipt template with Gemini:", error);
+        throw new Error("Failed to generate receipt template.");
     }
 };
-
 
 export default parseItemListWithGemini;

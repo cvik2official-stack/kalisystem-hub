@@ -1,5 +1,5 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
 
@@ -14,19 +14,7 @@ export interface AppState {
   orders: Order[];
   activeStatus: OrderStatus;
   orderIdCounters: Record<string, number>;
-  settings: {
-    supabaseUrl: string; // Made non-optional as it's required
-    supabaseKey: string; // Made non-optional as it's required
-    isAiEnabled?: boolean;
-    lastSyncedCsvContent?: string;
-    // FIX: Added optional properties to support integration settings.
-    csvUrl?: string;
-    geminiApiKey?: string;
-    telegramBotToken?: string;
-    aiParsingRules?: {
-      aliases: Record<string, string>;
-    };
-  };
+  settings: AppSettings;
   isLoading: boolean;
   isInitialized: boolean;
   syncStatus: SyncStatus;
@@ -224,6 +212,7 @@ const getInitialState = (): AppState => {
           "Cabbage": "Cabbage (white)",
         }
       },
+      receiptTemplates: {},
     },
     isLoading: false,
     isInitialized: false,

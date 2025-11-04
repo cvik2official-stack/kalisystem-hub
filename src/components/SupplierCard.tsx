@@ -7,13 +7,13 @@ import ContextMenu from './ContextMenu';
 import { useToasts } from '../context/ToastContext';
 import ConfirmationModal from './modals/ConfirmationModal';
 import EditItemModal from './modals/EditItemModal';
-import { generateOrderMessage, generateReceiptMessage } from '../utils/messageFormatter';
+import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from '../utils/messageFormatter';
 import EditSupplierModal from './modals/EditSupplierModal';
 import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram } from '../services/telegramService';
 import AddSupplierModal from './modals/AddSupplierModal';
 import MergeOrderModal from './modals/MergeOrderModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
-import { generateInvoiceImage } from '../services/geminiService';
+import { generateReceiptTemplateHtml } from '../services/geminiService';
 import InvoicePreviewModal from './modals/InvoicePreviewModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
 
@@ -122,8 +122,8 @@ const OrderItemRow: React.FC<{
                     </svg>
                 </div>
             )}
-            <span className={`flex-grow text-gray-300 flex items-center ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
-                {item.isSpoiled && <span className="h-2 w-2 bg-red-500 rounded-full mr-2"></span>}{item.name}
+            <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+                {item.name}
             </span>
             <div className="flex-shrink-0 flex items-center space-x-2">
                 {isEditingPrice ? (
@@ -227,18 +227,14 @@ interface SupplierCardProps {
 }
 
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false }) => {
-    const { state, actions } = useContext(AppContext);
+    const { state, dispatch, actions } = useContext(AppContext);
     const { addToast } = useToasts();
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, options: { label: string; action: () => void; isDestructive?: boolean; }[] } | null>(null);
-    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() =>
-        (order.items.length === 0 && order.status === OrderStatus.DISPATCHING) ||
-        order.status === OrderStatus.COMPLETED
-    );
+    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(() => order.status === OrderStatus.COMPLETED);
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isConfirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [isEditingInvoice, setIsEditingInvoice] = useState(false);
     const [invoiceAmount, setInvoiceAmount] = useState<string>('');
@@ -258,7 +254,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
     const [dragOverItemId, setDragOverItemId] = useState<string | null>(null);
 
-    const [invoicePreview, setInvoicePreview] = useState<{ isOpen: boolean; image: string | null }>({ isOpen: false, image: null });
+    const [invoicePreview, setInvoicePreview] = useState<{ isOpen: boolean; html: string | null, template: string }>({ isOpen: false, html: null, template: '' });
     const [isPaymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
 
     const orderTotal = useMemo(() => {
@@ -445,6 +441,34 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleUnspoilItem = async (itemToUnspoil: OrderItem) => {
+        if (!itemToUnspoil.isSpoiled) return;
+    
+        setIsProcessing(true);
+        try {
+            let updatedItems = [...order.items];
+            const spoiledItemIndex = updatedItems.findIndex(i => i.itemId === itemToUnspoil.itemId && i.isSpoiled);
+            if (spoiledItemIndex === -1) {
+                addToast('Could not find spoiled item to unspoil.', 'error');
+                return;
+            }
+            
+            const originalItemIndex = updatedItems.findIndex(i => i.itemId === itemToUnspoil.itemId && !i.isSpoiled);
+    
+            if (originalItemIndex !== -1) {
+                updatedItems[originalItemIndex].quantity += itemToUnspoil.quantity;
+                updatedItems.splice(spoiledItemIndex, 1);
+            } else {
+                updatedItems[spoiledItemIndex] = { ...updatedItems[spoiledItemIndex], isSpoiled: false };
+            }
+    
+            await actions.updateOrder({ ...order, items: updatedItems });
+            addToast(`${itemToUnspoil.name} has been restored.`, 'success');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleAddItem = async (item: OrderItem) => {
         setIsProcessing(true);
         try {
@@ -516,8 +540,21 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
         setIsProcessing(true);
         try {
-            const imageBase64 = await generateInvoiceImage(order, geminiApiKey);
-            setInvoicePreview({ isOpen: true, image: imageBase64 });
+            let template = state.settings.receiptTemplates?.['default'];
+            if (!template) {
+                addToast('No receipt template found. Generating one with AI...', 'info');
+                template = await generateReceiptTemplateHtml(geminiApiKey);
+                dispatch({
+                    type: 'SAVE_SETTINGS',
+                    payload: {
+                        receiptTemplates: { ...state.settings.receiptTemplates, 'default': template },
+                    },
+                });
+            }
+            
+            const renderedHtml = renderReceiptTemplate(template, order, state.itemPrices);
+            setInvoicePreview({ isOpen: true, html: renderedHtml, template: template });
+
         } catch (error: any) {
             addToast(`Failed to generate receipt: ${error.message}`, 'error');
         } finally {
@@ -554,14 +591,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 options = [
                     { label: 'Receipt', action: handleGenerateReceipt },
                     { label: 'Telegram Receipt', action: handleSendTelegramReceipt },
-                    { label: 'Drop', action: () => setConfirmDeleteOpen(true), isDestructive: true }
+                    { label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true }
                 ];
                 break;
             case OrderStatus.DISPATCHING:
             case OrderStatus.ON_THE_WAY:
                 options = [
                     { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) },
-                    { label: 'Drop', action: () => setConfirmDeleteOpen(true), isDestructive: true }
+                    { label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true }
                 ];
                 break;
         }
@@ -581,26 +618,36 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const handleItemContextMenu = (e: React.MouseEvent, item: OrderItem) => {
         e.preventDefault();
         e.stopPropagation();
-        const options: { label: string; action: () => void; isDestructive?: boolean; }[] = [];
+        const options: { label: string; action: () => void; isDestructive?: boolean }[] = [];
         const masterItem = state.items.find(i => i.id === item.itemId);
-
+    
         if (isManagerView && order.status === OrderStatus.ON_THE_WAY) {
-            options.push({ label: 'Edit Quantity...', action: () => handleQuantityClick(item) });
-            options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
+            if (item.isSpoiled) {
+                options.push({ label: 'Unspoil', action: () => handleUnspoilItem(item) });
+            } else {
+                options.push({ label: 'Edit Quantity...', action: () => handleQuantityClick(item) });
+                options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
+            }
         } else if (!isManagerView && masterItem) {
             if (order.status !== OrderStatus.COMPLETED) {
                 options.push({ label: 'Edit Master Item...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
             }
             options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(item); setIsPriceNumpadOpen(true); } });
             if (order.status === OrderStatus.ON_THE_WAY) {
-                options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
+                if (item.isSpoiled) {
+                    options.push({ label: 'Unspoil', action: () => handleUnspoilItem(item) });
+                } else {
+                    options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
+                }
             }
         }
         if (order.status !== OrderStatus.COMPLETED) {
             options.push({ label: 'Drop', action: () => handleDeleteItem(item), isDestructive: true });
         }
-        
-        if (options.length > 0) setContextMenu({ x: e.clientX, y: e.clientY, options });
+    
+        if (options.length > 0) {
+            setContextMenu({ x: e.clientX, y: e.clientY, options });
+        }
     };
 
     const handleCopyOrderMessage = () => {
@@ -716,7 +763,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 showStoreName={showStoreName}
                 isDraggableForMerge={isEffectivelyCollapsed && order.status !== OrderStatus.COMPLETED}
                 onMergeDragStart={handleMergeDragStart}
-                showActionsButton={!isManagerView && (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.COMPLETED)}
+                showActionsButton={!isManagerView || order.status === OrderStatus.COMPLETED}
                 onActionsClick={handleHeaderActionsClick}
                 orderTotal={orderTotal}
             />
@@ -780,13 +827,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
               />
             )}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onAddItem={handleAddItem} />}
-            <ConfirmationModal isOpen={isConfirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} onConfirm={() => actions.deleteOrder(order.id)} title="Drop Order" message={`Drop order for ${order.supplierName}?`} confirmText="Drop" isDestructive />
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
             {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={actions.updateSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
             {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
-            <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, image: null })} base64Image={invoicePreview.image} />
+            <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, html: null, template: '' })} receiptHtml={invoicePreview.html} receiptTemplate={invoicePreview.template} />
             <PaymentMethodModal isOpen={isPaymentMethodModalOpen} onClose={() => setPaymentMethodModalOpen(false)} onSelect={handlePaymentMethodChange} order={order} />
         </div>
     );
