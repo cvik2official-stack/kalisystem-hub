@@ -75,7 +75,15 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): st
         return `${itemName} x${item.quantity}${unitText}`;
     }).join('\n');
 
-    return `${header}${itemsList}`;
+    let message = `${header}${itemsList}`;
+
+    if (order.supplierName === SupplierName.OUDOM) {
+        const oudomFooterPlain = `Please approve and mark as done from the app:\nOUDOM TASKS hyperlink: https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM`;
+        const oudomFooterHtml = `Please approve and mark as done from the app:\n<a href="https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM">OUDOM TASKS</a>`;
+        message += `\n\n${isHtml ? oudomFooterHtml : oudomFooterPlain}`;
+    }
+
+    return message;
 };
 
 export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[]): string => {

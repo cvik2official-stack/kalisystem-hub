@@ -12,23 +12,12 @@ interface AddSupplierModalProps {
 const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, onSelect, title }) => {
   const { state } = useContext(AppContext);
   const [search, setSearch] = useState('');
-  const { suppliers, orders, activeStore, activeStatus } = state;
+  const { suppliers } = state;
 
   const filteredSuppliers = useMemo(() => {
-    let availableSuppliers: Supplier[];
-
-    if (title === 'Change Supplier') {
-      // For changing a supplier, show all suppliers.
-      availableSuppliers = suppliers;
-    } else {
-      // For adding a new card, filter out suppliers already in the current view.
-      const activeSuppliers = new Set(
-        orders
-          .filter(o => o.store === activeStore && o.status === activeStatus)
-          .map(o => o.supplierName)
-      );
-      availableSuppliers = suppliers.filter(s => !activeSuppliers.has(s.name));
-    }
+    // The modal should always show all suppliers, removing the restriction
+    // that prevented adding a duplicate supplier card to the current view.
+    const availableSuppliers: Supplier[] = suppliers;
 
     const searchFiltered = !search
       ? availableSuppliers
@@ -50,7 +39,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
       
       return a.name.localeCompare(b.name);
     });
-  }, [search, suppliers, orders, activeStore, activeStatus, title]);
+  }, [search, suppliers]);
   
   const handleSelect = (supplier: Supplier) => {
     onSelect(supplier);
@@ -74,7 +63,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
     <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
       <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md flex flex-col border-t-4 border-blue-500" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
         </button>

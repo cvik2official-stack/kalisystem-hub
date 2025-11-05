@@ -258,6 +258,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
 
     // The payload now includes the 'items' array.
     const orderPayload = {
+        store: order.store,
         supplier_id: order.supplierId, // Allow supplier changes
         status: order.status,
         is_sent: order.isSent,

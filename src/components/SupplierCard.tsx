@@ -15,6 +15,7 @@ import PriceNumpadModal from './modals/PriceNumpadModal';
 import { generateReceiptTemplateHtml } from '../services/geminiService';
 import InvoicePreviewModal from './modals/InvoicePreviewModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
+import MoveToStoreModal from './modals/MoveToStoreModal';
 
 // --- SUB-COMPONENTS START ---
 
@@ -270,6 +271,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isEditingInvoice, setIsEditingInvoice] = useState(false);
     const [invoiceAmount, setInvoiceAmount] = useState<string>('');
     const [isChangeSupplierModalOpen, setChangeSupplierModalOpen] = useState(false);
+    const [isMoveToStoreModalOpen, setIsMoveToStoreModalOpen] = useState(false);
     const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
     const [isSpoilMode, setIsSpoilMode] = useState(false);
@@ -606,6 +608,17 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             setChangeSupplierModalOpen(false);
         }
     };
+
+    const handleMoveToStore = async (newStoreName: StoreName) => {
+        setIsProcessing(true);
+        try {
+            await actions.updateOrder({ ...order, store: newStoreName });
+            notify(`Order moved to ${newStoreName}.`, 'success');
+        } finally {
+            setIsProcessing(false);
+            setIsMoveToStoreModalOpen(false);
+        }
+    };
     
     const handleMergeOrder = (destinationOrder: Order) => {
         actions.mergeOrders(order.id, destinationOrder.id);
@@ -660,6 +673,30 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleAssignToOudom = async () => {
+        const oudomSupplier = state.suppliers.find(s => s.name === SupplierName.OUDOM);
+        if (!oudomSupplier) {
+            notify('OUDOM supplier not found.', 'error');
+            return;
+        }
+
+        setIsProcessing(true);
+        try {
+            const updatedOrder = { ...order, supplierId: oudomSupplier.id, supplierName: oudomSupplier.name };
+            await actions.updateOrder(updatedOrder);
+
+            const { telegramBotToken } = state.settings;
+            if (oudomSupplier.chatId && telegramBotToken) {
+                await sendOrderToSupplierOnTelegram(updatedOrder, oudomSupplier, generateOrderMessage(updatedOrder, 'html'), telegramBotToken);
+                notify(`Order assigned to OUDOM and notified.`, 'success');
+            } else {
+                notify('Order assigned to OUDOM, but notification failed: OUDOM Chat ID or Bot Token is not configured.', 'info');
+            }
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
     const handleHeaderActionsClick = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -684,10 +721,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             case OrderStatus.DISPATCHING:
             case OrderStatus.ON_THE_WAY:
                  if (!isManagerView) {
-                    options = [
+                    const menuOptions: { label: string; action: () => void; isDestructive?: boolean; }[] = [
                         { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) },
-                        { label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true }
+                        { label: 'Move to Store...', action: () => setIsMoveToStoreModalOpen(true) },
                     ];
+                    if (order.supplierName !== SupplierName.OUDOM) {
+                        menuOptions.push({ label: 'Assign to Oudom', action: handleAssignToOudom });
+                    }
+                    menuOptions.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
+                    options = menuOptions;
                 }
                 break;
         }
@@ -769,6 +811,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
     
     const handleItemDragStart = (e: React.DragEvent, item: OrderItem) => {
+        e.stopPropagation();
         if (setDraggedItem) {
             e.dataTransfer.setData('text/plain', item.itemId);
             e.dataTransfer.effectAllowed = "move";
@@ -955,6 +998,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
             {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={actions.updateSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
+            <MoveToStoreModal isOpen={isMoveToStoreModalOpen} onClose={() => setIsMoveToStoreModalOpen(false)} onSelect={handleMoveToStore} currentStore={order.store} />
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
             {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
             <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, html: null, template: '' })} receiptHtml={invoicePreview.html} receiptTemplate={invoicePreview.template} />

@@ -20,7 +20,7 @@ export enum SupplierName {
 export enum Unit {
     KG = 'kg',
     PC = 'pc',
-    L = 'l',
+    L = 'L',
     BOX = 'box',
     PK = 'pk',
     BT = 'bt',
