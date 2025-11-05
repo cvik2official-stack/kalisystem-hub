@@ -1,4 +1,4 @@
-import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice } from '../types';
+import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice, Supplier, Store } from '../types';
 
 const escapeHtml = (text: string): string => {
   if (typeof text !== 'string') return '';
@@ -39,11 +39,10 @@ export const renderReceiptTemplate = (template: string, order: Order, itemPrices
 };
 
 
-export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): string => {
+export const generateOrderMessage = (order: Order, format: 'plain' | 'html', supplier?: Supplier, stores?: Store[]): string => {
     const isHtml = format === 'html';
 
     // Determine the correct store display name based on supplier and store rules.
-    // FIX: Explicitly type storeDisplayName as a string to allow for custom display names.
     let storeDisplayName: string = order.store;
     if (order.supplierName === SupplierName.P_AND_P && (order.store === StoreName.SHANTI || order.store === StoreName.WB)) {
         storeDisplayName = `STOCKO2 (${order.store})`;
@@ -52,9 +51,17 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): st
         storeDisplayName = 'STOCKO2 (SHANTI)';
     }
 
+    let finalStoreDisplay = isHtml ? escapeHtml(storeDisplayName) : storeDisplayName;
+    if (isHtml && supplier?.botSettings?.includeLocation) {
+        const store = stores?.find(s => s.name === order.store);
+        if (store?.locationUrl) {
+            finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${finalStoreDisplay}</a>`;
+        }
+    }
+
     // KALI supplier has a special, simplified format
     if (order.supplierName === SupplierName.KALI) {
-        const header = isHtml ? `<b>${escapeHtml(storeDisplayName)}</b>` : storeDisplayName;
+        const header = isHtml ? `<b>${finalStoreDisplay}</b>` : storeDisplayName;
         const itemsList = order.items.map(item => {
             const unitText = item.unit ? (isHtml ? escapeHtml(item.unit) : item.unit) : '';
             const itemName = isHtml ? escapeHtml(item.name) : item.name;
@@ -65,7 +72,7 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): st
 
     // Default message format for all other suppliers
     const header = isHtml
-        ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${escapeHtml(storeDisplayName)}</b>\n\n`
+        ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${finalStoreDisplay}</b>\n\n`
         : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${storeDisplayName}\n\n`;
     
     const itemsList = order.items.map(item => {

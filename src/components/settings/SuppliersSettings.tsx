@@ -148,6 +148,7 @@ const SuppliersSettings: React.FC = () => {
                 <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Missing Items">Mis</th>
                 <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="OK Button">OK</th>
                 <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Driver on the Way">Drv</th>
+                <th className="px-1 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Include Location Link">Loc</th>
                 <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
@@ -213,6 +214,9 @@ const SuppliersSettings: React.FC = () => {
                     </td>
                     <td className="px-1 py-1 text-center">
                         {isEditing ? <input type="checkbox" checked={!!botSettings?.showDriverOnWayButton} onChange={e => handleSupplierDataChange('botSettings.showDriverOnWayButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckboxDisplay(botSettings?.showDriverOnWayButton)}
+                    </td>
+                     <td className="px-1 py-1 text-center">
+                        {isEditing ? <input type="checkbox" checked={!!botSettings?.includeLocation} onChange={e => handleSupplierDataChange('botSettings.includeLocation', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /> : renderCheckboxDisplay(botSettings?.includeLocation)}
                     </td>
                     <td className="pl-2 pr-4 py-1 text-right">
                        <div className="flex items-center justify-end space-x-2">

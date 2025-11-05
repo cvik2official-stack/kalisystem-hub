@@ -8,12 +8,13 @@
   CREATE TABLE IF NOT EXISTS public.stores (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
-    chat_id TEXT
+    chat_id TEXT,
+    location_url TEXT
   );
 
   -- 2. Seed the table with your store names (run this once)
   INSERT INTO public.stores (name)
-  VALUES ('CV2'), ('STOCK02'), ('WB'), ('SHANTI')
+  VALUES ('CV2'), ('STOCK02'), ('WB'), ('SHANTI'), ('OUDOM'), ('KALI')
   ON CONFLICT (name) DO NOTHING;
 
 */
@@ -65,6 +66,9 @@ const StoresSettings: React.FC = () => {
                 <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Chat ID
                 </th>
+                <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
+                  Location URL
+                </th>
                 <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">
                   Actions
                 </th>
@@ -87,6 +91,19 @@ const StoresSettings: React.FC = () => {
                         />
                       ) : (
                         store.chatId || '-'
+                      )}
+                    </td>
+                    <td className="px-2 py-1 text-sm text-gray-300 whitespace-nowrap font-mono">
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editedStoreData.locationUrl || ''}
+                          onChange={(e) => handleStoreDataChange('locationUrl', e.target.value)}
+                          className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
+                          placeholder="e.g., https://maps.app.goo.gl/..."
+                        />
+                      ) : (
+                        store.locationUrl || '-'
                       )}
                     </td>
                     <td className="pl-2 pr-4 py-1 text-right">

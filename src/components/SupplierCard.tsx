@@ -687,7 +687,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
             const { telegramBotToken } = state.settings;
             if (oudomSupplier.chatId && telegramBotToken) {
-                await sendOrderToSupplierOnTelegram(updatedOrder, oudomSupplier, generateOrderMessage(updatedOrder, 'html'), telegramBotToken);
+                await sendOrderToSupplierOnTelegram(updatedOrder, oudomSupplier, generateOrderMessage(updatedOrder, 'html', oudomSupplier, state.stores), telegramBotToken);
                 notify(`Order assigned to OUDOM and notified.`, 'success');
             } else {
                 notify('Order assigned to OUDOM, but notification failed: OUDOM Chat ID or Bot Token is not configured.', 'info');
@@ -789,7 +789,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleCopyOrderMessage = () => {
-        navigator.clipboard.writeText(generateOrderMessage(order, 'plain')).then(() => notify('Order copied!', 'success'));
+        navigator.clipboard.writeText(generateOrderMessage(order, 'plain', supplier, state.stores)).then(() => notify('Order copied!', 'success'));
     };
     
     const handleSendToTelegram = async () => {
@@ -800,7 +800,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
         setIsProcessing(true);
         try {
-            await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html'), telegramBotToken);
+            await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html', supplier, state.stores), telegramBotToken);
             notify(`Order sent to ${order.supplierName}.`, 'success');
             if (order.status === OrderStatus.DISPATCHING) {
                 await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });

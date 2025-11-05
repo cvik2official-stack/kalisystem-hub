@@ -26,6 +26,9 @@
 
   -- Add a boolean column to track OUDOM acknowledgment
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS is_acknowledged BOOLEAN DEFAULT FALSE;
+
+  -- Add a text column to stores for a location URL
+  ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS location_url TEXT;
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -59,6 +62,7 @@ interface StoreFromDb {
   id: string;
   name: StoreName;
   chat_id?: string;
+  location_url?: string;
 }
 
 interface OrderFromDb {
@@ -123,6 +127,7 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
       id: s.id,
       name: s.name,
       chatId: s.chat_id,
+      locationUrl: s.location_url,
     }));
     
     const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
@@ -390,6 +395,7 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
 export const updateStore = async ({ store, url, key }: { store: Store; url: string; key: string }): Promise<Store> => {
     const payload = {
         chat_id: store.chatId,
+        location_url: store.locationUrl,
     };
     const response = await fetch(`${url}/rest/v1/stores?id=eq.${store.id}&select=*`, {
         method: 'PATCH',
@@ -402,6 +408,7 @@ export const updateStore = async ({ store, url, key }: { store: Store; url: stri
     return { 
         ...store, 
         chatId: updated.chat_id,
+        locationUrl: updated.location_url,
     };
 };
 

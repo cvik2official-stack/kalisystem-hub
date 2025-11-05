@@ -28,6 +28,7 @@ export interface Store {
   id: string; // uuid from Supabase
   name: StoreName;
   chatId?: string;
+  locationUrl?: string;
 }
 
 export interface Item {
@@ -46,9 +47,9 @@ export interface Item {
 export interface SupplierBotSettings {
   showAttachInvoice?: boolean;
   showMissingItems?: boolean;
-
   showOkButton?: boolean;
   showDriverOnWayButton?: boolean;
+  includeLocation?: boolean;
 }
 
 export interface Supplier {
