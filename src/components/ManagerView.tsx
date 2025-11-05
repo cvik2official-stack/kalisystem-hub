@@ -6,13 +6,13 @@ import { Order, OrderStatus, StoreName, PaymentMethod, Supplier, SupplierName } 
 import ContextMenu from './ContextMenu';
 import MergeByPaymentModal from './modals/MergeByPaymentModal';
 import AddSupplierModal from './modals/AddSupplierModal';
-import { useToasts } from '../context/ToastContext';
+import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
 
 const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { orders, isEditModeEnabled } = state;
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   const [activeStatus, setActiveStatus] = useState<OrderStatus>(OrderStatus.ON_THE_WAY);
   const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
   
@@ -68,15 +68,15 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
     });
     
     if (todaysCompletedOrders.length === 0) {
-        addToast("No completed orders for today to generate a report.", 'info');
+        notify("No completed orders for today to generate a report.", 'info');
         return;
     }
     
     const reportText = generateStoreReport(todaysCompletedOrders);
     navigator.clipboard.writeText(reportText).then(() => {
-        addToast('Store report copied to clipboard!', 'success');
+        notify('Store report copied to clipboard!', 'success');
     }).catch(err => {
-        addToast(`Failed to copy report: ${err}`, 'error');
+        notify(`Failed to copy report: ${err}`, 'error');
     });
   };
 
@@ -141,14 +141,20 @@ const ManagerView: React.FC<{ storeName: string }> = ({ storeName }) => {
     return `${day}.${month}.${year}`;
   };
   
-  const headerContextMenuOptions = [
-    { label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) },
+  const isOudomManagerWorkflow = storeName === StoreName.OUDOM;
+
+  const baseHeaderOptions = [
     { label: 'Merge by Payment...', action: () => setIsMergeModalOpen(true) },
     { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
     { label: 'Store Report', action: handleGenerateStoreReport },
   ];
 
-  const isOudomManagerWorkflow = storeName === StoreName.OUDOM;
+  const headerContextMenuOptions = isOudomManagerWorkflow
+    ? baseHeaderOptions
+    : [
+        { label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) },
+        ...baseHeaderOptions,
+      ];
 
   return (
     <>

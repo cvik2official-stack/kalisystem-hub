@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Item, Unit, SupplierName } from '../../types';
 import { AppContext } from '../../context/AppContext';
-import { useToasts } from '../../context/ToastContext';
+import { useNotifier } from '../../context/NotificationContext';
 
 interface EditItemModalProps {
   item: Item;
@@ -13,7 +13,7 @@ interface EditItemModalProps {
 
 const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, onSave, onDelete }) => {
     const { state, actions } = useContext(AppContext);
-    const { addToast } = useToasts();
+    const { notify } = useNotifier();
     const [name, setName] = useState('');
     const [unit, setUnit] = useState<Unit>(Unit.PC);
     const [supplierId, setSupplierId] = useState<string>('');
@@ -37,7 +37,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
             if (newSupplierName && newSupplierName.trim()) {
                 try {
                     if (state.suppliers.some(s => s.name.toLowerCase() === newSupplierName.trim().toLowerCase())) {
-                        addToast(`Supplier "${newSupplierName.trim()}" already exists.`, 'error');
+                        notify(`Supplier "${newSupplierName.trim()}" already exists.`, 'error');
                         e.target.value = supplierId; // Reset dropdown to original value
                         return;
                     }
@@ -64,14 +64,14 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
         setIsSaving(true);
         const selectedSupplier = state.suppliers.find(s => s.id === supplierId);
         if (!selectedSupplier) {
-            addToast('Invalid supplier selected.', 'error');
+            notify('Invalid supplier selected.', 'error');
             setIsSaving(false);
             return;
         }
 
         try {
             if (isNew && state.items.some(i => i.name.toLowerCase() === name.toLowerCase() && i.supplierId === supplierId)) {
-                addToast(`Item "${name}" from ${selectedSupplier.name} already exists.`, 'error');
+                notify(`Item "${name}" from ${selectedSupplier.name} already exists.`, 'error');
                 setIsSaving(false);
                 return;
             }
@@ -107,7 +107,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
     
     const handleAddNewVariant = async () => {
         if (!newVariantName.trim()) {
-            addToast('Variant name cannot be empty.', 'error');
+            notify('Variant name cannot be empty.', 'error');
             return;
         }
 
@@ -115,7 +115,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
         const newItemName = `${parentItem.name} (${newVariantName.trim()})`;
 
         if (state.items.some(i => i.name.toLowerCase() === newItemName.toLowerCase())) {
-            addToast(`Item "${newItemName}" already exists.`, 'error');
+            notify(`Item "${newItemName}" already exists.`, 'error');
             return;
         }
         

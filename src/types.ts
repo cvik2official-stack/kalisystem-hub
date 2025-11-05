@@ -22,6 +22,7 @@ export enum PaymentMethod {
 
 // FIX: Define SyncStatus here to be the single source of truth.
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
+export type SettingsTab = 'items' | 'suppliers' | 'stores';
 
 export interface Store {
   id: string; // uuid from Supabase
@@ -129,6 +130,7 @@ export interface AppState {
   itemPrices: ItemPrice[];
   orders: Order[];
   activeStatus: OrderStatus;
+  activeSettingsTab: SettingsTab;
   orderIdCounters: Record<string, number>;
   settings: AppSettings;
   isLoading: boolean;

@@ -15,14 +15,20 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
   const { suppliers, orders, activeStore, activeStatus } = state;
 
   const filteredSuppliers = useMemo(() => {
-    // Get suppliers that do not have an active order in the current view
-    const activeSuppliers = new Set(
-      orders
-        .filter(o => o.store === activeStore && o.status === activeStatus)
-        .map(o => o.supplierName)
-    );
+    let availableSuppliers: Supplier[];
 
-    const availableSuppliers = suppliers.filter(s => !activeSuppliers.has(s.name));
+    if (title === 'Change Supplier') {
+      // For changing a supplier, show all suppliers.
+      availableSuppliers = suppliers;
+    } else {
+      // For adding a new card, filter out suppliers already in the current view.
+      const activeSuppliers = new Set(
+        orders
+          .filter(o => o.store === activeStore && o.status === activeStatus)
+          .map(o => o.supplierName)
+      );
+      availableSuppliers = suppliers.filter(s => !activeSuppliers.has(s.name));
+    }
 
     const searchFiltered = !search
       ? availableSuppliers
@@ -44,7 +50,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
       
       return a.name.localeCompare(b.name);
     });
-  }, [search, suppliers, orders, activeStore, activeStatus]);
+  }, [search, suppliers, orders, activeStore, activeStatus, title]);
   
   const handleSelect = (supplier: Supplier) => {
     onSelect(supplier);

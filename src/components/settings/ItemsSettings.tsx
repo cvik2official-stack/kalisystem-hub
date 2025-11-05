@@ -14,7 +14,6 @@ import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
 import EditItemModal from '../modals/EditItemModal';
 import ContextMenu from '../ContextMenu';
-import ConfirmationModal from '../modals/ConfirmationModal';
 
 const ItemsSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
@@ -23,7 +22,6 @@ const ItemsSettings: React.FC = () => {
   const [itemForModal, setItemForModal] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: Item } | null>(null);
-  const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
   
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editedItemData, setEditedItemData] = useState<Partial<Item>>({});
@@ -39,10 +37,9 @@ const ItemsSettings: React.FC = () => {
     }
   };
   
-  const handleDeleteItem = async () => {
-    if (itemToDelete) {
-      await actions.deleteItem(itemToDelete.id);
-      setItemToDelete(null);
+  const handleDeleteItem = async (item: Item) => {
+    if (window.confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone.`)) {
+      await actions.deleteItem(item.id);
     }
   };
   
@@ -126,7 +123,7 @@ const ItemsSettings: React.FC = () => {
       { label: 'Add to Dispatch', action: () => actions.addItemToDispatch(item) },
       { label: item.trackStock ? 'Disable Stock Tracking' : 'Enable Stock Tracking', action: () => actions.updateItem({ ...item, trackStock: !item.trackStock }) },
       { label: 'Edit...', action: () => handleEditItemInModal(item) },
-      { label: 'Delete Item', action: () => setItemToDelete(item), isDestructive: true },
+      { label: 'Delete Item', action: () => handleDeleteItem(item), isDestructive: true },
     ];
   };
 
@@ -251,17 +248,6 @@ const ItemsSettings: React.FC = () => {
         />
       )}
 
-      {itemToDelete && (
-        <ConfirmationModal
-            isOpen={!!itemToDelete}
-            onClose={() => setItemToDelete(null)}
-            onConfirm={handleDeleteItem}
-            title="Delete Item"
-            message={`Are you sure you want to delete "${itemToDelete.name}"? This action cannot be undone.`}
-            isDestructive
-        />
-      )}
-
       {(itemForModal || isNewItemModalOpen) && (
         <EditItemModal 
             item={itemForModal!} 
@@ -274,7 +260,7 @@ const ItemsSettings: React.FC = () => {
             onDelete={async (itemId: string) => {
                 const item = state.items.find(i => i.id === itemId);
                 if (item) {
-                    setItemToDelete(item);
+                  await handleDeleteItem(item);
                 }
                 setNewItemModalOpen(false);
                 setItemForModal(null);

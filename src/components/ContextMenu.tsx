@@ -2,8 +2,9 @@ import React, { useEffect, useRef } from 'react';
 
 interface ContextMenuOption {
     label: string;
-    action: () => void;
+    action?: () => void;
     isDestructive?: boolean;
+    isHeader?: boolean;
 }
 
 interface ContextMenuProps {
@@ -42,20 +43,27 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
             style={{ top: y, left: x }}
         >
             <ul>
-                {options.map((option, index) => (
-                    <li key={index}>
-                        <button
-                            onClick={() => {
-                                option.action();
-                                onClose();
-                            }}
-                            className={`w-full text-left px-4 py-2 text-sm ${option.isDestructive ? 'text-red-400 hover:bg-red-500 hover:text-white' : 'text-gray-200 hover:bg-indigo-500 hover:text-white'
-                                }`}
-                        >
-                            {option.label}
-                        </button>
-                    </li>
-                ))}
+                {options.map((option, index) => {
+                    const isIndented = option.label.trim() !== option.label;
+                    return (
+                        <li key={index}>
+                            {option.isHeader ? (
+                                <span className="block px-4 pt-2 pb-1 text-xs font-bold text-gray-400 uppercase tracking-wider">{option.label}</span>
+                            ) : (
+                                <button
+                                    onClick={() => {
+                                        if (option.action) option.action();
+                                        onClose();
+                                    }}
+                                    className={`w-full text-left py-2 text-sm ${isIndented ? 'pl-8 pr-4' : 'px-4'} ${option.isDestructive ? 'text-red-400 hover:bg-red-500 hover:text-white' : 'text-gray-200 hover:bg-indigo-500 hover:text-white'
+                                        }`}
+                                >
+                                    {option.label.trim()}
+                                </button>
+                            )}
+                        </li>
+                    )
+                })}
             </ul>
         </div>
     );

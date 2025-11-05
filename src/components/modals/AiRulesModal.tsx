@@ -1,6 +1,6 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { useToasts } from '../../context/ToastContext';
+import { useNotifier } from '../../context/NotificationContext';
 import { StoreName } from '../../types';
 
 interface AiRulesModalProps {
@@ -31,7 +31,7 @@ const RuleList: React.FC<{ title: string, rules: Record<string, string>, onDelet
 
 const AiRulesModal: React.FC<AiRulesModalProps> = ({ isOpen, onClose }) => {
   const { state, dispatch } = useContext(AppContext);
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   
   const [newAliasFrom, setNewAliasFrom] = useState('');
   const [newAliasTo, setNewAliasTo] = useState('');
@@ -47,7 +47,7 @@ const AiRulesModal: React.FC<AiRulesModalProps> = ({ isOpen, onClose }) => {
     const from = newAliasFrom.trim();
     const to = newAliasTo.trim();
     if (!from || !to) {
-      addToast('Both "From" and "To" fields are required.', 'error');
+      notify('Both "From" and "To" fields are required.', 'error');
       return;
     }
     
@@ -57,12 +57,12 @@ const AiRulesModal: React.FC<AiRulesModalProps> = ({ isOpen, onClose }) => {
     } else if (activeStore !== 'Settings') {
         updatedRules[activeStore] = { ...(updatedRules[activeStore] || {}), [from]: to };
     } else {
-        addToast('Cannot add a store-specific rule from this view.', 'error');
+        notify('Cannot add a store-specific rule from this view.', 'error');
         return;
     }
 
     dispatch({ type: 'SAVE_SETTINGS', payload: { aiParsingRules: updatedRules } });
-    addToast('AI parsing rule added!', 'success');
+    notify('AI parsing rule added!', 'success');
 
     setNewAliasFrom('');
     setNewAliasTo('');
@@ -72,7 +72,7 @@ const AiRulesModal: React.FC<AiRulesModalProps> = ({ isOpen, onClose }) => {
     const updatedGlobalRules = { ...globalRules };
     delete updatedGlobalRules[fromKey];
     dispatch({ type: 'SAVE_SETTINGS', payload: { aiParsingRules: { ...currentRules, global: updatedGlobalRules } } });
-    addToast('Global rule removed.', 'success');
+    notify('Global rule removed.', 'success');
   };
   
   const handleDeleteStoreAlias = (fromKey: string) => {
@@ -80,7 +80,7 @@ const AiRulesModal: React.FC<AiRulesModalProps> = ({ isOpen, onClose }) => {
     const updatedStoreRules = { ...storeRules };
     delete updatedStoreRules[fromKey];
     dispatch({ type: 'SAVE_SETTINGS', payload: { aiParsingRules: { ...currentRules, [activeStore]: updatedStoreRules } } });
-    addToast(`Rule for ${activeStore} removed.`, 'success');
+    notify(`Rule for ${activeStore} removed.`, 'success');
   };
   
   if (!isOpen) return null;

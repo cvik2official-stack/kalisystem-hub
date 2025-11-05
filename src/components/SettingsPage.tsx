@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useContext } from 'react';
 import ItemsSettings from './settings/ItemsSettings';
 import SuppliersSettings from './settings/SuppliersSettings';
 import StoresSettings from './settings/StoresSettings';
-
-type SettingsTab = 'items' | 'suppliers' | 'stores';
+import { AppContext } from '../context/AppContext';
+import { SettingsTab } from '../types';
 
 const SettingsPage: React.FC = () => {
-  const [selectedTab, setSelectedTab] = useState<SettingsTab>('items');
+  const { state, dispatch } = useContext(AppContext);
+  const { activeSettingsTab } = state;
 
   const tabs: { id: SettingsTab; label: string }[] = [
     { id: 'items', label: 'Items' },
@@ -21,9 +22,9 @@ const SettingsPage: React.FC = () => {
           {tabs.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setSelectedTab(tab.id)}
+              onClick={() => dispatch({ type: 'SET_ACTIVE_SETTINGS_TAB', payload: tab.id })}
               className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
-                selectedTab === tab.id
+                activeSettingsTab === tab.id
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
               }`}
@@ -35,9 +36,9 @@ const SettingsPage: React.FC = () => {
       </div>
 
       <div className="mt-4 flex-grow flex flex-col">
-        {selectedTab === 'items' && <ItemsSettings />}
-        {selectedTab === 'suppliers' && <SuppliersSettings />}
-        {selectedTab === 'stores' && <StoresSettings />}
+        {activeSettingsTab === 'items' && <ItemsSettings />}
+        {activeSettingsTab === 'suppliers' && <SuppliersSettings />}
+        {activeSettingsTab === 'stores' && <StoresSettings />}
       </div>
     </div>
   );

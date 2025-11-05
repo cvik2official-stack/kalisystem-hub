@@ -4,20 +4,23 @@ import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
-import { OrderStatus, StoreName, SupplierName } from './types';
+import { OrderStatus, StoreName, SupplierName, SettingsTab } from './types';
 import ManagerView from './components/ManagerView';
 import { generateKaliUnifyReport, generateKaliZapReport } from './utils/messageFormatter';
 import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramService';
-import { useToasts } from './context/ToastContext';
+import { useNotifier } from './context/NotificationContext';
+import ContextMenu from './components/ContextMenu';
+import NotificationBell from './components/NotificationBell';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices } = state;
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
   const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
   const prevSyncStatusRef = useRef<string | undefined>(undefined);
+  const [headerMenu, setHeaderMenu] = useState<{ x: number, y: number } | null>(null);
 
 
   useEffect(() => {
@@ -89,21 +92,21 @@ const App: React.FC = () => {
         });
 
         if (todaysKaliOrders.length === 0) {
-            addToast('No completed KALI orders found for today.', 'info');
+            notify('No completed KALI orders found for today.', 'info');
             return;
         }
 
         if (!settings.telegramBotToken) {
-            addToast('Telegram Bot Token is not set in Options.', 'error');
+            notify('Telegram Bot Token is not set in Options.', 'error');
             return;
         }
 
         const message = generateKaliUnifyReport(todaysKaliOrders, itemPrices);
         await sendKaliUnifyReport(message, settings.telegramBotToken);
-        addToast('Kali Unify Report sent successfully!', 'success');
+        notify('Kali Unify Report sent successfully!', 'success');
 
     } catch (error: any) {
-        addToast(`Failed to send report: ${error.message}`, 'error');
+        notify(`Failed to send report: ${error.message}`, 'error');
     } finally {
         setIsSendingReport(false);
     }
@@ -118,24 +121,43 @@ const App: React.FC = () => {
         );
 
         if (onTheWayKaliOrders.length === 0) {
-            addToast('No KALI orders are currently on the way.', 'info');
+            notify('No KALI orders are currently on the way.', 'info');
             return;
         }
         
         if (!settings.telegramBotToken) {
-            addToast('Telegram Bot Token is not set in Options.', 'error');
+            notify('Telegram Bot Token is not set in Options.', 'error');
             return;
         }
 
         const message = generateKaliZapReport(onTheWayKaliOrders, itemPrices);
         await sendKaliZapReport(message, settings.telegramBotToken);
-        addToast('Kali "On the Way" report sent!', 'success');
+        notify('Kali "On the Way" report sent!', 'success');
         
     } catch (error: any) {
-        addToast(`Failed to send Zap report: ${error.message}`, 'error');
+        notify(`Failed to send Zap report: ${error.message}`, 'error');
     } finally {
         setIsSendingZapReport(false);
     }
+  };
+  
+  const getMenuOptions = () => {
+      const options = [
+        { label: 'Reports', isHeader: true },
+        { label: '  KALI est.', action: handleSendKaliZapReport },
+        { label: '  KALI due', action: handleSendKaliUnifyReport },
+        { label: 'Settings', isHeader: true },
+        { label: '  Items', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' as SettingsTab }) },
+        { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
+        { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
+      ];
+      if (activeStore !== 'Settings') {
+        options.push(
+            { label: 'View', isHeader: true },
+            { label: '  Manager View', action: handleEnterManagerView }
+        );
+      }
+      return options;
   };
 
   if (!isInitialized) {
@@ -170,7 +192,7 @@ const App: React.FC = () => {
                 </div>
                 <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>
               </div>
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2">
                   <button
                       onClick={() => actions.syncWithSupabase()}
                       disabled={syncStatus === 'syncing'}
@@ -182,42 +204,18 @@ const App: React.FC = () => {
                           <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                       </svg>
                   </button>
-                  <button
-                      onClick={handleSendKaliZapReport}
-                      disabled={isSendingZapReport}
-                      className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
-                      aria-label="Send Kali On The Way Report"
-                      title="Send Kali On The Way Report"
+                  <NotificationBell />
+                  <button 
+                    onClick={(e) => {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setHeaderMenu({ x: rect.right - 150, y: rect.bottom + 5 });
+                    }}
+                    className="text-gray-400 hover:text-white p-1"
+                    aria-label="More options"
+                    title="More options"
                   >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M11.983 1.904a1.25 1.25 0 00-2.262 0l-5.25 10.5a1.25 1.25 0 001.131 1.85h3.331l-2.006 4.512a1.25 1.25 0 002.262 1.004l5.25-10.5a1.25 1.25 0 00-1.13-1.85h-3.332l2.006-4.512z" />
-                      </svg>
-                  </button>
-                  <button
-                      onClick={handleSendKaliUnifyReport}
-                      disabled={isSendingReport}
-                      className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
-                      aria-label="Send Kali Unify Report"
-                      title="Send Kali Unify Report"
-                  >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                      </svg>
-                  </button>
-                   <button 
-                      onClick={handleEnterManagerView} 
-                      disabled={activeStore === 'Settings'}
-                      className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed" 
-                      aria-label="Manager View" 
-                      title={activeStore === 'Settings' ? 'Cannot enter manager view from settings' : 'Manager View'}
-                    >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10 2a2 2 0 00-2 2v1H6a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2V4a2 2 0 00-2-2zM8 5V4a1 1 0 112 0v1H8z" clipRule="evenodd" />
-                    </svg>
-                  </button>
-                  <button onClick={() => dispatch({ type: 'SET_ACTIVE_STORE', payload: 'Settings' })} className="text-gray-400 hover:text-white" aria-label="Settings" title="Settings">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.532 1.532 0 012.287-.947c1.372.836 2.942-.734-2.106-2.106a1.532 1.532 0 01-.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
                     </svg>
                   </button>
               </div>
@@ -232,6 +230,14 @@ const App: React.FC = () => {
         </div>
         <ToastContainer />
       </div>
+      {headerMenu && (
+        <ContextMenu
+            x={headerMenu.x}
+            y={headerMenu.y}
+            options={getMenuOptions()}
+            onClose={() => setHeaderMenu(null)}
+        />
+      )}
     </>
   );
 };

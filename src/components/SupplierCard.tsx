@@ -4,7 +4,7 @@ import { Order, OrderItem, OrderStatus, Unit, Item, Supplier, PaymentMethod, Sto
 import NumpadModal from './modals/NumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import ContextMenu from './ContextMenu';
-import { useToasts } from '../context/ToastContext';
+import { useNotifier } from '../context/NotificationContext';
 import EditItemModal from './modals/EditItemModal';
 import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from '../utils/messageFormatter';
 import EditSupplierModal from './modals/EditSupplierModal';
@@ -27,13 +27,13 @@ const CardHeader: React.FC<{
   onHeaderClick: () => void;
   onPaymentBadgeClick: () => void;
   showStoreName?: boolean;
-  isDraggableForMerge: boolean;
-  onMergeDragStart: (e: React.DragEvent) => void;
+  onLongPressStart: () => void;
+  onLongPressEnd: () => void;
   showActionsButton?: boolean;
   onActionsClick?: (e: React.MouseEvent) => void;
   orderTotal?: number | null;
   canChangePayment: boolean;
-}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderContextMenu, onHeaderClick, onPaymentBadgeClick, showStoreName, isDraggableForMerge, onMergeDragStart, showActionsButton, onActionsClick, orderTotal, canChangePayment }) => {
+}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderContextMenu, onHeaderClick, onPaymentBadgeClick, showStoreName, onLongPressStart, onLongPressEnd, showActionsButton, onActionsClick, orderTotal, canChangePayment }) => {
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
@@ -50,8 +50,6 @@ const CardHeader: React.FC<{
             className="px-2 pt-2 flex justify-between items-start"
             onContextMenu={onHeaderContextMenu}
             onDoubleClick={(e) => e.stopPropagation()}
-            draggable={isDraggableForMerge}
-            onDragStart={isDraggableForMerge ? onMergeDragStart : undefined}
         >
             <div className="flex-grow">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -62,7 +60,17 @@ const CardHeader: React.FC<{
                             </svg>
                         </button>
                     )}
-                    <h3 onClick={onHeaderClick} className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer">{order.supplierName}</h3>
+                    <h3 
+                        onClick={onHeaderClick} 
+                        onMouseDown={onLongPressStart}
+                        onMouseUp={onLongPressEnd}
+                        onMouseLeave={onLongPressEnd}
+                        onTouchStart={onLongPressStart}
+                        onTouchEnd={onLongPressEnd}
+                        className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer"
+                    >
+                        {order.supplierName}
+                    </h3>
                     <div className="flex-grow flex items-center gap-2">
                         {shouldShowPaymentBadge && (
                             <button
@@ -114,7 +122,7 @@ const OrderItemRow: React.FC<{
         >
             <div
                 {...(isDraggable ? dragHandleProps : {})}
-                className={`flex-shrink-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500' : 'text-transparent'} ${order.status === OrderStatus.COMPLETED ? 'w-0' : 'pr-1'}`}
+                className={`flex-shrink-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500' : 'text-transparent'} ${(order.status === OrderStatus.COMPLETED && !isDraggable) ? 'w-0' : 'pr-1'}`}
             >
                 {isDraggable && <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
                     <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
@@ -251,7 +259,7 @@ interface SupplierCardProps {
 
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = false, isOudomManagerWorkflow = false, draggedItem, setDraggedItem, onItemDrop, showStoreName = false, isEditModeEnabled = false }) => {
     const { state, dispatch, actions } = useContext(AppContext);
-    const { addToast } = useToasts();
+    const { notify } = useNotifier();
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
@@ -279,6 +287,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
     const [invoicePreview, setInvoicePreview] = useState<{ isOpen: boolean; html: string | null, template: string }>({ isOpen: false, html: null, template: '' });
     const [isPaymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
+    
+    const [isDraggableForMerge, setIsDraggableForMerge] = useState(false);
+    const longPressTimer = useRef<number | null>(null);
 
     const orderTotal = useMemo(() => {
         if (order.status !== OrderStatus.COMPLETED) {
@@ -308,15 +319,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             if (amountStr === '') {
                 const { invoiceAmount, ...orderWithoutAmount } = order;
                 await actions.updateOrder(orderWithoutAmount as Order);
-                addToast('Invoice amount cleared.', 'info');
+                notify('Invoice amount cleared.', 'info');
             } else {
                 const amount = parseFloat(amountStr);
                 if (!isNaN(amount) && amount >= 0) {
                     const amountToSave = amount > 1000 ? amount / 4000 : amount;
                     await actions.updateOrder({ ...order, invoiceAmount: amountToSave });
-                    addToast('Invoice amount saved.', 'success');
+                    notify('Invoice amount saved.', 'success');
                 } else {
-                    addToast('Invalid amount entered.', 'error');
+                    notify('Invalid amount entered.', 'error');
                 }
             }
         } finally {
@@ -351,7 +362,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             const newInvoiceAmount = updatedItems.reduce((total, item) => total + ((item.price || 0) * item.quantity), 0);
             
             await actions.updateOrder({ ...order, items: updatedItems, invoiceAmount: newInvoiceAmount });
-            addToast(`Price updated for ${orderItem.name}.`, 'success');
+            notify(`Price updated for ${orderItem.name}.`, 'success');
             
         } finally {
             setEditingPriceItemId(null);
@@ -366,7 +377,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         try {
           const itemPrice: ItemPrice = { itemId: selectedItem.itemId, supplierId: order.supplierId, price, unit, isMaster };
           await actions.upsertItemPrice(itemPrice);
-          addToast(`Price for ${selectedItem.name} set to ${price}/${unit}.`, 'success');
+          notify(`Price for ${selectedItem.name} set to ${price}/${unit}.`, 'success');
         } finally {
           setIsPriceNumpadOpen(false);
           setSelectedItem(null);
@@ -392,7 +403,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         const spoilQuantity = isNaN(quantity) ? selectedItem.quantity : quantity;
     
         if (spoilQuantity <= 0 || spoilQuantity > selectedItem.quantity) {
-            addToast('Invalid spoil quantity.', 'error');
+            notify('Invalid spoil quantity.', 'error');
             return;
         }
     
@@ -419,7 +430,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             }
             
             await actions.updateOrder({ ...order, items: updatedItems });
-            addToast(`${spoilQuantity} ${originalItem.unit || ''} of ${originalItem.name} marked as spoiled.`, 'success');
+            notify(`${spoilQuantity} ${originalItem.unit || ''} of ${originalItem.name} marked as spoiled.`, 'success');
         } finally {
             setIsProcessing(false);
             setNumpadOpen(false);
@@ -443,7 +454,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
             if (isUnitChangedForMaster) {
                 await actions.updateItem({ ...masterItem, unit: unit! });
-                addToast(`Default unit for "${masterItem.name}" updated to ${unit}.`, 'info');
+                notify(`Default unit for "${masterItem.name}" updated to ${unit}.`, 'info');
             }
         } finally {
             setIsProcessing(false);
@@ -458,7 +469,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         const difference = originalQuantity - quantity;
     
         if (difference < 0) {
-            addToast("Cannot increase quantity.", 'error');
+            notify("Cannot increase quantity.", 'error');
             return;
         }
         if (difference === 0) {
@@ -485,7 +496,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             const finalItems = currentItems.filter(i => i.quantity > 0);
     
             await actions.updateOrder({ ...order, items: finalItems });
-            addToast(`${difference} ${selectedItem.unit || ''} of ${selectedItem.name} marked as spoiled.`, 'success');
+            notify(`${difference} ${selectedItem.unit || ''} of ${selectedItem.name} marked as spoiled.`, 'success');
         } finally {
             setIsProcessing(false);
             setNumpadOpen(false);
@@ -501,7 +512,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             let updatedItems = [...order.items];
             const spoiledItemIndex = updatedItems.findIndex(i => i.itemId === itemToUnspoil.itemId && i.isSpoiled);
             if (spoiledItemIndex === -1) {
-                addToast('Could not find spoiled item to unspoil.', 'error');
+                notify('Could not find spoiled item to unspoil.', 'error');
                 return;
             }
             
@@ -515,7 +526,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             }
     
             await actions.updateOrder({ ...order, items: updatedItems });
-            addToast(`${itemToUnspoil.name} has been restored.`, 'success');
+            notify(`${itemToUnspoil.name} has been restored.`, 'success');
         } finally {
             setIsProcessing(false);
         }
@@ -530,7 +541,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 : [...order.items, item];
             
             await actions.updateOrder({ ...order, items: newItems });
-            addToast(`Added ${item.name}`, 'success');
+            notify(`Added ${item.name}`, 'success');
         } finally {
             setIsProcessing(false);
         }
@@ -589,7 +600,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             await actions.updateOrder({ ...order, supplierId: newSupplier.id, supplierName: newSupplier.name });
-            addToast(`Order changed to ${newSupplier.name}.`, 'success');
+            notify(`Order changed to ${newSupplier.name}.`, 'success');
         } finally {
             setIsProcessing(false);
             setChangeSupplierModalOpen(false);
@@ -604,14 +615,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const handleGenerateReceipt = async () => {
         const { geminiApiKey } = state.settings;
         if (!geminiApiKey) {
-            addToast('Gemini API Key is not set in Settings.', 'error');
+            notify('Gemini API Key is not set in Settings.', 'error');
             return;
         }
         setIsProcessing(true);
         try {
             let template = state.settings.receiptTemplates?.['default'];
             if (!template) {
-                addToast('No receipt template found. Generating one with AI...', 'info');
+                notify('No receipt template found. Generating one with AI...', 'info');
                 template = await generateReceiptTemplateHtml(geminiApiKey);
                 dispatch({
                     type: 'SAVE_SETTINGS',
@@ -625,7 +636,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             setInvoicePreview({ isOpen: true, html: renderedHtml, template: template });
 
         } catch (error: any) {
-            addToast(`Failed to generate receipt: ${error.message}`, 'error');
+            notify(`Failed to generate receipt: ${error.message}`, 'error');
         } finally {
             setIsProcessing(false);
         }
@@ -634,16 +645,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const handleSendTelegramReceipt = async () => {
         const { telegramBotToken } = state.settings;
         if (!supplier || !supplier.chatId || !telegramBotToken) {
-            addToast('Supplier Chat ID or Bot Token is not configured.', 'error');
+            notify('Supplier Chat ID or Bot Token is not configured.', 'error');
             return;
         }
         setIsProcessing(true);
         try {
             const message = generateReceiptMessage(order, state.itemPrices);
             await sendReceiptOnTelegram(order, supplier, message, telegramBotToken);
-            addToast(`Receipt sent to ${order.supplierName}.`, 'success');
+            notify(`Receipt sent to ${order.supplierName}.`, 'success');
         } catch (error: any) {
-            addToast(error.message || `Failed to send receipt.`, 'error');
+            notify(error.message || `Failed to send receipt.`, 'error');
         } finally {
             setIsProcessing(false);
         }
@@ -657,18 +668,22 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
         switch (order.status) {
             case OrderStatus.COMPLETED:
-                options = [
-                    { label: 'Receipt', action: handleGenerateReceipt },
-                    { label: 'Telegram Receipt', action: handleSendTelegramReceipt },
-                ];
+                if (!isManagerView) {
+                    options.push(
+                        { label: 'Receipt', action: handleGenerateReceipt },
+                        { label: 'Telegram Receipt', action: handleSendTelegramReceipt }
+                    );
+                }
                 if (isEditModeEnabled) {
                      options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
                 }
-                options.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
+                if (!isManagerView) {
+                    options.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
+                }
                 break;
             case OrderStatus.DISPATCHING:
             case OrderStatus.ON_THE_WAY:
-                 if (!isOudomManagerWorkflow) {
+                 if (!isManagerView) {
                     options = [
                         { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) },
                         { label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true }
@@ -732,24 +747,24 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     };
 
     const handleCopyOrderMessage = () => {
-        navigator.clipboard.writeText(generateOrderMessage(order, 'plain')).then(() => addToast('Order copied!', 'success'));
+        navigator.clipboard.writeText(generateOrderMessage(order, 'plain')).then(() => notify('Order copied!', 'success'));
     };
     
     const handleSendToTelegram = async () => {
         const { telegramBotToken } = state.settings;
         if (!supplier || !supplier.chatId || !telegramBotToken) {
-            addToast('Supplier Chat ID or Bot Token is not configured.', 'error');
+            notify('Supplier Chat ID or Bot Token is not configured.', 'error');
             return;
         }
         setIsProcessing(true);
         try {
             await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html'), telegramBotToken);
-            addToast(`Order sent to ${order.supplierName}.`, 'success');
+            notify(`Order sent to ${order.supplierName}.`, 'success');
             if (order.status === OrderStatus.DISPATCHING) {
                 await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
             }
         } catch (error: any) {
-            addToast(error.message || `Failed to send.`, 'error');
+            notify(error.message || `Failed to send.`, 'error');
         } finally { setIsProcessing(false); }
     };
     
@@ -765,6 +780,25 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         if (setDraggedItem) setDraggedItem(null); // Critical to differentiate from item drag
         e.dataTransfer.setData('application/x-order-merge', order.id);
         e.dataTransfer.effectAllowed = 'move';
+    };
+    
+    const handleLongPressStart = () => {
+        if (order.status === OrderStatus.COMPLETED && !isEditModeEnabled) {
+            return;
+        }
+        longPressTimer.current = window.setTimeout(() => {
+            setIsDraggableForMerge(true);
+        }, 500);
+    };
+
+    const handleLongPressEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+        }
+    };
+    
+    const handleMergeDragEnd = () => {
+        setIsDraggableForMerge(false);
     };
 
     const handleInternalReorderDrop = async (e: React.DragEvent, targetItem: OrderItem) => {
@@ -787,7 +821,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             await actions.updateOrder({ ...order, paymentMethod: newMethod });
-            addToast(`Payment method for ${order.supplierName} set to ${newMethod.toUpperCase()}.`, 'success');
+            notify(`Payment method for ${order.supplierName} set to ${newMethod.toUpperCase()}.`, 'success');
         } finally {
             setIsProcessing(false);
         }
@@ -799,6 +833,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
     return (
         <div
+            draggable={isDraggableForMerge}
+            onDragStart={handleMergeDragStart}
+            onDragEnd={handleMergeDragEnd}
             onDragOver={(e) => {
                 e.preventDefault();
                 const isItemDrag = !!(draggedItem && draggedItem.sourceOrderId !== order.id);
@@ -819,7 +856,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     if (sourceOrder && sourceOrder.store === order.store && sourceOrder.status === order.status) {
                         actions.mergeOrders(sourceOrderId, order.id);
                     } else {
-                        addToast('Cannot merge these orders.', 'error');
+                        notify('Cannot merge these orders.', 'error');
                     }
                 } else if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
                     onItemDrop(order.id);
@@ -843,8 +880,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 onHeaderClick={() => {}}
                 onPaymentBadgeClick={() => setPaymentMethodModalOpen(true)}
                 showStoreName={showStoreName}
-                isDraggableForMerge={isEffectivelyCollapsed && order.status !== OrderStatus.COMPLETED}
-                onMergeDragStart={handleMergeDragStart}
+                onLongPressStart={handleLongPressStart}
+                onLongPressEnd={handleLongPressEnd}
                 showActionsButton={true}
                 onActionsClick={handleHeaderActionsClick}
                 orderTotal={orderTotal}
@@ -852,7 +889,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
-                <div className={`flex-grow pt-2 pb-0 space-y-1 ${order.status === OrderStatus.COMPLETED ? 'px-0' : 'px-2'}`}>
+                <div className={`flex-grow pt-2 pb-0 space-y-1 ${(order.status === OrderStatus.COMPLETED && !isEditModeEnabled) ? 'px-0' : 'px-2'}`}>
                     {order.items.map(item => {
                          const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
                          const displayPrice = (order.status === OrderStatus.COMPLETED && !isManagerView) ? (item.price ?? masterPrice) : undefined;

@@ -2,7 +2,7 @@ import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import parseItemListWithGemini from '../../services/geminiService';
 import { OrderItem, OrderStatus, SupplierName, StoreName, Supplier, Unit, Item } from '../../types';
-import { useToasts } from '../../context/ToastContext';
+import { useNotifier } from '../../context/NotificationContext';
 import { parseItemListLocally } from '../../services/localParsingService';
 import AiRulesModal from './AiRulesModal';
 
@@ -55,7 +55,7 @@ const normalizeUnit = (unit?: string): Unit | undefined => {
 
 const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isAiRulesModalOpen, setIsAiRulesModalOpen] = useState(false);
@@ -72,13 +72,13 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
     setIsLoading(true);
     try {
       const isAiEnabled = state.settings.isAiEnabled !== false;
-      addToast(isAiEnabled ? 'Parsing with AI...' : 'Parsing locally...', 'info');
+      notify(isAiEnabled ? 'Parsing with AI...' : 'Parsing locally...', 'info');
       
       let parsedItems;
       if (isAiEnabled) {
           const geminiApiKey = state.settings.geminiApiKey;
           if (!geminiApiKey) {
-              addToast('Gemini API key not set. Please add it in Settings > Integrations.', 'error');
+              notify('Gemini API key not set. Please add it in Settings > Integrations.', 'error');
               setIsLoading(false);
               return;
           }
@@ -119,7 +119,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
                if (existingItemInDb) {
                    finalItem = existingItemInDb;
                } else {
-                   addToast(`Creating new item: ${pItem.newItemName}`, 'info');
+                   notify(`Creating new item: ${pItem.newItemName}`, 'info');
                    finalItem = await actions.addItem({
                        name: pItem.newItemName, supplierId: supplier.id,
                        supplierName: supplier.name, 
@@ -166,13 +166,13 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           }
       }
 
-      if(createdCount > 0) addToast(`${createdCount} new order(s) created.`, 'success');
-      if (updatedCount > 0) addToast(`${updatedCount} existing order(s) updated.`, 'info');
-      if (createdCount === 0 && updatedCount === 0) addToast('Could not parse any items.', 'info');
+      if(createdCount > 0) notify(`${createdCount} new order(s) created.`, 'success');
+      if (updatedCount > 0) notify(`${updatedCount} existing order(s) updated.`, 'info');
+      if (createdCount === 0 && updatedCount === 0) notify('Could not parse any items.', 'info');
 
       handleClose();
     } catch (e: any) {
-      addToast(e.message || "An unknown error occurred.", 'error');
+      notify(e.message || "An unknown error occurred.", 'error');
     } finally {
       setIsLoading(false);
     }

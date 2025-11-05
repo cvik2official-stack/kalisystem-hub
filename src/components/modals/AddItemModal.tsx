@@ -1,7 +1,7 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Order, OrderItem, Item, OrderStatus, Unit } from '../../types';
-import { useToasts } from '../../context/ToastContext';
+import { useNotifier } from '../../context/NotificationContext';
 
 interface AddItemModalProps {
   isOpen: boolean;
@@ -12,7 +12,7 @@ interface AddItemModalProps {
 
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem, order }) => {
   const { state, actions } = useContext(AppContext);
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
@@ -54,7 +54,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
     try {
         const supplier = state.suppliers.find(s => s.id === order.supplierId);
         if (!supplier) {
-            addToast('Could not find the supplier for this order.', 'error');
+            notify('Could not find the supplier for this order.', 'error');
             return;
         }
 
@@ -68,7 +68,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
             itemToAdd = existingItemInDb;
         } else {
             // No master item found. Create a new one with the current order's supplier as its primary.
-            addToast(`Creating new master item: ${trimmedSearch}`, 'info');
+            notify(`Creating new master item: ${trimmedSearch}`, 'info');
             itemToAdd = await actions.addItem({
                 name: trimmedSearch,
                 supplierId: supplier.id,

@@ -1,7 +1,7 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice } from '../services/supabaseService';
-import { useToasts } from './ToastContext';
+import { useNotifier } from './NotificationContext';
 
 export interface AppState {
   stores: Store[];
@@ -11,6 +11,7 @@ export interface AppState {
   itemPrices: ItemPrice[];
   orders: Order[];
   activeStatus: OrderStatus;
+  activeSettingsTab: SettingsTab;
   orderIdCounters: Record<string, number>;
   settings: AppSettings;
   isLoading: boolean;
@@ -24,6 +25,8 @@ export interface AppState {
 export type Action =
   | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' }
   | { type: 'SET_ACTIVE_STATUS'; payload: OrderStatus }
+  | { type: 'SET_ACTIVE_SETTINGS_TAB'; payload: SettingsTab }
+  | { type: 'NAVIGATE_TO_SETTINGS'; payload: SettingsTab }
   | { type: '_ADD_ITEM'; payload: Item }
   | { type: '_UPDATE_ITEM'; payload: Item }
   | { type: '_DELETE_ITEM'; payload: string }
@@ -66,6 +69,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
       return { ...state, activeStore: action.payload, isEditModeEnabled: false }; // Disable edit mode on store change
     case 'SET_ACTIVE_STATUS':
       return { ...state, activeStatus: action.payload, isEditModeEnabled: false }; // Disable edit mode on status change
+    case 'SET_ACTIVE_SETTINGS_TAB':
+        return { ...state, activeSettingsTab: action.payload };
+    case 'NAVIGATE_TO_SETTINGS':
+        return { ...state, activeStore: 'Settings', activeSettingsTab: action.payload };
     case 'SET_EDIT_MODE':
         return { ...state, isEditModeEnabled: action.payload };
     case '_ADD_ITEM':
@@ -200,6 +207,7 @@ const getInitialState = (): AppState => {
     itemPrices: [],
     orders: [],
     activeStatus: OrderStatus.DISPATCHING,
+    activeSettingsTab: 'items',
     orderIdCounters: {},
     settings: {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
@@ -262,7 +270,7 @@ export const AppContext = createContext<{
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, getInitialState());
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   
   useEffect(() => {
     try {
@@ -275,24 +283,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
     try {
         if (!navigator.onLine) {
-            if (!options?.isInitialSync) addToast('Offline. Using cached data.', 'info');
+            if (!options?.isInitialSync) notify('Offline. Using cached data.', 'info');
             return dispatch({ type: '_SET_SYNC_STATUS', payload: 'offline' });
         }
         const { supabaseUrl, supabaseKey } = state.settings;
-        if (!options?.isInitialSync) addToast('Syncing with database...', 'info');
+        if (!options?.isInitialSync) notify('Syncing with database...', 'info');
 
         const { items, suppliers, stores, itemPrices } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
         dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices } }); 
         
-        if (!options?.isInitialSync) addToast('Sync complete.', 'success');
+        if (!options?.isInitialSync) notify('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
     } catch (e: any) {
-        if (!options?.isInitialSync) addToast(`Sync failed: ${e.message}. Using cache.`, 'error');
+        if (!options?.isInitialSync) notify(`Sync failed: ${e.message}. Using cache.`, 'error');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'error' });
     }
-  }, [state.settings, addToast, dispatch]);
+  }, [state.settings, notify, dispatch]);
 
   useEffect(() => {
     if (!state.isInitialized) {
@@ -305,39 +313,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     addItem: async (item) => {
         const newItem = await supabaseAddItem({ item, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_ADD_ITEM', payload: newItem });
-        addToast(`Item "${newItem.name}" created.`, 'success');
+        notify(`Item "${newItem.name}" created.`, 'success');
         return newItem;
     },
     updateItem: async (item) => {
         const updatedItem = await supabaseUpdateItem({ item, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_UPDATE_ITEM', payload: updatedItem });
-        addToast(`Item "${updatedItem.name}" updated.`, 'success');
+        notify(`Item "${updatedItem.name}" updated.`, 'success');
     },
     deleteItem: async (itemId) => {
         await supabaseDeleteItem({ itemId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_DELETE_ITEM', payload: itemId });
-        addToast('Item deleted.', 'success');
+        notify('Item deleted.', 'success');
     },
     addSupplier: async (supplier) => {
         const newSupplier = await supabaseAddSupplier({ supplier: supplier as Partial<Supplier> & { name: SupplierName }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_ADD_SUPPLIER', payload: newSupplier });
-        addToast(`Supplier "${newSupplier.name}" created.`, 'success');
+        notify(`Supplier "${newSupplier.name}" created.`, 'success');
         return newSupplier;
     },
     updateSupplier: async (supplier) => {
         const updatedSupplier = await supabaseUpdateSupplier({ supplier, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_UPDATE_SUPPLIER', payload: updatedSupplier });
-        addToast(`Supplier "${updatedSupplier.name}" updated.`, 'success');
+        notify(`Supplier "${updatedSupplier.name}" updated.`, 'success');
     },
     updateStore: async (store) => {
         const updatedStore = await supabaseUpdateStore({ store, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_UPDATE_STORE', payload: updatedStore });
-        addToast(`Store "${updatedStore.name}" updated.`, 'success');
+        notify(`Store "${updatedStore.name}" updated.`, 'success');
     },
     addOrder: async (supplier, store, items = [], status = OrderStatus.DISPATCHING) => {
         let supplierToUse = supplier;
         if (supplier.id.startsWith('new_')) {
-            addToast(`Verifying supplier: ${supplier.name}...`, 'info');
+            notify(`Verifying supplier: ${supplier.name}...`, 'info');
             const newSupplierFromDb = await supabaseAddSupplier({ supplier: { name: supplier.name }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
             dispatch({ type: '_ADD_SUPPLIER', payload: newSupplierFromDb });
             supplierToUse = newSupplierFromDb;
@@ -357,7 +365,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
         const savedOrder = await supabaseAddOrder({ order: newOrder, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'ADD_ORDERS', payload: [savedOrder] });
-        addToast(`Order for ${supplierToUse.name} created.`, 'success');
+        notify(`Order for ${supplierToUse.name} created.`, 'success');
     },
     updateOrder: async (order) => {
         const updatedOrder = await supabaseUpdateOrder({ order, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
@@ -366,12 +374,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     deleteOrder: async (orderId) => {
         await supabaseDeleteOrder({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'DELETE_ORDER', payload: orderId });
-        addToast(`Order deleted.`, 'success');
+        notify(`Order deleted.`, 'success');
     },
     addItemToDispatch: async (item) => {
         const { activeStore, orders, suppliers, itemPrices } = state;
         if (activeStore === 'Settings') {
-            addToast('Cannot add items to dispatch from this view.', 'info');
+            notify('Cannot add items to dispatch from this view.', 'info');
             return;
         }
         
@@ -393,7 +401,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     quantity: updatedItems[itemInOrderIndex].quantity + 1 // Assume adding 1
                 };
                 await actions.updateOrder({ ...existingOrder, items: updatedItems });
-                addToast(`Incremented "${item.name}" in existing order.`, 'success');
+                notify(`Incremented "${item.name}" in existing order.`, 'success');
                 return;
             }
             
@@ -401,12 +409,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
-            addToast(`Added "${item.name}" to existing order.`, 'success');
+            notify(`Added "${item.name}" to existing order.`, 'success');
         } else {
             // No existing order for this supplier, so create a new one
             const supplier = suppliers.find(s => s.id === item.supplierId);
             if (!supplier) {
-                addToast(`Supplier for "${item.name}" not found.`, 'error');
+                notify(`Supplier for "${item.name}" not found.`, 'error');
                 return;
             }
             const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
@@ -418,7 +426,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const destinationOrder = state.orders.find(o => o.id === destinationOrderId);
 
         if (!sourceOrder || !destinationOrder) {
-            addToast("Could not find orders to merge.", "error");
+            notify("Could not find orders to merge.", "error");
             return;
         }
 
@@ -434,7 +442,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         await actions.updateOrder({ ...destinationOrder, items: mergedItems });
         await actions.deleteOrder(sourceOrderId);
-        addToast(`Merged order into ${destinationOrder.supplierName}.`, "success");
+        notify(`Merged order into ${destinationOrder.supplierName}.`, "success");
     },
     upsertItemPrice: async (itemPrice) => {
         const savedPrice = await supabaseUpsertItemPrice({ itemPrice, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
@@ -453,7 +461,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         });
 
         if (ordersToMerge.length < 2) {
-            addToast(`Found ${ordersToMerge.length} order(s) for "${paymentMethod.toUpperCase()}". Need at least 2 to merge.`, 'info');
+            notify(`Found ${ordersToMerge.length} order(s) for "${paymentMethod.toUpperCase()}". Need at least 2 to merge.`, 'info');
             return;
         }
 
@@ -493,7 +501,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             await actions.deleteOrder(sourceOrder.id);
         }
 
-        addToast(`Merged ${ordersToMerge.length} orders into one for ${paymentMethod.toUpperCase()}.`, 'success');
+        notify(`Merged ${ordersToMerge.length} orders into one for ${paymentMethod.toUpperCase()}.`, 'success');
     },
     syncWithSupabase,
   };
@@ -509,7 +517,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               }
               return await originalAction(...args);
           } catch (e: any) {
-              addToast(`Error: ${e.message}`, 'error');
+              notify(`Error: ${e.message}`, 'error');
               throw e;
           }
       };

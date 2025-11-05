@@ -7,7 +7,7 @@ import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, Supp
 import PasteItemsModal from './modals/PasteItemsModal';
 import ContextMenu from './ContextMenu';
 import MergeByPaymentModal from './modals/MergeByPaymentModal';
-import { useToasts } from '../context/ToastContext';
+import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
 
 const formatDateGroupHeader = (key: string): string => {
@@ -29,7 +29,7 @@ const formatDateGroupHeader = (key: string): string => {
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled } = state;
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
@@ -119,15 +119,15 @@ const OrderWorkspace: React.FC = () => {
     });
     
     if (todaysCompletedOrders.length === 0) {
-        addToast("No completed orders for today to generate a report.", 'info');
+        notify("No completed orders for today to generate a report.", 'info');
         return;
     }
     
     const reportText = generateStoreReport(todaysCompletedOrders);
     navigator.clipboard.writeText(reportText).then(() => {
-        addToast('Store report copied to clipboard!', 'success');
+        notify('Store report copied to clipboard!', 'success');
     }).catch(err => {
-        addToast(`Failed to copy report: ${err}`, 'error');
+        notify(`Failed to copy report: ${err}`, 'error');
     });
   };
 
@@ -194,11 +194,7 @@ const OrderWorkspace: React.FC = () => {
   ];
 
   const showEmptyState = filteredOrders.length === 0 && activeStatus !== OrderStatus.DISPATCHING;
-  const isOudomOperatorView = activeStore === StoreName.OUDOM;
-
-  const tabsToShow = isOudomOperatorView
-    ? STATUS_TABS.filter(tab => tab.id === OrderStatus.ON_THE_WAY || tab.id === OrderStatus.COMPLETED)
-    : STATUS_TABS;
+  const tabsToShow = STATUS_TABS;
 
   return (
     <>
@@ -243,7 +239,7 @@ const OrderWorkspace: React.FC = () => {
                             </svg>
                             <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
                           </button>
-                          {key === 'Today' && !isOudomOperatorView && (
+                          {key === 'Today' && (
                              <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5 }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Today's Actions">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                              </button>
@@ -285,7 +281,7 @@ const OrderWorkspace: React.FC = () => {
                       showStoreName={activeStore === StoreName.KALI}
                   />
               ))}
-              {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && !isOudomOperatorView && (
+              {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
                 <div
                   className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200
                     ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}

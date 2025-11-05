@@ -1,12 +1,12 @@
 import React, { useContext, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
-import { StoreName } from '../types';
-import { useToasts } from '../context/ToastContext';
+import { Store, StoreName } from '../types';
+import { useNotifier } from '../context/NotificationContext';
 
 const StoreTabs: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
   const { stores, activeStore } = state;
-  const { addToast } = useToasts();
+  const { notify } = useNotifier();
   const longPressTimer = useRef<number | null>(null);
 
   const handleClick = (tabName: StoreName) => {
@@ -20,9 +20,9 @@ const StoreTabs: React.FC = () => {
   const copyManagerUrl = (storeName: StoreName) => {
     const url = `${window.location.origin}${window.location.pathname}#/?view=manager&store=${storeName}`;
     navigator.clipboard.writeText(url).then(() => {
-        addToast(`Manager URL for ${storeName} copied!`, 'success');
+        notify(`Manager URL for ${storeName} copied!`, 'success');
     }).catch(err => {
-        addToast(`Failed to copy URL: ${err}`, 'error');
+        notify(`Failed to copy URL: ${err}`, 'error');
     });
   };
 
@@ -46,8 +46,15 @@ const StoreTabs: React.FC = () => {
     }
   };
 
+  // Create a comprehensive list of all stores from the enum.
+  const allStoreNames = Object.values(StoreName);
+  const storesFromStateMap = new Map(stores.map(s => [s.name, s]));
+  const allStoresWithPlaceholders: Store[] = allStoreNames.map(name => {
+      return storesFromStateMap.get(name) || { id: `enum_store_${name}`, name: name };
+  });
+
   // Sort stores to ensure consistent order, with CV2 always first.
-  const sortedStores = [...stores].sort((a, b) => {
+  const sortedStores = allStoresWithPlaceholders.sort((a, b) => {
     if (a.name === StoreName.CV2) return -1;
     if (b.name === StoreName.CV2) return 1;
     return a.name.localeCompare(b.name);
