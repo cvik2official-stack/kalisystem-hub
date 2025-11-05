@@ -185,8 +185,9 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                             onChange={(e) => setUnit(e.target.value as Unit)}
                             className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
                         >
+                            {/* FIX: Cast enum value to string for key property */}
                             {Object.values(Unit).map(u => (
-                                <option key={u} value={u}>{u}</option>
+                                <option key={u as string} value={u}>{u}</option>
                             ))}
                         </select>
                     </div>

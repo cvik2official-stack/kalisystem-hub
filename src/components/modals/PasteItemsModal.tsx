@@ -82,7 +82,17 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
               setIsLoading(false);
               return;
           }
-          parsedItems = await parseItemListWithGemini(text, state.items, geminiApiKey, state.settings.aiParsingRules);
+
+          const rules = state.settings.aiParsingRules || {};
+          // FIX: The initial guard clause ensures activeStore is not 'Settings', making this check redundant and causing a type error.
+          const activeStoreRules = rules[state.activeStore] || {};
+          const combinedAliases = {
+              ...(rules.global || {}),
+              ...activeStoreRules,
+          };
+          const rulesForApi = { aliases: combinedAliases };
+
+          parsedItems = await parseItemListWithGemini(text, state.items, geminiApiKey, rulesForApi);
       } else {
           parsedItems = await parseItemListLocally(text, state.items);
       }
@@ -134,7 +144,8 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
       let updatedCount = 0;
 
       for (const { supplier, items } of Object.values(ordersBySupplier)) {
-          const store = state.activeStore as StoreName;
+          // FIX: Removed redundant type assertion as TypeScript can infer the narrowed type.
+          const store = state.activeStore;
           const existingOrderForSupplier = state.orders.find(o => o.store === store && o.supplierId === supplier.id && o.status === OrderStatus.DISPATCHING);
           
           if (existingOrderForSupplier) {

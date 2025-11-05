@@ -42,8 +42,15 @@ export const renderReceiptTemplate = (template: string, order: Order, itemPrices
 export const generateOrderMessage = (order: Order, format: 'plain' | 'html'): string => {
     const isHtml = format === 'html';
 
-    // Special handling for the SHANTI store name display
-    const storeDisplayName = order.store === StoreName.SHANTI ? 'STOCKO2 (SHANTI)' : order.store;
+    // Determine the correct store display name based on supplier and store rules.
+    // FIX: Explicitly type storeDisplayName as a string to allow for custom display names.
+    let storeDisplayName: string = order.store;
+    if (order.supplierName === SupplierName.P_AND_P && (order.store === StoreName.SHANTI || order.store === StoreName.WB)) {
+        storeDisplayName = `STOCKO2 (${order.store})`;
+    } else if (order.store === StoreName.SHANTI) {
+        // This is the pre-existing special case for SHANTI with other suppliers.
+        storeDisplayName = 'STOCKO2 (SHANTI)';
+    }
 
     // KALI supplier has a special, simplified format
     if (order.supplierName === SupplierName.KALI) {
@@ -102,7 +109,7 @@ export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[]): s
     return `${header}\n\n${itemsList}\n${footer}`;
 };
 
-export const generateKaliUnifyReport = (orders: Order[]): string => {
+export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]): string => {
     const today = new Date();
     const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}`;
     
@@ -125,26 +132,51 @@ export const generateKaliUnifyReport = (orders: Order[]): string => {
     }, {} as Record<string, Order[]>);
 
     let totalDue = 0;
-    let allInvoicesSet = true;
 
     for (const storeName in ordersByStore) {
         const storeOrders = ordersByStore[storeName];
         if (storeOrders.length === 0) continue;
 
-        const storeInvoiceTotal = storeOrders.reduce((sum, order) => sum + (order.invoiceAmount || 0), 0);
-        totalDue += storeInvoiceTotal;
+        let storeTotalAmount = 0;
+        let itemsListContent = '';
 
-        if (storeOrders.some(order => order.invoiceAmount == null || order.invoiceAmount === 0)) {
-            allInvoicesSet = false;
-        }
+        const aggregatedItems = new Map<string, { name: string; quantity: number; unit?: Unit; itemId: string; supplierId: string; price: number }>();
+        
+        storeOrders.forEach(order => {
+            order.items.forEach(item => {
+                if (item.isSpoiled) return;
+                
+                const price = item.price ?? itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price ?? 0;
+                
+                const key = `${item.itemId}-${item.unit || 'none'}`;
+                const existing = aggregatedItems.get(key);
 
-        const invoiceDisplay = storeInvoiceTotal > 0 ? ` (${storeInvoiceTotal.toFixed(2)})` : '';
+                if (existing) {
+                    const existingTotalValue = existing.price * existing.quantity;
+                    const newItemTotalValue = price * item.quantity;
+                    const newTotalQuantity = existing.quantity + item.quantity;
+                    
+                    existing.quantity = newTotalQuantity;
+                    if (newTotalQuantity > 0) {
+                        existing.price = (existingTotalValue + newItemTotalValue) / newTotalQuantity;
+                    }
+                } else {
+                    aggregatedItems.set(key, { ...item, supplierId: order.supplierId, price: price });
+                }
+            });
+        });
+        
+        Array.from(aggregatedItems.values()).forEach(item => {
+            const itemTotal = item.price * item.quantity;
+            storeTotalAmount += itemTotal;
+            itemsListContent += `${item.name} x${item.quantity}${item.unit || ''} @ ${item.price.toFixed(2)} = ${itemTotal.toFixed(2)}\n`;
+        });
+
+        totalDue += storeTotalAmount;
+
+        const invoiceDisplay = storeTotalAmount > 0 ? ` (${storeTotalAmount.toFixed(2)})` : '';
         message += `${storeName}${invoiceDisplay}\n`;
-
-        const allItems = storeOrders.flatMap(order => order.items);
-        for (const item of allItems) {
-            message += `${item.name} x${item.quantity}${item.unit || ''}\n`;
-        }
+        message += itemsListContent;
         message += `__________________\n`;
     }
 
@@ -153,10 +185,8 @@ export const generateKaliUnifyReport = (orders: Order[]): string => {
     message += `Due: ${totalDue.toFixed(2)}\n`;
     message += `Spendings: ${spendings.toFixed(2)}\n`;
     
-    if (allInvoicesSet) {
-        const newDue = topDue - spendings; // Initial calculation based on app data
-        message += `New Due: ${newDue.toFixed(2)}\n`;
-    }
+    const newDue = topDue - spendings;
+    message += `New Due: ${newDue.toFixed(2)}\n`;
 
     return message;
 };
@@ -260,4 +290,65 @@ export const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]):
     const existingMessage = storeBlocks.join('\n\n');
 
     return `${reportHeader}\n${separator}\n${existingMessage}\n${separator}`;
+};
+
+export const generateStoreReport = (orders: Order[]): string => {
+    const aggregatedItems = new Map<string, { name: string; totalQuantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }>();
+
+    for (const order of orders) {
+        for (const item of order.items) {
+            if (item.isSpoiled) continue;
+
+            const key = `${item.itemId}-${item.unit || 'none'}`;
+            const existing = aggregatedItems.get(key);
+            
+            const price = item.price || 0;
+            const itemValue = price * item.quantity;
+
+            if (existing) {
+                existing.totalQuantity += item.quantity;
+                existing.totalValue += itemValue;
+                if (price > 0) existing.priceEntries.push(price);
+            } else {
+                aggregatedItems.set(key, {
+                    name: item.name,
+                    totalQuantity: item.quantity,
+                    unit: item.unit,
+                    totalValue: itemValue,
+                    priceEntries: price > 0 ? [price] : [],
+                });
+            }
+        }
+    }
+
+    if (aggregatedItems.size === 0) {
+        return "No items in today's completed orders.";
+    }
+
+    const today = new Date();
+    const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}.${today.getFullYear()}`;
+    const storeName = orders[0]?.store || 'Store';
+
+    let report = `STORE REPORT: ${storeName} - ${formattedDate}\n`;
+    report += "========================================\n\n";
+
+    let grandTotal = 0;
+    const sortedItems = Array.from(aggregatedItems.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    for (const item of sortedItems) {
+        grandTotal += item.totalValue;
+        const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
+        
+        const name = item.name.padEnd(20, ' ');
+        const quantity = `${item.totalQuantity}${item.unit || ''}`.padStart(8, ' ');
+        const price = `@ ${avgPrice.toFixed(2)}`.padStart(10, ' ');
+        const total = `$${item.totalValue.toFixed(2)}`.padStart(12, ' ');
+
+        report += `${name}${quantity}${price}${total}\n`;
+    }
+
+    report += "\n========================================\n";
+    report += `GRAND TOTAL: $${grandTotal.toFixed(2)}\n`;
+
+    return report;
 };

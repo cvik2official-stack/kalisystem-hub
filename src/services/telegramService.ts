@@ -202,19 +202,10 @@ export const sendKaliUnifyReport = async (
     token: string
 ): Promise<void> => {
     const KALI_UNIFY_CHAT_ID = "-1003065576801";
-    const today = new Date().toISOString().split('T')[0];
-
-    const replyMarkup: ReplyMarkup = {
-        inline_keyboard: [
-            [
-                { text: "Add Topup", callback_data: `unify_add_topup_${today}` },
-                { text: "Set Store Ticket", callback_data: `unify_set_ticket_${today}` }
-            ]
-        ]
-    };
 
     // The unify report uses plain text, so we send it as HTML without any tags.
-    await sendMessage(token, KALI_UNIFY_CHAT_ID, message, replyMarkup);
+    // Buttons have been removed as per user request.
+    await sendMessage(token, KALI_UNIFY_CHAT_ID, message);
 };
 
 /**

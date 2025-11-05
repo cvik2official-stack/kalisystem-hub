@@ -32,6 +32,18 @@ const App: React.FC = () => {
   }, [syncStatus]);
 
   useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        dispatch({ type: 'SET_EDIT_MODE', payload: false });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [dispatch]);
+
+  useEffect(() => {
     const hash = window.location.hash;
     const queryString = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
     const urlParams = new URLSearchParams(queryString);
@@ -86,7 +98,7 @@ const App: React.FC = () => {
             return;
         }
 
-        const message = generateKaliUnifyReport(todaysKaliOrders);
+        const message = generateKaliUnifyReport(todaysKaliOrders, itemPrices);
         await sendKaliUnifyReport(message, settings.telegramBotToken);
         addToast('Kali Unify Report sent successfully!', 'success');
 

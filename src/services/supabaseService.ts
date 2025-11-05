@@ -23,6 +23,9 @@
 
   -- Add a text column to store an order-specific payment method override
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+
+  -- Add a boolean column to track OUDOM acknowledgment
+  ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS is_acknowledged BOOLEAN DEFAULT FALSE;
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -73,6 +76,7 @@ interface OrderFromDb {
     invoice_url?: string;
     invoice_amount?: number;
     payment_method?: PaymentMethod;
+    is_acknowledged?: boolean;
 }
 
 interface ItemPriceFromDb {
@@ -196,6 +200,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     invoiceUrl: order.invoice_url,
                     invoiceAmount: order.invoice_amount,
                     paymentMethod: order.payment_method,
+                    isAcknowledged: order.is_acknowledged,
                     // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
@@ -227,6 +232,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         invoice_url: orderData.invoiceUrl,
         invoice_amount: orderData.invoiceAmount,
         payment_method: orderData.paymentMethod,
+        is_acknowledged: orderData.isAcknowledged,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -262,6 +268,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         invoice_url: order.invoiceUrl,
         invoice_amount: order.invoiceAmount,
         payment_method: order.paymentMethod,
+        is_acknowledged: order.isAcknowledged,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',
@@ -398,21 +405,50 @@ export const updateStore = async ({ store, url, key }: { store: Store; url: stri
 };
 
 export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: ItemPrice; url: string; key: string }): Promise<ItemPrice> => {
-    const payload = {
-        item_id: itemPrice.itemId,
-        supplier_id: itemPrice.supplierId,
-        price: itemPrice.price,
-        unit: itemPrice.unit,
-        is_master: itemPrice.isMaster,
-    };
+    const headers = getHeaders(key);
 
-    const response = await fetch(`${url}/rest/v1/item_prices?on_conflict=item_id,supplier_id,unit`, {
-        method: 'POST',
-        headers: { ...getHeaders(key), 'Prefer': 'return=representation,resolution=merge-duplicates' },
-        body: JSON.stringify(payload)
-    });
+    // 1. Check if a price entry already exists
+    const selectUrl = `${url}/rest/v1/item_prices?select=id&item_id=eq.${itemPrice.itemId}&supplier_id=eq.${itemPrice.supplierId}&unit=eq.${itemPrice.unit}`;
+    const selectResponse = await fetch(selectUrl, { headers });
 
-    if (!response.ok) throw new Error(`Failed to upsert item price: ${await response.text()}`);
+    if (!selectResponse.ok) {
+        throw new Error(`Failed to check for existing item price: ${await selectResponse.text()}`);
+    }
+
+    const existingPrices: { id: string }[] = await selectResponse.json();
+
+    let response;
+    if (existingPrices.length > 0) {
+        // 2. If exists, UPDATE it using PATCH
+        const existingId = existingPrices[0].id;
+        const updateUrl = `${url}/rest/v1/item_prices?id=eq.${existingId}&select=*`;
+        response = await fetch(updateUrl, {
+            method: 'PATCH',
+            headers: { ...headers, 'Prefer': 'return=representation' },
+            body: JSON.stringify({
+                price: itemPrice.price,
+                is_master: itemPrice.isMaster,
+            })
+        });
+        if (!response.ok) throw new Error(`Failed to update item price: ${await response.text()}`);
+    } else {
+        // 3. If not, INSERT it using POST
+        const insertUrl = `${url}/rest/v1/item_prices?select=*`;
+        const payload = {
+            item_id: itemPrice.itemId,
+            supplier_id: itemPrice.supplierId,
+            price: itemPrice.price,
+            unit: itemPrice.unit,
+            is_master: itemPrice.isMaster,
+        };
+        response = await fetch(insertUrl, {
+            method: 'POST',
+            headers: { ...headers, 'Prefer': 'return=representation' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) throw new Error(`Failed to insert item price: ${await response.text()}`);
+    }
+
     const data = await response.json();
     const upsertedPrice = data[0];
     return {

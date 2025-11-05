@@ -20,6 +20,9 @@ export enum PaymentMethod {
   STOCK = 'stock',
 }
 
+// FIX: Define SyncStatus here to be the single source of truth.
+export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
+
 export interface Store {
   id: string; // uuid from Supabase
   name: StoreName;
@@ -82,6 +85,7 @@ export interface Order {
   invoiceUrl?: string;
   invoiceAmount?: number;
   paymentMethod?: PaymentMethod;
+  isAcknowledged?: boolean;
 }
 
 export interface ParsedItem {
@@ -100,6 +104,11 @@ export interface ItemPrice {
     isMaster: boolean;
 }
 
+export interface AiParsingRules {
+    global?: Record<string, string>;
+    [storeName: string]: Record<string, string> | undefined; // Per-store rules
+}
+
 export interface AppSettings {
     supabaseUrl: string;
     supabaseKey: string;
@@ -108,8 +117,24 @@ export interface AppSettings {
     csvUrl?: string;
     geminiApiKey?: string;
     telegramBotToken?: string;
-    aiParsingRules?: {
-      aliases: Record<string, string>;
-    };
+    aiParsingRules?: AiParsingRules;
     receiptTemplates?: Record<string, string>; // e.g. { 'default': '<html>...' }
+}
+
+export interface AppState {
+  stores: Store[];
+  activeStore: StoreName | 'Settings';
+  suppliers: Supplier[];
+  items: Item[];
+  itemPrices: ItemPrice[];
+  orders: Order[];
+  activeStatus: OrderStatus;
+  orderIdCounters: Record<string, number>;
+  settings: AppSettings;
+  isLoading: boolean;
+  isInitialized: boolean;
+  syncStatus: SyncStatus;
+  isManagerView: boolean;
+  managerStoreFilter: StoreName | null;
+  isEditModeEnabled: boolean;
 }

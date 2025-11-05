@@ -1,9 +1,7 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice } from '../services/supabaseService';
 import { useToasts } from './ToastContext';
-
-export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 
 export interface AppState {
   stores: Store[];
@@ -20,6 +18,7 @@ export interface AppState {
   syncStatus: SyncStatus;
   isManagerView: boolean;
   managerStoreFilter: StoreName | null;
+  isEditModeEnabled: boolean;
 }
 
 export type Action =
@@ -40,7 +39,8 @@ export type Action =
   | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
-  | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice };
+  | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
+  | { type: 'SET_EDIT_MODE'; payload: boolean };
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
@@ -49,22 +49,25 @@ export interface AppContextActions {
     addSupplier: (supplier: Omit<Supplier, 'id' | 'modifiedAt'>) => Promise<Supplier>;
     updateSupplier: (supplier: Supplier) => Promise<void>;
     updateStore: (store: Store) => Promise<void>;
-    addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[]) => Promise<void>;
+    addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[], status?: OrderStatus) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
     syncWithSupabase: (options?: { isInitialSync?: boolean }) => Promise<void>;
     addItemToDispatch: (item: Item) => Promise<void>;
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
     upsertItemPrice: (itemPrice: ItemPrice) => Promise<void>;
+    mergeTodaysCompletedOrdersByPayment: (paymentMethod: PaymentMethod) => Promise<void>;
 }
 
 
 const appReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case 'SET_ACTIVE_STORE':
-      return { ...state, activeStore: action.payload };
+      return { ...state, activeStore: action.payload, isEditModeEnabled: false }; // Disable edit mode on store change
     case 'SET_ACTIVE_STATUS':
-      return { ...state, activeStatus: action.payload };
+      return { ...state, activeStatus: action.payload, isEditModeEnabled: false }; // Disable edit mode on status change
+    case 'SET_EDIT_MODE':
+        return { ...state, isEditModeEnabled: action.payload };
     case '_ADD_ITEM':
         return { ...state, items: [...state.items, action.payload] };
     case '_UPDATE_ITEM': {
@@ -205,7 +208,7 @@ const getInitialState = (): AppState => {
       geminiApiKey: 'AIzaSyDN0Z_WM4PvhMhJ0nTPF9lM06lepFrZ-qM',
       telegramBotToken: '8347024604:AAHotssxpa41D53fMP10_8kIR6PCcVgw0i0',
       aiParsingRules: {
-        aliases: {
+        global: {
           "Chicken": "Chicken breast",
           "Beef": "Beef (rump)",
           "Mushroom can": "Mushroom",
@@ -219,6 +222,7 @@ const getInitialState = (): AppState => {
     syncStatus: 'idle',
     isManagerView: false,
     managerStoreFilter: null,
+    isEditModeEnabled: false,
   };
 
   const finalState = { ...initialState, ...loadedState };
@@ -230,6 +234,7 @@ const getInitialState = (): AppState => {
   })) as Order[];
   finalState.isLoading = false;
   finalState.isInitialized = false;
+  finalState.isEditModeEnabled = false; // Always start with edit mode off
 
   return finalState;
 };
@@ -251,6 +256,7 @@ export const AppContext = createContext<{
       addItemToDispatch: async () => {},
       mergeOrders: async () => {},
       upsertItemPrice: async () => {},
+      mergeTodaysCompletedOrdersByPayment: async () => {},
   }
 });
 
@@ -328,7 +334,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: '_UPDATE_STORE', payload: updatedStore });
         addToast(`Store "${updatedStore.name}" updated.`, 'success');
     },
-    addOrder: async (supplier, store, items = []) => {
+    addOrder: async (supplier, store, items = [], status = OrderStatus.DISPATCHING) => {
         let supplierToUse = supplier;
         if (supplier.id.startsWith('new_')) {
             addToast(`Verifying supplier: ${supplier.name}...`, 'info');
@@ -342,8 +348,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const newCounter = (state.orderIdCounters[counterKey] || 0) + 1;
         const newOrderId = `${dateStr}_${supplierToUse.name}_${store}_${String(newCounter).padStart(3,'0')}`;
         const newOrder: Order = {
-            id: `placeholder_${Date.now()}`, orderId: newOrderId, store, supplierId: supplierToUse.id, supplierName: supplierToUse.name, items, status: OrderStatus.DISPATCHING,
-            isSent: false, isReceived: false, createdAt: now.toISOString(), modifiedAt: now.toISOString(), paymentMethod: supplierToUse.paymentMethod,
+            id: `placeholder_${Date.now()}`, orderId: newOrderId, store, supplierId: supplierToUse.id, supplierName: supplierToUse.name, items, status,
+            isSent: status !== OrderStatus.DISPATCHING, 
+            isReceived: status === OrderStatus.COMPLETED, 
+            createdAt: now.toISOString(), modifiedAt: now.toISOString(), 
+            completedAt: status === OrderStatus.COMPLETED ? now.toISOString() : undefined,
+            paymentMethod: supplierToUse.paymentMethod,
         };
         const savedOrder = await supabaseAddOrder({ order: newOrder, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'ADD_ORDERS', payload: [savedOrder] });
@@ -374,24 +384,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         );
     
         if (existingOrder) {
-            const itemInOrder = existingOrder.items.find(i => i.itemId === item.id);
-            if (itemInOrder) {
-                addToast(`"${item.name}" is already in the dispatch list for ${item.supplierName}.`, 'info');
+            const itemInOrderIndex = existingOrder.items.findIndex(i => i.itemId === item.id);
+            if (itemInOrderIndex > -1) {
+                // Item exists, increment quantity
+                const updatedItems = [...existingOrder.items];
+                updatedItems[itemInOrderIndex] = {
+                    ...updatedItems[itemInOrderIndex],
+                    quantity: updatedItems[itemInOrderIndex].quantity + 1 // Assume adding 1
+                };
+                await actions.updateOrder({ ...existingOrder, items: updatedItems });
+                addToast(`Incremented "${item.name}" in existing order.`, 'success');
                 return;
             }
             
+            // Item does not exist in the order, so add it
             const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
             addToast(`Added "${item.name}" to existing order.`, 'success');
         } else {
+            // No existing order for this supplier, so create a new one
             const supplier = suppliers.find(s => s.id === item.supplierId);
             if (!supplier) {
                 addToast(`Supplier for "${item.name}" not found.`, 'error');
                 return;
             }
             const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
-            // Awaiting `addOrder` directly here.
             await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
         }
     },
@@ -421,6 +439,61 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     upsertItemPrice: async (itemPrice) => {
         const savedPrice = await supabaseUpsertItemPrice({ itemPrice, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPSERT_ITEM_PRICE', payload: savedPrice });
+    },
+    mergeTodaysCompletedOrdersByPayment: async (paymentMethod: PaymentMethod) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const ordersToMerge = state.orders.filter(o => {
+            if (o.status !== OrderStatus.COMPLETED || !o.completedAt) return false;
+            const completedDate = new Date(o.completedAt);
+            completedDate.setHours(0, 0, 0, 0);
+            const orderPaymentMethod = o.paymentMethod || state.suppliers.find(s => s.id === o.supplierId)?.paymentMethod;
+            return completedDate.getTime() === today.getTime() && orderPaymentMethod === paymentMethod;
+        });
+
+        if (ordersToMerge.length < 2) {
+            addToast(`Found ${ordersToMerge.length} order(s) for "${paymentMethod.toUpperCase()}". Need at least 2 to merge.`, 'info');
+            return;
+        }
+
+        const destinationOrder = { ...ordersToMerge[0] };
+        const sourceOrders = ordersToMerge.slice(1);
+        
+        const aggregatedItems = new Map<string, OrderItem>();
+        destinationOrder.items.forEach(item => {
+            const key = `${item.itemId}-${item.unit || 'none'}`;
+            aggregatedItems.set(key, { ...item });
+        });
+
+        for (const sourceOrder of sourceOrders) {
+            for (const itemToMerge of sourceOrder.items) {
+                const key = `${itemToMerge.itemId}-${itemToMerge.unit || 'none'}`;
+                const existingItem = aggregatedItems.get(key);
+                if (existingItem) {
+                    // Weighted average for price
+                    if (existingItem.price !== undefined && itemToMerge.price !== undefined) {
+                        const existingTotalValue = existingItem.price * existingItem.quantity;
+                        const toMergeTotalValue = itemToMerge.price * itemToMerge.quantity;
+                        const newTotalQuantity = existingItem.quantity + itemToMerge.quantity;
+                        existingItem.price = (existingTotalValue + toMergeTotalValue) / newTotalQuantity;
+                    }
+                    existingItem.quantity += itemToMerge.quantity;
+                } else {
+                    aggregatedItems.set(key, { ...itemToMerge });
+                }
+            }
+        }
+
+        destinationOrder.items = Array.from(aggregatedItems.values());
+        
+        await actions.updateOrder(destinationOrder);
+
+        for (const sourceOrder of sourceOrders) {
+            await actions.deleteOrder(sourceOrder.id);
+        }
+
+        addToast(`Merged ${ordersToMerge.length} orders into one for ${paymentMethod.toUpperCase()}.`, 'success');
     },
     syncWithSupabase,
   };
