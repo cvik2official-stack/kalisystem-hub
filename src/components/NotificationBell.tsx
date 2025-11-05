@@ -2,19 +2,19 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNotificationState, useNotificationDispatch } from '../context/NotificationContext';
 
 const NotificationBell: React.FC = () => {
-  const { notifications, hasUnread } = useNotificationState();
+  const { notifications, hasUnread, hasUnreadActivity } = useNotificationState();
   const { markAllAsRead, clearNotifications } = useNotificationDispatch();
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [shouldAnimate, setShouldAnimate] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (hasUnread) {
+    if (hasUnread || hasUnreadActivity) {
       setShouldAnimate(true);
       const timer = setTimeout(() => setShouldAnimate(false), 800); // Duration of the wobble animation
       return () => clearTimeout(timer);
     }
-  }, [hasUnread, notifications]); // Rerun animation on new notification
+  }, [hasUnread, hasUnreadActivity, notifications]); // Rerun animation on new notification
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -28,7 +28,7 @@ const NotificationBell: React.FC = () => {
 
   const handleBellClick = () => {
     setIsPanelOpen(prev => !prev);
-    if (hasUnread) {
+    if (hasUnread || hasUnreadActivity) {
       markAllAsRead();
     }
   };
@@ -38,6 +38,8 @@ const NotificationBell: React.FC = () => {
       clearNotifications();
       setIsPanelOpen(false);
   }
+  
+  const bellColorClass = hasUnreadActivity ? 'text-green-400' : hasUnread ? 'text-yellow-400' : '';
 
   return (
     <div className="relative" ref={bellRef}>
@@ -46,7 +48,7 @@ const NotificationBell: React.FC = () => {
         className="text-gray-400 hover:text-white p-1"
         aria-label="Notifications"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${hasUnread ? 'text-yellow-400' : ''} ${shouldAnimate ? 'animate-wobble' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${bellColorClass} ${shouldAnimate ? 'animate-wobble' : ''}`} viewBox="0 0 20 20" fill="currentColor">
           <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z" />
         </svg>
       </button>
