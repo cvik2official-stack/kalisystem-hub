@@ -9,6 +9,7 @@ import ContextMenu from './ContextMenu';
 import MergeByPaymentModal from './modals/MergeByPaymentModal';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
+import KaliPatchingView from './KaliPatchingView';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -30,6 +31,10 @@ const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled } = state;
   const { notify } = useNotifier();
+
+  if (activeStore === StoreName.KALI && activeStatus === OrderStatus.ON_THE_WAY) {
+    return <KaliPatchingView />;
+  }
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
