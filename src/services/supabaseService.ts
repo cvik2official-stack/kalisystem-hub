@@ -29,9 +29,6 @@
 
   -- Add a text column to stores for a location URL
   ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS location_url TEXT;
-
-  -- Enable real-time updates for the 'orders' table
-  ALTER PUBLICATION supabase_realtime ADD TABLE orders;
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -39,20 +36,6 @@ interface SupabaseCredentials {
   url: string;
   key: string;
 }
-
-let supabase: any = null;
-
-export const initializeSupabaseClient = (url: string, key: string) => {
-  if (!supabase) {
-    // @ts-ignore
-    supabase = (window as any).supabase.createClient(url, key);
-  }
-};
-
-export const getSupabaseClient = () => {
-    return supabase;
-};
-
 
 // Interfaces for raw database responses with snake_case properties
 interface SupplierFromDb {

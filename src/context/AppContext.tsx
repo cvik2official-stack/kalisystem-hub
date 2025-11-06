@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, initializeSupabaseClient, getSupabaseClient } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice } from '../services/supabaseService';
 import { useNotifier } from './NotificationContext';
 
 export interface AppState {
@@ -244,11 +244,6 @@ const getInitialState = (): AppState => {
   finalState.isInitialized = false;
   finalState.isEditModeEnabled = false; // Always start with edit mode off
 
-  // Early initialization of Supabase client to prevent race conditions.
-  if (finalState.settings.supabaseUrl && finalState.settings.supabaseKey) {
-    initializeSupabaseClient(finalState.settings.supabaseUrl, finalState.settings.supabaseKey);
-  }
-
   return finalState;
 };
 
@@ -306,50 +301,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'error' });
     }
   }, [state.settings, notify, dispatch]);
-
-  useEffect(() => {
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      console.warn('Supabase client not initialized for real-time listener.');
-      return;
-    }
-
-    const channel = supabase
-      .channel('db-orders')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (payload) => {
-        const updatedOrder = payload.new as Order;
-        const oldOrder = state.orders.find(o => o.id === updatedOrder.id);
-        
-        if (oldOrder) {
-          // Detect status change to 'completed'
-          if (oldOrder.status !== OrderStatus.COMPLETED && updatedOrder.status === OrderStatus.COMPLETED) {
-              const message = `Order for ${updatedOrder.supplierName} to ${updatedOrder.store} marked as 'Received'.`;
-              notify(message, 'activity-toast');
-          }
-          // Detect OUDOM 'OK' acknowledgement
-          if (!oldOrder.isAcknowledged && updatedOrder.isAcknowledged) {
-              const message = `OUDOM acknowledged the task for ${updatedOrder.store}.`;
-              notify(message, 'activity-toast');
-          }
-          // Detect spoiled items change
-          const oldSpoiledCount = oldOrder.items.filter(i => i.isSpoiled).reduce((sum, i) => sum + i.quantity, 0);
-          const newSpoiledCount = updatedOrder.items.filter(i => i.isSpoiled).reduce((sum, i) => sum + i.quantity, 0);
-          if (newSpoiledCount > oldSpoiledCount) {
-              const diff = newSpoiledCount - oldSpoiledCount;
-              const message = `${diff} item(s) in order for ${updatedOrder.supplierName} to ${updatedOrder.store} were marked as spoiled.`;
-              notify(message, 'activity');
-          }
-        }
-        
-        dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
-      })
-      .subscribe();
-
-    return () => {
-      channel.unsubscribe();
-    };
-  }, [state.orders, notify]);
-
 
   useEffect(() => {
     if (!state.isInitialized) {

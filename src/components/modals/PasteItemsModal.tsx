@@ -120,14 +120,11 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
                    finalItem = existingItemInDb;
                } else {
                    notify(`Creating new item: ${pItem.newItemName}`, 'info');
-                   
-                   // New intelligent unit logic for new items
-                   const defaultUnit = pItem.quantity % 1 !== 0 ? Unit.KG : Unit.PC;
-
                    finalItem = await actions.addItem({
                        name: pItem.newItemName, supplierId: supplier.id,
                        supplierName: supplier.name, 
-                       unit: normalizeUnit(pItem.unit) ?? defaultUnit
+                       // Apply client-side normalization as a safety net
+                       unit: normalizeUnit(pItem.unit) ?? Unit.PC
                    });
                }
                const masterPrice = state.itemPrices.find(p => p.itemId === finalItem.id && p.supplierId === finalItem.supplierId && p.isMaster);

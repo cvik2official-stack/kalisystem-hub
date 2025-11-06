@@ -8,7 +8,7 @@ import { OrderStatus, StoreName, SupplierName, SettingsTab } from './types';
 import ManagerView from './components/ManagerView';
 import { generateKaliUnifyReport, generateKaliZapReport } from './utils/messageFormatter';
 import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramService';
-import { useNotifier, useNotificationDispatch } from './context/NotificationContext';
+import { useNotifier } from './context/NotificationContext';
 import ContextMenu from './components/ContextMenu';
 import NotificationBell from './components/NotificationBell';
 
@@ -16,7 +16,6 @@ const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices } = state;
   const { notify } = useNotifier();
-  const { showQueuedToasts } = useNotificationDispatch();
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
   const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
@@ -34,17 +33,6 @@ const App: React.FC = () => {
     }
     prevSyncStatusRef.current = syncStatus;
   }, [syncStatus]);
-
-  useEffect(() => {
-    const handleFocus = () => {
-      showQueuedToasts();
-    };
-    window.addEventListener('focus', handleFocus);
-    return () => {
-      window.removeEventListener('focus', handleFocus);
-    };
-  }, [showQueuedToasts]);
-
 
   useEffect(() => {
     const handleVisibilityChange = () => {
