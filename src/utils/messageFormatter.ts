@@ -124,18 +124,18 @@ export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[]): s
     return `${header}\n\n${itemsList}\n${footer}`;
 };
 
-export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]): string => {
+export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[], previousDue: number, topUp: number): string => {
     const today = new Date();
     const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}`;
     
-    const topDue = 0;
-    const topTopup = 0;
+    const topDue = previousDue;
+    const topTopup = topUp;
     const topTotal = topDue + topTopup;
 
     let message = `Date ${formattedDate}\n`;
-    message += `Due: ${topDue}\n`;
-    message += `Topup: ${topTopup}\n`;
-    message += `Total: ${topTotal}\n`;
+    message += `Due: ${topDue.toFixed(2)}\n`;
+    message += `Topup: ${topTopup.toFixed(2)}\n`;
+    message += `Total: ${topTotal.toFixed(2)}\n`;
     message += `__________________\n`;
 
     const ordersByStore = orders.reduce((acc, order) => {
@@ -146,24 +146,26 @@ export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]
         return acc;
     }, {} as Record<string, Order[]>);
 
-    let totalDue = 0;
+    let totalSpendings = 0;
+    const storeBlocks: string[] = [];
 
+    // Calculate totals and details for each store
     for (const storeName in ordersByStore) {
         const storeOrders = ordersByStore[storeName];
         if (storeOrders.length === 0) continue;
 
         let storeTotalAmount = 0;
-        let itemsListContent = '';
-
-        const aggregatedItems = new Map<string, { name: string; quantity: number; unit?: Unit; itemId: string; supplierId: string; price: number }>();
         
+        // Aggregate items to handle multiple orders from the same supplier (KALI) to the same store
+        const aggregatedItems = new Map<string, { name: string; quantity: number; unit?: Unit, price: number }>();
+
         storeOrders.forEach(order => {
             order.items.forEach(item => {
                 if (item.isSpoiled) return;
                 
                 const price = item.price ?? itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price ?? 0;
                 
-                const key = `${item.itemId}-${item.unit || 'none'}`;
+                const key = `${item.itemId}-${item.unit || 'none'}`; // Key by item and unit to be safe
                 const existing = aggregatedItems.get(key);
 
                 if (existing) {
@@ -173,34 +175,44 @@ export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]
                     
                     existing.quantity = newTotalQuantity;
                     if (newTotalQuantity > 0) {
+                        // Recalculate weighted average price
                         existing.price = (existingTotalValue + newItemTotalValue) / newTotalQuantity;
                     }
                 } else {
-                    aggregatedItems.set(key, { ...item, supplierId: order.supplierId, price: price });
+                    aggregatedItems.set(key, { name: item.name, quantity: item.quantity, unit: item.unit, price: price });
                 }
             });
         });
         
-        Array.from(aggregatedItems.values()).forEach(item => {
+        let storeItemDetails = '';
+        const sortedItems = Array.from(aggregatedItems.values()).sort((a,b) => a.name.localeCompare(b.name));
+
+        sortedItems.forEach(item => {
             const itemTotal = item.price * item.quantity;
             storeTotalAmount += itemTotal;
-            itemsListContent += `${item.name} x${item.quantity}${item.unit || ''} @ ${item.price.toFixed(2)} = ${itemTotal.toFixed(2)}\n`;
+            const unitDisplay = item.unit ? item.unit : '';
+            storeItemDetails += `${item.name} x${item.quantity}${unitDisplay} @ ${item.price.toFixed(2)} = ${itemTotal.toFixed(2)}\n`;
         });
 
-        totalDue += storeTotalAmount;
-
-        const invoiceDisplay = storeTotalAmount > 0 ? ` (${storeTotalAmount.toFixed(2)})` : '';
-        message += `${storeName}${invoiceDisplay}\n`;
-        message += itemsListContent;
-        message += `__________________\n`;
+        if (storeTotalAmount > 0) {
+            totalSpendings += storeTotalAmount;
+            const storeHeader = `${storeName} (${storeTotalAmount.toFixed(2)})\n`;
+            storeBlocks.push(storeHeader + storeItemDetails);
+        }
     }
 
-    const spendings = totalDue;
-
-    message += `Due: ${totalDue.toFixed(2)}\n`;
-    message += `Spendings: ${spendings.toFixed(2)}\n`;
+    // Build the store summary section of the message
+    if (storeBlocks.length > 0) {
+        message += storeBlocks.join('__________________\n');
+    }
     
-    const newDue = topDue - spendings;
+    message += `__________________\n`;
+
+    // Build the footer section
+    message += `Total: ${topTotal.toFixed(2)}\n`;
+    message += `Spendings: ${totalSpendings.toFixed(2)}\n`;
+    
+    const newDue = topTotal - totalSpendings;
     message += `New Due: ${newDue.toFixed(2)}\n`;
 
     return message;

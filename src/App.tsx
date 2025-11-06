@@ -11,6 +11,7 @@ import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramServi
 import { useNotifier } from './context/NotificationContext';
 import ContextMenu from './components/ContextMenu';
 import NotificationBell from './components/NotificationBell';
+import KaliReportModal from './components/modals/KaliReportModal';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
@@ -21,6 +22,7 @@ const App: React.FC = () => {
   const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
   const prevSyncStatusRef = useRef<string | undefined>(undefined);
   const [headerMenu, setHeaderMenu] = useState<{ x: number, y: number } | null>(null);
+  const [isKaliReportModalOpen, setIsKaliReportModalOpen] = useState(false);
 
 
   useEffect(() => {
@@ -75,7 +77,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSendKaliUnifyReport = async () => {
+  const handleSendKaliUnifyReport = async (previousDue: number, topUp: number) => {
     setIsSendingReport(true);
     try {
         const today = new Date();
@@ -101,9 +103,10 @@ const App: React.FC = () => {
             return;
         }
 
-        const message = generateKaliUnifyReport(todaysKaliOrders, itemPrices);
+        const message = generateKaliUnifyReport(todaysKaliOrders, itemPrices, previousDue, topUp);
         await sendKaliUnifyReport(message, settings.telegramBotToken);
         notify('Kali Unify Report sent successfully!', 'success');
+        setIsKaliReportModalOpen(false);
 
     } catch (error: any) {
         notify(`Failed to send report: ${error.message}`, 'error');
@@ -145,7 +148,7 @@ const App: React.FC = () => {
       const options = [
         { label: 'Reports', isHeader: true },
         { label: '  KALI est.', action: handleSendKaliZapReport },
-        { label: '  KALI due', action: handleSendKaliUnifyReport },
+        { label: '  KALI due', action: () => setIsKaliReportModalOpen(true) },
         { label: 'Settings', isHeader: true },
         { label: '  Items', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' as SettingsTab }) },
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
@@ -238,6 +241,12 @@ const App: React.FC = () => {
             onClose={() => setHeaderMenu(null)}
         />
       )}
+      <KaliReportModal
+        isOpen={isKaliReportModalOpen}
+        onClose={() => setIsKaliReportModalOpen(false)}
+        onGenerate={handleSendKaliUnifyReport}
+        isSending={isSendingReport}
+      />
     </>
   );
 };
