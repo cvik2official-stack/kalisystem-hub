@@ -198,13 +198,13 @@ const OrderWorkspace: React.FC = () => {
 
   return (
     <>
-      <div className="mt-6 border-b border-gray-700">
+      <div className="mt-2">
         <nav className="-mb-px flex space-x-6">
           {tabsToShow.map((tab) => (
             <button
               key={tab.id}
               onClick={() => handleStatusChange(tab.id)}
-              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                 activeStatus === tab.id
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
@@ -227,12 +227,12 @@ const OrderWorkspace: React.FC = () => {
 
           {activeStatus === OrderStatus.COMPLETED ? (
               filteredOrders.length > 0 ? (
-                <div className="mt-4 space-y-2">
+                <div className="mt-4 space-y-1">
                   {sortedCompletedGroupKeys.map(key => {
                     const isExpanded = expandedGroups.has(key);
                     return (
                       <div key={key}>
-                        <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center border-b border-t border-gray-700 w-full text-left">
+                        <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center w-full text-left">
                           <button onClick={() => toggleGroup(key)} className="flex items-center space-x-2 flex-grow">
                             <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
                               <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -246,7 +246,7 @@ const OrderWorkspace: React.FC = () => {
                           )}
                         </div>
                         {isExpanded && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-2">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-1">
                             {groupedCompletedOrders[key].map((order) => (
                               <SupplierCard 
                                   key={order.id} 

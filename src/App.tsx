@@ -4,7 +4,7 @@ import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
-import { OrderStatus, StoreName, SupplierName, SettingsTab } from './types';
+import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod } from './types';
 import ManagerView from './components/ManagerView';
 import { generateKaliUnifyReport, generateKaliZapReport } from './utils/messageFormatter';
 import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramService';
@@ -119,7 +119,7 @@ const App: React.FC = () => {
     setIsSendingZapReport(true);
     try {
         const onTheWayKaliOrders = orders.filter(order => 
-            order.supplierName === SupplierName.KALI &&
+            (order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI) &&
             order.status === OrderStatus.ON_THE_WAY
         );
 
@@ -185,8 +185,8 @@ const App: React.FC = () => {
   return (
     <>
       <div className="min-h-screen bg-gray-900 text-gray-200">
-        <div className="bg-gray-800 shadow-2xl w-full md:w-1/2 md:mx-auto min-h-screen flex flex-col">
-            <div className="flex-shrink-0 p-3 flex items-center justify-between border-b border-gray-700/50">
+        <div className="bg-gray-900 w-full md:w-1/2 md:mx-auto min-h-screen flex flex-col">
+            <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <div className="flex space-x-1.5">
                   <span className="w-3 h-3 bg-red-500 rounded-full"></span>
@@ -224,7 +224,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex-grow p-4 flex flex-col">
+            <div className="flex-grow px-3 py-2 flex flex-col">
               <main className="flex-grow flex flex-col">
                 <StoreTabs />
                 {activeStore === 'Settings' ? <SettingsPage /> : <OrderWorkspace />}

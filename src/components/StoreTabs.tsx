@@ -61,7 +61,7 @@ const StoreTabs: React.FC = () => {
   });
 
   return (
-    <div className="border-b border-gray-700">
+    <div>
       <nav className="-mb-px flex space-x-6" aria-label="Tabs">
         {sortedStores.map(({ name }) => (
           <button
@@ -74,7 +74,7 @@ const StoreTabs: React.FC = () => {
             onTouchStart={() => handlePressStart(name)}
             onTouchEnd={handlePressEnd}
             className={`
-              whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+              whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm
               ${
                 activeStore === name
                   ? 'border-indigo-500 text-indigo-400'

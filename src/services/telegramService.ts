@@ -221,3 +221,18 @@ export const sendKaliZapReport = async (
     // Send a simple HTML message with no buttons
     await sendMessage(token, KALI_ZAP_CHAT_ID, message);
 };
+
+/**
+ * Sends a formatted text receipt to a store's chat.
+ * @param storeChatId The store's Telegram chat ID.
+ * @param message The pre-formatted receipt message (HTML).
+ * @param token The Telegram Bot Token.
+ */
+export const sendReceiptToStoreOnTelegram = async (
+    storeChatId: string,
+    message: string,
+    token: string
+): Promise<void> => {
+    // Simple message with no buttons
+    await sendMessage(token, storeChatId, message);
+};

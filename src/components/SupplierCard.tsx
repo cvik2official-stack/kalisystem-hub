@@ -8,7 +8,7 @@ import { useNotifier } from '../context/NotificationContext';
 import EditItemModal from './modals/EditItemModal';
 import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from '../utils/messageFormatter';
 import EditSupplierModal from './modals/EditSupplierModal';
-import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram } from '../services/telegramService';
+import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram, sendReceiptToStoreOnTelegram } from '../services/telegramService';
 import AddSupplierModal from './modals/AddSupplierModal';
 import MergeOrderModal from './modals/MergeOrderModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
@@ -48,7 +48,7 @@ const CardHeader: React.FC<{
 
     return (
         <div
-            className="px-2 pt-2 flex justify-between items-start"
+            className="px-2 py-1 flex justify-between items-start"
             onContextMenu={onHeaderContextMenu}
             onDoubleClick={(e) => e.stopPropagation()}
         >
@@ -119,7 +119,7 @@ const OrderItemRow: React.FC<{
     return (
         <div
             {...dropZoneProps}
-            className={`flex items-center py-1 rounded-md transition-all duration-150 group ${dropZoneProps.className}`}
+            className={`flex items-center rounded-md transition-all duration-150 group ${dropZoneProps.className}`}
         >
             <div
                 {...(isDraggable ? dragHandleProps : {})}
@@ -129,7 +129,7 @@ const OrderItemRow: React.FC<{
                     <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
                 </svg>}
             </div>
-            <span className={`flex-grow text-gray-300 ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+            <span className={`flex-grow text-gray-300 truncate ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
                 {item.name}
             </span>
             <div className="flex-shrink-0 flex items-center space-x-2">
@@ -657,15 +657,29 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
     const handleSendTelegramReceipt = async () => {
         const { telegramBotToken } = state.settings;
-        if (!supplier || !supplier.chatId || !telegramBotToken) {
+        if (!supplier || !telegramBotToken) {
             notify('Supplier Chat ID or Bot Token is not configured.', 'error');
             return;
         }
         setIsProcessing(true);
         try {
             const message = generateReceiptMessage(order, state.itemPrices);
-            await sendReceiptOnTelegram(order, supplier, message, telegramBotToken);
-            notify(`Receipt sent to ${order.supplierName}.`, 'success');
+            if (isManagerView) {
+                const store = state.stores.find(s => s.name === order.store);
+                if (!store || !store.chatId) {
+                    notify(`Store Chat ID for ${order.store} is not configured.`, 'error');
+                    return;
+                }
+                await sendReceiptToStoreOnTelegram(store.chatId, message, telegramBotToken);
+                notify(`Receipt sent to ${order.store}.`, 'success');
+            } else {
+                 if (!supplier.chatId) {
+                    notify('Supplier Chat ID is not configured.', 'error');
+                    return;
+                }
+                await sendReceiptOnTelegram(order, supplier, message, telegramBotToken);
+                notify(`Receipt sent to ${order.supplierName}.`, 'success');
+            }
         } catch (error: any) {
             notify(error.message || `Failed to send receipt.`, 'error');
         } finally {
@@ -705,12 +719,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
         switch (order.status) {
             case OrderStatus.COMPLETED:
-                if (!isManagerView) {
-                    options.push(
-                        { label: 'Receipt', action: handleGenerateReceipt },
-                        { label: 'Telegram Receipt', action: handleSendTelegramReceipt }
-                    );
-                }
+                options.push(
+                    { label: 'Receipt', action: handleGenerateReceipt },
+                    { label: 'Telegram Receipt', action: handleSendTelegramReceipt }
+                );
                 if (isEditModeEnabled) {
                      options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
                 }
@@ -932,7 +944,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
-                <div className={`flex-grow pt-2 pb-0 space-y-1 ${(order.status === OrderStatus.COMPLETED && !isEditModeEnabled) ? 'px-0' : 'px-2'}`}>
+                <div className="flex-grow pt-1 pb-1 px-2 space-y-1">
                     {order.items.map(item => {
                          const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
                          const displayPrice = (order.status === OrderStatus.COMPLETED && !isManagerView) ? (item.price ?? masterPrice) : undefined;
