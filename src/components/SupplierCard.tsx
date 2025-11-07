@@ -273,6 +273,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isChangeSupplierModalOpen, setChangeSupplierModalOpen] = useState(false);
     const [isMoveToStoreModalOpen, setIsMoveToStoreModalOpen] = useState(false);
     const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+    const [isAddCardModalOpen, setAddCardModalOpen] = useState(false);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
     const [isSpoilMode, setIsSpoilMode] = useState(false);
     
@@ -624,6 +625,22 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         actions.mergeOrders(order.id, destinationOrder.id);
         setIsMergeModalOpen(false);
     };
+    
+    const handleAddCard = async (supplier: Supplier) => {
+        const { activeStore } = state;
+        if (activeStore === 'Settings') {
+            notify('Cannot add card from this view.', 'error');
+            return;
+        }
+        setIsProcessing(true);
+        try {
+            // Create a new order with 'ON_THE_WAY' status
+            await actions.addOrder(supplier, activeStore, [], OrderStatus.ON_THE_WAY);
+        } finally {
+            setIsProcessing(false);
+            setAddCardModalOpen(false);
+        }
+    };
 
     const handleGenerateReceipt = async () => {
         const { geminiApiKey } = state.settings;
@@ -737,6 +754,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                         { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) },
                         { label: 'Move to Store...', action: () => setIsMoveToStoreModalOpen(true) },
                     ];
+                    if (order.status === OrderStatus.ON_THE_WAY) {
+                        menuOptions.push({ label: 'Add a Card...', action: () => setAddCardModalOpen(true) });
+                    }
                     if (order.supplierName !== SupplierName.OUDOM) {
                         menuOptions.push({ label: 'Assign to Oudom', action: handleAssignToOudom });
                     }
@@ -1014,6 +1034,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
             {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
             <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, html: null, template: '' })} receiptHtml={invoicePreview.html} receiptTemplate={invoicePreview.template} />
+            <AddSupplierModal isOpen={isAddCardModalOpen} onClose={() => setAddCardModalOpen(false)} onSelect={handleAddCard} title="Add a New Card" />
             <PaymentMethodModal isOpen={isPaymentMethodModalOpen} onClose={() => setPaymentMethodModalOpen(false)} onSelect={handlePaymentMethodChange} order={order} />
         </div>
     );

@@ -1,12 +1,12 @@
-import React, { useContext, useMemo } from 'react';
-import { Order, StoreName, OrderItem, Unit, PaymentMethod } from '../types';
+import React, { useContext, useMemo, useState } from 'react';
+import { Order, StoreName, OrderItem, Unit, PaymentMethod, OrderStatus, SupplierName } from '../types';
 import { AppContext } from '../context/AppContext';
 
 interface AggregatedItem {
     name: string;
     quantity: number;
     unit?: Unit;
-    totalValue: number;
+    totalValue?: number; // Optional for views that hide prices
 }
 
 const AggregatedItemList: React.FC<{ items: AggregatedItem[], showPrices: boolean, groupTotal: number }> = ({ items, showPrices, groupTotal }) => {
@@ -22,7 +22,7 @@ const AggregatedItemList: React.FC<{ items: AggregatedItem[], showPrices: boolea
                         <span className="text-gray-300 flex-1 truncate pr-2">{item.name}</span>
                         <div className="flex items-center space-x-4">
                             <span className="font-mono text-gray-400 w-16 text-right">{item.quantity}{item.unit}</span>
-                            {showPrices && (
+                            {showPrices && item.totalValue != null && (
                                 <span className="font-mono text-white w-20 text-right">${item.totalValue.toFixed(2)}</span>
                             )}
                         </div>
@@ -41,13 +41,71 @@ const AggregatedItemList: React.FC<{ items: AggregatedItem[], showPrices: boolea
     )
 };
 
+// --- KALI MANAGER VIEW SPECIFIC COMPONENTS ---
+
+interface KaliSupplierData {
+    orders: Order[];
+    itemsByStore: Map<StoreName, AggregatedItem[]>;
+}
+
+const KaliSupplierCard: React.FC<{
+    supplierName: SupplierName;
+    data: KaliSupplierData;
+    onToggle: (supplierName: SupplierName, orders: Order[]) => void;
+    isChecked: boolean;
+}> = ({ supplierName, data, onToggle, isChecked }) => {
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const handleToggle = async () => {
+        setIsProcessing(true);
+        try {
+            await onToggle(supplierName, data.orders);
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    return (
+        <div className="bg-gray-800 p-3 rounded-lg">
+            <label className="flex items-center cursor-pointer">
+                <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={handleToggle}
+                    disabled={isProcessing}
+                    className="h-5 w-5 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
+                />
+                <h3 className="ml-3 font-bold text-white text-lg">{supplierName}</h3>
+                {isProcessing && <svg className="animate-spin h-4 w-4 text-white ml-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
+            </label>
+            <div className="mt-2 pl-8 space-y-2">
+                {Array.from(data.itemsByStore.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([storeName, items]) => (
+                    <div key={storeName}>
+                        <h4 className="text-sm font-semibold text-gray-400">{storeName}</h4>
+                        <div className="pl-4 space-y-1 mt-1">
+                            {items.map((item, index) => (
+                                <div key={index} className="flex justify-between items-center text-sm">
+                                    <span className="text-gray-300 flex-1 truncate pr-2">{item.name}</span>
+                                    <span className="font-mono text-gray-400 w-16 text-right">{item.quantity}{item.unit}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// --- MAIN COMPONENT ---
+
 interface ManagerReportViewProps {
   storeName: StoreName;
   orders: Order[];
 }
 
 const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders }) => {
-    const { state } = useContext(AppContext);
+    const { state, actions } = useContext(AppContext);
     const { itemPrices, suppliers } = state;
 
     const processedData = useMemo(() => {
@@ -73,7 +131,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
                     const existing = itemMap.get(key);
                     if (existing) {
                         existing.quantity += item.quantity;
-                        existing.totalValue += value;
+                        existing.totalValue = (existing.totalValue ?? 0) + value;
                     } else {
                         itemMap.set(key, { name: item.name, quantity: item.quantity, unit: item.unit, totalValue: value });
                     }
@@ -85,14 +143,110 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
         const aggregatedPisey = aggregate(piseyOrders);
         const aggregatedKali = aggregate(otherOrders);
 
-        const totalPisey = aggregatedPisey.reduce((sum, item) => sum + item.totalValue, 0);
-        const totalKali = aggregatedKali.reduce((sum, item) => sum + item.totalValue, 0);
+        const totalPisey = aggregatedPisey.reduce((sum, item) => sum + (item.totalValue ?? 0), 0);
+        const totalKali = aggregatedKali.reduce((sum, item) => sum + (item.totalValue ?? 0), 0);
 
         return { aggregatedPisey, aggregatedKali, totalPisey, totalKali };
 
     }, [orders, storeName, itemPrices]);
+    
+    if (storeName === StoreName.KALI) {
+        const { todoBySupplier, pickedUpBySupplier } = useMemo(() => {
+            const todo = new Map<SupplierName, KaliSupplierData>();
+            const pickedUp = new Map<SupplierName, KaliSupplierData>();
 
-    // For stores other than SHANTI and WB, render a simple list of orders.
+            const aggregateAndGroup = (order: Order, map: Map<SupplierName, KaliSupplierData>) => {
+                if (!map.has(order.supplierName)) {
+                    map.set(order.supplierName, { orders: [], itemsByStore: new Map() });
+                }
+                const supplierData = map.get(order.supplierName)!;
+                supplierData.orders.push(order);
+
+                const storeItemsMap = new Map<string, AggregatedItem>();
+                
+                const existingStoreItems = supplierData.itemsByStore.get(order.store) || [];
+                existingStoreItems.forEach(item => {
+                    const key = `${item.name}-${item.unit || 'none'}`;
+                    storeItemsMap.set(key, {...item});
+                });
+
+                for (const item of order.items) {
+                    if (item.isSpoiled) continue;
+                    const key = `${item.name}-${item.unit || 'none'}`;
+                    const existing = storeItemsMap.get(key);
+                    if (existing) {
+                        existing.quantity += item.quantity;
+                    } else {
+                        storeItemsMap.set(key, { name: item.name, quantity: item.quantity, unit: item.unit });
+                    }
+                }
+                
+                const sortedStoreItems = Array.from(storeItemsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+                supplierData.itemsByStore.set(order.store, sortedStoreItems);
+            };
+
+            for (const order of orders) {
+                if (order.status === OrderStatus.ON_THE_WAY) {
+                    aggregateAndGroup(order, todo);
+                } else if (order.status === OrderStatus.COMPLETED) {
+                    aggregateAndGroup(order, pickedUp);
+                }
+            }
+            
+            return { todoBySupplier: todo, pickedUpBySupplier: pickedUp };
+        }, [orders]);
+        
+        const handleToggleTodo = async (supplier: SupplierName, ordersToUpdate: Order[]) => {
+            const updates = ordersToUpdate.map(order => 
+                actions.updateOrder({ ...order, status: OrderStatus.COMPLETED, completedAt: new Date().toISOString() })
+            );
+            await Promise.all(updates);
+        };
+        
+        const handleTogglePickedUp = async (supplier: SupplierName, ordersToUpdate: Order[]) => {
+            const updates = ordersToUpdate.map(order => {
+                const { completedAt, ...rest } = order;
+                return actions.updateOrder({ ...rest, status: OrderStatus.ON_THE_WAY });
+            });
+            await Promise.all(updates);
+        };
+        
+        const sortedTodoSuppliers = Array.from(todoBySupplier.keys()).sort((a,b) => a.localeCompare(b));
+        const sortedPickedUpSuppliers = Array.from(pickedUpBySupplier.keys()).sort((a,b) => a.localeCompare(b));
+
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                <div className="space-y-3">
+                    <h2 className="text-lg font-bold text-white sticky top-0 bg-gray-900 py-1 px-2 -mx-2 rounded-t-lg z-10">To Do ({sortedTodoSuppliers.length})</h2>
+                    {sortedTodoSuppliers.map(supplierName => (
+                        <KaliSupplierCard 
+                            key={supplierName}
+                            supplierName={supplierName}
+                            data={todoBySupplier.get(supplierName)!}
+                            onToggle={handleToggleTodo}
+                            isChecked={false}
+                        />
+                    ))}
+                    {sortedTodoSuppliers.length === 0 && <p className="text-gray-500 text-center pt-8">All orders picked up.</p>}
+                </div>
+                 <div className="space-y-3">
+                    <h2 className="text-lg font-bold text-white sticky top-0 bg-gray-900 py-1 px-2 -mx-2 rounded-t-lg z-10">Picked Up ({sortedPickedUpSuppliers.length})</h2>
+                    {sortedPickedUpSuppliers.map(supplierName => (
+                         <KaliSupplierCard 
+                            key={supplierName}
+                            supplierName={supplierName}
+                            data={pickedUpBySupplier.get(supplierName)!}
+                            onToggle={handleTogglePickedUp}
+                            isChecked={true}
+                        />
+                    ))}
+                     {sortedPickedUpSuppliers.length === 0 && <p className="text-gray-500 text-center pt-8">No orders picked up yet.</p>}
+                </div>
+            </div>
+        );
+    }
+
+    // For stores other than SHANTI, WB, and KALI render a simple list of orders.
     if (!processedData) {
         const paymentMethodBadgeColors: Record<string, string> = {
             [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',

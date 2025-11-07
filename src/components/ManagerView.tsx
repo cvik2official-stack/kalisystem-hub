@@ -1,6 +1,6 @@
 import React, { useContext, useMemo, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { StoreName, OrderStatus, SupplierName, Order } from '../types';
+import { StoreName, OrderStatus, SupplierName, Order, PaymentMethod } from '../types';
 import SupplierCard from './SupplierCard';
 import ManagerReportView from './ManagerReportView';
 import NotificationBell from './NotificationBell';
@@ -11,7 +11,7 @@ interface ManagerViewProps {
 
 const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { orders, syncStatus } = state;
+  const { orders, syncStatus, suppliers } = state;
   const [viewMode, setViewMode] = useState<'report' | 'card'>('report');
   
   const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
@@ -36,6 +36,7 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
 
   const isOudom = storeName === StoreName.OUDOM;
   const isWbStore = storeName === StoreName.WB;
+  const isKaliManager = storeName === StoreName.KALI;
 
   const filteredOrders = useMemo(() => {
     const today = new Date();
@@ -49,6 +50,23 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
         if ((order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK) &&
             order.status === OrderStatus.ON_THE_WAY) {
           onTheWayOrders.push(order);
+        }
+        return;
+      }
+      
+      if (isKaliManager) {
+        const supplier = suppliers.find(s => s.id === order.supplierId);
+        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+        if (paymentMethod === PaymentMethod.KALI) {
+            if (order.status === OrderStatus.ON_THE_WAY) {
+                onTheWayOrders.push(order);
+            } else if (order.status === OrderStatus.COMPLETED && order.completedAt) {
+                const completedDate = new Date(order.completedAt);
+                completedDate.setHours(0, 0, 0, 0);
+                if (completedDate.getTime() === today.getTime()) {
+                    completedTodayOrders.push(order);
+                }
+            }
         }
         return;
       }
@@ -70,11 +88,11 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
     completedTodayOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     
     return [...onTheWayOrders, ...completedTodayOrders];
-  }, [orders, storeName, isOudom]);
+  }, [orders, storeName, isOudom, isKaliManager, suppliers]);
 
   const onTheWayCount = filteredOrders.filter(o => o.status === OrderStatus.ON_THE_WAY).length;
   
-  const effectiveViewMode = isWbStore ? 'report' : viewMode;
+  const effectiveViewMode = (isWbStore || isKaliManager) ? 'report' : viewMode;
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200">
@@ -115,7 +133,7 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
                 {onTheWayCount} On The Way
             </span>
           </div>
-          {!isWbStore && (
+          {!isWbStore && !isKaliManager && (
               <button
                 onClick={() => setViewMode(viewMode === 'report' ? 'card' : 'report')}
                 className="px-3 py-1 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
