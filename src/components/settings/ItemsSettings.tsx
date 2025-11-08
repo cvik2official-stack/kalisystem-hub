@@ -1,7 +1,10 @@
-import React, { useContext, useState, useMemo, useRef } from 'react';
+
+import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
 import { useNotifier } from '../../context/NotificationContext';
+import EditItemModal from '../modals/EditItemModal';
+import CreateVariantModal from '../modals/CreateVariantModal';
 
 const ItemsSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
@@ -9,6 +12,11 @@ const ItemsSettings: React.FC = () => {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
+  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
+  const [parentItemForVariant, setParentItemForVariant] = useState<Item | null>(null);
 
   const handleAddNewItem = async () => {
     const defaultSupplier = state.suppliers.find(s => s.name === SupplierName.MARKET) || state.suppliers[0];
@@ -60,10 +68,71 @@ const ItemsSettings: React.FC = () => {
       });
   };
 
+  const handleEditClick = (item: Item) => {
+    setSelectedItemForModal(item);
+    setIsEditModalOpen(true);
+  };
+
+  const handleTriggerCreateVariant = () => {
+    if (selectedItemForModal) {
+      setIsEditModalOpen(false);
+      setParentItemForVariant(selectedItemForModal);
+      setIsVariantModalOpen(true);
+    }
+  };
+
+  const handleCreateVariant = async (variantData: { name: string; supplierId: string; unit: Unit; price?: number; trackStock: boolean; stockQuantity?: number; }) => {
+    if (!parentItemForVariant) return;
+
+    const supplier = state.suppliers.find(s => s.id === variantData.supplierId);
+    if (!supplier) {
+      notify('Selected supplier not found.', 'error');
+      return;
+    }
+
+    const baseNameMatch = parentItemForVariant.name.match(/^(.*?)\s*\(/);
+    const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentItemForVariant.name;
+    
+    let newItemName = variantData.name ? `${baseName} (${variantData.name})` : baseName;
+    if (variantData.trackStock && !newItemName.startsWith('> ')) {
+        newItemName = `> ${newItemName}`;
+    }
+
+    const parentIdForNewVariant = parentItemForVariant.parentId || parentItemForVariant.id;
+    
+    setIsCreating(true);
+    try {
+        const newVariantMasterItem = await actions.addItem({
+          name: newItemName,
+          unit: variantData.unit,
+          supplierId: variantData.supplierId,
+          supplierName: supplier.name,
+          parentId: parentIdForNewVariant,
+          isVariant: true,
+          trackStock: variantData.trackStock,
+          stockQuantity: variantData.stockQuantity,
+        });
+
+        if (variantData.price) {
+            await actions.upsertItemPrice({
+                itemId: newVariantMasterItem.id,
+                supplierId: variantData.supplierId,
+                price: variantData.price,
+                unit: variantData.unit,
+                isMaster: true,
+            });
+        }
+
+        notify(`Variant "${newVariantMasterItem.name}" created.`, 'success');
+    } finally {
+        setIsVariantModalOpen(false);
+        setParentItemForVariant(null);
+        setIsCreating(false);
+    }
+  };
 
   const filteredItems = useMemo(() => {
     const sortedItems = [...state.items].sort((a, b) => {
-        // Show newly created "New Item" at the top
         if (a.name === 'New Item' && b.name !== 'New Item') return -1;
         if (b.name === 'New Item' && a.name !== 'New Item') return 1;
         return a.name.localeCompare(b.name)
@@ -108,10 +177,9 @@ const ItemsSettings: React.FC = () => {
                   <tr>
                     <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/3">Name</th>
                     <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24">Unit</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-20">Unit Price</th>
-                    <th className="px-2 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Track Stock">Track</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-20">Stock Qty</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-28">Unit</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24">Unit Price</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24">Stock Qty</th>
                     <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
               </thead>
@@ -126,15 +194,18 @@ const ItemsSettings: React.FC = () => {
                                 {state.suppliers.map(s => <option key={s.id} value={s.id} className="bg-gray-800 text-white">{s.name}</option>)}
                             </select></td>
                             <td className="px-2 py-1 text-sm"><select defaultValue={item.unit} onChange={(e) => handleItemUpdate(item, 'unit', e.target.value as Unit)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 border-none">
-                                {/* FIX: Cast enum values to an array of Unit to ensure proper type inference. */}
                                 {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u} className="bg-gray-800 text-white">{u}</option>)}
                             </select></td>
-                            <td className="px-2 py-1 text-sm"><input type="number" step="0.01" defaultValue={masterPrice} onBlur={(e) => handlePriceUpdate(item, e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
-                            <td className="px-2 py-1 text-center"><input type="checkbox" defaultChecked={item.trackStock} onChange={(e) => handleItemUpdate(item, 'trackStock', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-sm"><input type="text" inputMode="decimal" defaultValue={masterPrice} onBlur={(e) => handlePriceUpdate(item, e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
                             <td className="px-2 py-1 text-sm"><input type="number" defaultValue={item.stockQuantity} onBlur={(e) => handleItemUpdate(item, 'stockQuantity', parseInt(e.target.value) || 0)} disabled={!item.trackStock} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 disabled:text-gray-600" /></td>
                             <td className="pl-2 pr-4 py-1 text-right">
                                <div className="flex items-center justify-end space-x-2">
-                                  <button onClick={() => actions.addItemToDispatch(item)} className="p-1 rounded-full text-gray-400 hover:bg-gray-600 hover:text-white" aria-label="Add to Dispatch"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                                  <button onClick={() => handleEditClick(item)} className="p-1 rounded-full text-indigo-400 hover:bg-indigo-600 hover:text-white" aria-label="Edit Item">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
+                                        <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
                                   <button onClick={() => handleDeleteItem(item)} className="p-1 rounded-full text-red-500 hover:bg-red-600 hover:text-white" aria-label="Delete Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                                </div>
                             </td>
@@ -145,6 +216,26 @@ const ItemsSettings: React.FC = () => {
               </table>
           </div>
       </div>
+
+      {selectedItemForModal && isEditModalOpen && (
+        <EditItemModal
+            item={selectedItemForModal}
+            isOpen={isEditModalOpen}
+            onClose={() => setIsEditModalOpen(false)}
+            onSave={actions.updateItem}
+            onDelete={actions.deleteItem}
+            onTriggerCreateVariant={handleTriggerCreateVariant}
+        />
+      )}
+      {parentItemForVariant && isVariantModalOpen && (
+        <CreateVariantModal
+            isOpen={isVariantModalOpen}
+            onClose={() => { setIsVariantModalOpen(false); setParentItemForVariant(null); }}
+            parentItem={parentItemForVariant}
+            isStockVariantFlow={false}
+            onCreate={handleCreateVariant}
+        />
+      )}
     </div>
   );
 };
