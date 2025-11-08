@@ -31,9 +31,7 @@ const ItemsSettings: React.FC = () => {
   };
 
   const handleDeleteItem = async (item: Item) => {
-    if (window.confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone.`)) {
-      await actions.deleteItem(item.id);
-    }
+    await actions.deleteItem(item.id);
   };
 
   const handleItemUpdate = async (item: Item, field: keyof Item, value: any) => {
@@ -110,10 +108,10 @@ const ItemsSettings: React.FC = () => {
                   <tr>
                     <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/3">Name</th>
                     <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unit</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24">Unit Price</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24">Unit</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-20">Unit Price</th>
                     <th className="px-2 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Track Stock">Track</th>
-                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-24">Stock Qty</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-20">Stock Qty</th>
                     <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
               </thead>
@@ -131,9 +129,9 @@ const ItemsSettings: React.FC = () => {
                                 {/* FIX: Cast enum values to an array of Unit to ensure proper type inference. */}
                                 {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u} className="bg-gray-800 text-white">{u}</option>)}
                             </select></td>
-                            <td className="px-2 py-1 text-sm"><input type="number" step="0.01" defaultValue={masterPrice} onBlur={(e) => handlePriceUpdate(item, e.target.value)} className="bg-transparent p-1 w-24 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-sm"><input type="number" step="0.01" defaultValue={masterPrice} onBlur={(e) => handlePriceUpdate(item, e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
                             <td className="px-2 py-1 text-center"><input type="checkbox" defaultChecked={item.trackStock} onChange={(e) => handleItemUpdate(item, 'trackStock', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /></td>
-                            <td className="px-2 py-1 text-sm"><input type="number" defaultValue={item.stockQuantity} onBlur={(e) => handleItemUpdate(item, 'stockQuantity', parseInt(e.target.value) || 0)} disabled={!item.trackStock} className="bg-transparent p-1 w-20 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 disabled:text-gray-600" /></td>
+                            <td className="px-2 py-1 text-sm"><input type="number" defaultValue={item.stockQuantity} onBlur={(e) => handleItemUpdate(item, 'stockQuantity', parseInt(e.target.value) || 0)} disabled={!item.trackStock} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 disabled:text-gray-600" /></td>
                             <td className="pl-2 pr-4 py-1 text-right">
                                <div className="flex items-center justify-end space-x-2">
                                   <button onClick={() => actions.addItemToDispatch(item)} className="p-1 rounded-full text-gray-400 hover:bg-gray-600 hover:text-white" aria-label="Add to Dispatch"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>

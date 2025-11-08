@@ -47,7 +47,8 @@ const CreateVariantModal: React.FC<CreateVariantModalProps> = ({ isOpen, onClose
   }, [isOpen, parentItem, isStockVariantFlow, stockSupplier]);
 
   const handleCreate = async () => {
-    if (!variantName.trim()) return;
+    // This condition is now handled by the button's disabled state
+    // if (!variantName.trim() && !trackStock) return;
     setIsCreating(true);
     try {
       await onCreate({
@@ -175,7 +176,7 @@ const CreateVariantModal: React.FC<CreateVariantModalProps> = ({ isOpen, onClose
         </div>
 
         <div className="mt-6 flex justify-end">
-          <button onClick={handleCreate} disabled={isCreating || !variantName.trim()} className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800 disabled:cursor-wait">
+          <button onClick={handleCreate} disabled={isCreating || (!trackStock && !variantName.trim())} className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800 disabled:cursor-wait">
             {isCreating ? 'Creating...' : 'OK'}
           </button>
         </div>

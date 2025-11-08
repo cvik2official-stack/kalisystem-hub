@@ -590,6 +590,25 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         setIsProcessing(true);
         try {
             await actions.updateOrder({ ...order, status: OrderStatus.COMPLETED, isReceived: true, completedAt: new Date().toISOString() });
+
+            // --- START: Stock Replenishment Logic ---
+            const receivedOrder = { ...order, status: OrderStatus.COMPLETED }; // Use the updated status for context
+            for (const receivedItem of receivedOrder.items) {
+                if (receivedItem.isSpoiled) continue;
+
+                const masterItem = state.items.find(i => i.id === receivedItem.itemId);
+                if (!masterItem || masterItem.isVariant) continue; // Only replenish stock for parent items
+
+                const stockVariant = state.items.find(item => item.parentId === masterItem.id && item.trackStock);
+
+                if (stockVariant) {
+                    const newStockQuantity = (stockVariant.stockQuantity || 0) + receivedItem.quantity;
+                    await actions.updateItem({ ...stockVariant, stockQuantity: newStockQuantity });
+                    notify(`Stock for "${stockVariant.name}" updated to ${newStockQuantity}.`, 'info');
+                }
+            }
+            // --- END: Stock Replenishment Logic ---
+
         } finally { setIsProcessing(false); }
     }
 
@@ -897,9 +916,18 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         
         const baseNameMatch = parentMasterItem.name.match(/^(.*?)\s*\(/);
         const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentMasterItem.name;
-        let newItemName = `${baseName} (${variantData.name})`;
+        
+        let newItemName;
+        if (variantData.name) {
+            newItemName = `${baseName} (${variantData.name})`;
+        } else {
+            newItemName = baseName;
+        }
+
         if (variantData.trackStock) {
-            newItemName = `> ${newItemName}`;
+            if (!newItemName.startsWith('> ')) {
+                newItemName = `> ${newItemName}`;
+            }
         }
     
         const parentIdForNewVariant = parentMasterItem.parentId || parentMasterItem.id;
@@ -943,7 +971,19 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         
         const baseNameMatch = parentItem.name.match(/^(.*?)\s*\(/);
         const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentItem.name;
-        const newItemName = `> ${baseName} (${variantData.name})`;
+        
+        let newItemName;
+        if (variantData.name) {
+            newItemName = `${baseName} (${variantData.name})`;
+        } else {
+            newItemName = baseName;
+        }
+
+        if (variantData.trackStock) {
+            if (!newItemName.startsWith('> ')) {
+                newItemName = `> ${newItemName}`;
+            }
+        }
     
         const parentIdForNewVariant = parentItem.parentId || parentItem.id;
         const stockSupplier = state.suppliers.find(s => s.name === SupplierName.STOCK);
