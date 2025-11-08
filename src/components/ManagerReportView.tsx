@@ -217,9 +217,9 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
             await Promise.all(updates);
         };
         
-        // FIX: Explicitly type `a` and `b` to resolve `localeCompare` error on type `unknown`.
-        const sortedTodoSuppliers = Array.from(todoBySupplier.keys()).sort((a: SupplierName, b: SupplierName) => a.localeCompare(b));
-        const sortedPickedUpSuppliers = Array.from(pickedUpBySupplier.keys()).sort((a: SupplierName, b: SupplierName) => a.localeCompare(b));
+        // FIX: Removed explicit types from sort callback parameters to allow for correct type inference.
+        const sortedTodoSuppliers = Array.from(todoBySupplier.keys()).sort((a, b) => a.localeCompare(b));
+        const sortedPickedUpSuppliers = Array.from(pickedUpBySupplier.keys()).sort((a, b) => a.localeCompare(b));
 
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

@@ -127,7 +127,8 @@ const CreateVariantModal: React.FC<CreateVariantModalProps> = ({ isOpen, onClose
                       className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-700 disabled:text-gray-400"
                       disabled={isCreating || isLocked}
                   >
-                      {Object.values(Unit).map(u => <option key={u} value={u}>{u}</option>)}
+                      {/* FIX: Cast enum values to an array of Unit to ensure proper type inference. */}
+                      {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u}>{u}</option>)}
                   </select>
                 </div>
                  <div>
