@@ -236,3 +236,17 @@ export const sendReceiptToStoreOnTelegram = async (
     // Simple message with no buttons
     await sendMessage(token, storeChatId, message);
 };
+
+/**
+ * Sends the daily Due Report to a specific Telegram channel.
+ * @param message The pre-formatted report message (HTML).
+ * @param token The Telegram Bot Token.
+ */
+export const sendDueReport = async (
+    message: string,
+    token: string
+): Promise<void> => {
+    // Re-using the same channel as the other main financial report.
+    const DUE_REPORT_CHAT_ID = "-1003065576801";
+    await sendMessage(token, DUE_REPORT_CHAT_ID, message);
+};

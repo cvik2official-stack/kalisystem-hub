@@ -16,6 +16,7 @@ import { generateReceiptTemplateHtml } from '../services/geminiService';
 import InvoicePreviewModal from './modals/InvoicePreviewModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
 import MoveToStoreModal from './modals/MoveToStoreModal';
+import CreateVariantModal from './modals/CreateVariantModal';
 
 // --- SUB-COMPONENTS START ---
 
@@ -24,17 +25,14 @@ const CardHeader: React.FC<{
   supplier?: Supplier;
   isManuallyCollapsed: boolean;
   onToggleCollapse: () => void;
-  onHeaderContextMenu: (e: React.MouseEvent | React.TouchEvent) => void;
   onHeaderClick: () => void;
   onPaymentBadgeClick: () => void;
   showStoreName?: boolean;
-  onLongPressStart: () => void;
-  onLongPressEnd: () => void;
   showActionsButton?: boolean;
   onActionsClick?: (e: React.MouseEvent) => void;
   orderTotal?: number | null;
   canChangePayment: boolean;
-}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderContextMenu, onHeaderClick, onPaymentBadgeClick, showStoreName, onLongPressStart, onLongPressEnd, showActionsButton, onActionsClick, orderTotal, canChangePayment }) => {
+}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderClick, onPaymentBadgeClick, showStoreName, showActionsButton, onActionsClick, orderTotal, canChangePayment }) => {
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
@@ -49,7 +47,6 @@ const CardHeader: React.FC<{
     return (
         <div
             className="px-2 py-1 flex justify-between items-start"
-            onContextMenu={onHeaderContextMenu}
             onDoubleClick={(e) => e.stopPropagation()}
         >
             <div className="flex-grow">
@@ -63,12 +60,7 @@ const CardHeader: React.FC<{
                     )}
                     <h3 
                         onClick={onHeaderClick} 
-                        onMouseDown={onLongPressStart}
-                        onMouseUp={onLongPressEnd}
-                        onMouseLeave={onLongPressEnd}
-                        onTouchStart={onLongPressStart}
-                        onTouchEnd={onLongPressEnd}
-                        className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all active:ring-2 active:ring-indigo-500 cursor-pointer"
+                        className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all cursor-pointer"
                     >
                         {order.supplierName}
                     </h3>
@@ -106,7 +98,7 @@ const OrderItemRow: React.FC<{
   isDraggable: boolean;
   dragHandleProps: any;
   onQuantityClick: () => void;
-  onContextMenuClick: (e: React.MouseEvent) => void;
+  onActionsClick: (e: React.MouseEvent) => void;
   isEditingPrice: boolean;
   editedItemPrice: string;
   onPriceChange: (value: string) => void;
@@ -114,8 +106,8 @@ const OrderItemRow: React.FC<{
   onPriceCancel: () => void;
   displayPrice?: number;
   dropZoneProps: any;
-  isContextMenuDisabled?: boolean;
-}> = ({ item, order, isDraggable, dragHandleProps, onQuantityClick, onContextMenuClick, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps, isContextMenuDisabled }) => {
+  isActionsDisabled?: boolean;
+}> = ({ item, order, isDraggable, dragHandleProps, onQuantityClick, onActionsClick, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps, isActionsDisabled }) => {
     return (
         <div
             {...dropZoneProps}
@@ -146,7 +138,6 @@ const OrderItemRow: React.FC<{
                         autoFocus
                         onClick={(e) => e.stopPropagation()}
                         className="bg-gray-900 text-white w-24 p-1 rounded-md text-sm font-mono text-right ring-1 ring-indigo-500"
-                        placeholder="Unit Price"
                         step="0.01"
                     />
                 ) : (
@@ -163,8 +154,8 @@ const OrderItemRow: React.FC<{
                     {item.quantity}{item.unit}
                 </div>
                 <button
-                    onClick={onContextMenuClick}
-                    disabled={isContextMenuDisabled}
+                    onClick={onActionsClick}
+                    disabled={isActionsDisabled}
                     className="p-1 text-gray-500 rounded-full hover:bg-gray-700 hover:text-white disabled:text-gray-700 disabled:cursor-not-allowed"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -291,8 +282,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [invoicePreview, setInvoicePreview] = useState<{ isOpen: boolean; html: string | null, template: string }>({ isOpen: false, html: null, template: '' });
     const [isPaymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
     
-    const [isDraggableForMerge, setIsDraggableForMerge] = useState(false);
-    const longPressTimer = useRef<number | null>(null);
+    const [variantModalState, setVariantModalState] = useState<{ isOpen: boolean; parentOrderItem: OrderItem | null }>({ isOpen: false, parentOrderItem: null });
+    const [stockVariantModalState, setStockVariantModalState] = useState<{ isOpen: boolean; parentItem: Item | null }>({ isOpen: false, parentItem: null });
 
     const orderTotal = useMemo(() => {
         if (order.status !== OrderStatus.COMPLETED) {
@@ -550,6 +541,23 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleAddItemSelect = (selectedItem: Item) => {
+        if (order.supplierName === SupplierName.STOCK) {
+            setStockVariantModalState({ isOpen: true, parentItem: selectedItem });
+        } else {
+            const masterPrice = state.itemPrices.find(p => p.itemId === selectedItem.id && p.supplierId === order.supplierId && p.isMaster);
+            const orderItem: OrderItem = {
+              itemId: selectedItem.id,
+              name: selectedItem.name,
+              quantity: 1,
+              unit: selectedItem.unit,
+              price: masterPrice?.price,
+            };
+            handleAddItem(orderItem);
+        }
+        setAddItemModalOpen(false);
+    };
+
     const handleDeleteItem = async (item: OrderItem) => {
         setIsProcessing(true);
         try {
@@ -772,13 +780,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
-    const handleHeaderContextMenu = (e: React.MouseEvent | React.TouchEvent) => {
-        e.preventDefault();
-        // With the universal actions button, disable right-click on the header for consistency.
-        return;
-    };
-
-    const handleItemContextMenu = (e: React.MouseEvent, item: OrderItem) => {
+    const handleItemActionsClick = (e: React.MouseEvent, item: OrderItem) => {
         e.preventDefault();
         e.stopPropagation();
 
@@ -795,9 +797,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 options.push({ label: 'Spoil...', action: () => { setSelectedItem(item); setIsSpoilMode(true); setNumpadOpen(true); } });
             }
         } else if (!isManagerView && masterItem) {
-            if (order.status !== OrderStatus.COMPLETED) {
-                options.push({ label: 'Edit Master Item...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
-            }
+            options.push({ label: 'Edit Master Item...', action: () => { setSelectedMasterItem(masterItem); setEditItemModalOpen(true); } });
+            options.push({ label: 'Create a variant...', action: () => { setVariantModalState({ isOpen: true, parentOrderItem: item }); } });
+            
             if (order.status === OrderStatus.COMPLETED && isEditModeEnabled) {
                 options.push({ label: 'Quantity...', action: () => handleQuantityClick(item) });
             }
@@ -816,7 +818,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     
         if (options.length > 0) {
-            setContextMenu({ x: e.clientX, y: e.clientY, options });
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setContextMenu({ x: rect.left, y: rect.bottom + 5, options });
         }
     };
 
@@ -851,31 +854,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
     
-    const handleMergeDragStart = (e: React.DragEvent) => {
-        if (setDraggedItem) setDraggedItem(null); // Critical to differentiate from item drag
-        e.dataTransfer.setData('application/x-order-merge', order.id);
-        e.dataTransfer.effectAllowed = 'move';
-    };
-    
-    const handleLongPressStart = () => {
-        if (order.status === OrderStatus.COMPLETED && !isEditModeEnabled) {
-            return;
-        }
-        longPressTimer.current = window.setTimeout(() => {
-            setIsDraggableForMerge(true);
-        }, 500);
-    };
-
-    const handleLongPressEnd = () => {
-        if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-        }
-    };
-    
-    const handleMergeDragEnd = () => {
-        setIsDraggableForMerge(false);
-    };
-
     const handleInternalReorderDrop = async (e: React.DragEvent, targetItem: OrderItem) => {
         e.preventDefault(); e.stopPropagation();
         if (!draggedItem || draggedItem.sourceOrderId !== order.id || draggedItem.item.itemId === targetItem.itemId) {
@@ -902,20 +880,137 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleCreateVariant = async (variantData: { name: string; supplierId: string; unit: Unit; price?: number; trackStock: boolean; stockQuantity?: number; }) => {
+        if (!variantModalState.parentOrderItem) return;
+        const parentOrderItem = variantModalState.parentOrderItem;
+        const parentMasterItem = state.items.find(i => i.id === parentOrderItem.itemId);
+        if (!parentMasterItem) {
+            notify('Parent item not found in database.', 'error');
+            return;
+        }
+        
+        const supplier = state.suppliers.find(s => s.id === variantData.supplierId);
+        if (!supplier) {
+            notify('Selected supplier not found.', 'error');
+            return;
+        }
+        
+        const baseNameMatch = parentMasterItem.name.match(/^(.*?)\s*\(/);
+        const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentMasterItem.name;
+        let newItemName = `${baseName} (${variantData.name})`;
+        if (variantData.trackStock) {
+            newItemName = `> ${newItemName}`;
+        }
+    
+        const parentIdForNewVariant = parentMasterItem.parentId || parentMasterItem.id;
+    
+        setIsProcessing(true);
+        try {
+            const newVariantMasterItem = await actions.addItem({
+                name: newItemName,
+                unit: variantData.unit,
+                supplierId: variantData.supplierId,
+                supplierName: supplier.name,
+                parentId: parentIdForNewVariant,
+                isVariant: true,
+                trackStock: variantData.trackStock,
+                stockQuantity: variantData.stockQuantity,
+            });
+    
+            const newVariantOrderItem: OrderItem = {
+                itemId: newVariantMasterItem.id,
+                name: newVariantMasterItem.name,
+                quantity: parentOrderItem.quantity,
+                unit: newVariantMasterItem.unit,
+            };
+    
+            const updatedItems = order.items.map(i => 
+                (i.itemId === parentOrderItem.itemId && i.isSpoiled === parentOrderItem.isSpoiled) ? newVariantOrderItem : i
+            );
+            
+            await actions.updateOrder({ ...order, items: updatedItems });
+            notify(`Variant "${newVariantMasterItem.name}" created.`, 'success');
+            setVariantModalState({ isOpen: false, parentOrderItem: null });
+    
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+    
+    const handleCreateStockVariant = async (variantData: any) => {
+        if (!stockVariantModalState.parentItem) return;
+        const parentItem = stockVariantModalState.parentItem;
+        
+        const baseNameMatch = parentItem.name.match(/^(.*?)\s*\(/);
+        const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentItem.name;
+        const newItemName = `> ${baseName} (${variantData.name})`;
+    
+        const parentIdForNewVariant = parentItem.parentId || parentItem.id;
+        const stockSupplier = state.suppliers.find(s => s.name === SupplierName.STOCK);
+        if (!stockSupplier) {
+            notify('STOCK supplier not found.', 'error');
+            return;
+        }
+
+        setIsProcessing(true);
+        try {
+            const newVariantMasterItem = await actions.addItem({
+                name: newItemName,
+                unit: variantData.unit,
+                supplierId: stockSupplier.id,
+                supplierName: stockSupplier.name,
+                parentId: parentIdForNewVariant,
+                isVariant: true,
+                trackStock: variantData.trackStock,
+                stockQuantity: variantData.stockQuantity,
+            });
+    
+            if (variantData.price) {
+                await actions.upsertItemPrice({
+                    itemId: newVariantMasterItem.id,
+                    supplierId: stockSupplier.id,
+                    price: variantData.price,
+                    unit: variantData.unit,
+                    isMaster: true,
+                });
+            }
+
+            const newVariantOrderItem: OrderItem = {
+                itemId: newVariantMasterItem.id,
+                name: newVariantMasterItem.name,
+                quantity: 1, // Default quantity when adding to stock order
+                unit: newVariantMasterItem.unit,
+                price: variantData.price,
+            };
+
+            handleAddItem(newVariantOrderItem);
+            notify(`Stock variant "${newVariantMasterItem.name}" created.`, 'success');
+            setStockVariantModalState({ isOpen: false, parentItem: null });
+    
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const triggerCreateVariantFromEditModal = (masterItem: Item) => {
+        const parentOrderItem = order.items.find(i => i.itemId === masterItem.id && !i.isSpoiled);
+        if (parentOrderItem) {
+            setEditItemModalOpen(false); // Close edit modal
+            setVariantModalState({ isOpen: true, parentOrderItem: parentOrderItem });
+        } else {
+            notify('Could not find original item in order to create variant.', 'error');
+        }
+    };
+
     const isEffectivelyCollapsed = isManuallyCollapsed || (!!draggedItem && draggedItem.sourceOrderId !== order.id);
     const canEditCard = (!isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) || (order.status === OrderStatus.COMPLETED && isEditModeEnabled);
     const canChangePayment = canEditCard || (!isManagerView && order.status === OrderStatus.ON_THE_WAY);
     
     return (
         <div
-            draggable={isDraggableForMerge}
-            onDragStart={handleMergeDragStart}
-            onDragEnd={handleMergeDragEnd}
             onDragOver={(e) => {
                 e.preventDefault();
-                const isItemDrag = !!(draggedItem && draggedItem.sourceOrderId !== order.id);
-                const isOrderDrag = e.dataTransfer.types.includes('application/x-order-merge');
-                if (isItemDrag || isOrderDrag) {
+                if (draggedItem && draggedItem.sourceOrderId !== order.id) {
                     setIsDragOver(true);
                 }
             }}
@@ -924,16 +1019,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDragOver(false);
-
-                const sourceOrderId = e.dataTransfer.getData('application/x-order-merge');
-                if (sourceOrderId && sourceOrderId !== order.id) {
-                    const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
-                    if (sourceOrder && sourceOrder.store === order.store && sourceOrder.status === order.status) {
-                        actions.mergeOrders(sourceOrderId, order.id);
-                    } else {
-                        notify('Cannot merge these orders.', 'error');
-                    }
-                } else if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
+                if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
                     onItemDrop(order.id);
                 }
             }}
@@ -951,12 +1037,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 supplier={supplier}
                 isManuallyCollapsed={isEffectivelyCollapsed}
                 onToggleCollapse={() => setIsManuallyCollapsed(!isManuallyCollapsed)}
-                onHeaderContextMenu={handleHeaderContextMenu}
-                onHeaderClick={() => {}}
+                onHeaderClick={() => supplier && setEditSupplierModalOpen(true)}
                 onPaymentBadgeClick={() => setPaymentMethodModalOpen(true)}
                 showStoreName={showStoreName}
-                onLongPressStart={handleLongPressStart}
-                onLongPressEnd={handleLongPressEnd}
                 showActionsButton={true}
                 onActionsClick={handleHeaderActionsClick}
                 orderTotal={orderTotal}
@@ -980,8 +1063,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                     onDragEnd: () => { setDraggedItem?.(null); setDragOverItemId(null); },
                                 }}
                                 onQuantityClick={() => handleQuantityClick(item)}
-                                onContextMenuClick={(e) => handleItemContextMenu(e, item)}
-                                isContextMenuDisabled={isOudomManagerWorkflow}
+                                onActionsClick={(e) => handleItemActionsClick(e, item)}
+                                isActionsDisabled={isOudomManagerWorkflow}
                                 isEditingPrice={editingPriceItemId === item.itemId}
                                 editedItemPrice={editedItemPrice}
                                 onPriceChange={setEditedItemPrice}
@@ -1026,8 +1109,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                   onDelete={() => handleDeleteItem(selectedItem)} 
               />
             )}
-            {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onAddItem={handleAddItem} />}
-            {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
+            {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onItemSelect={handleAddItemSelect} />}
+            {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} onTriggerCreateVariant={() => triggerCreateVariantFromEditModal(selectedMasterItem)} />}
             {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={actions.updateSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <MoveToStoreModal isOpen={isMoveToStoreModalOpen} onClose={() => setIsMoveToStoreModalOpen(false)} onSelect={handleMoveToStore} currentStore={order.store} />
@@ -1036,6 +1119,24 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             <InvoicePreviewModal isOpen={invoicePreview.isOpen} onClose={() => setInvoicePreview({ isOpen: false, html: null, template: '' })} receiptHtml={invoicePreview.html} receiptTemplate={invoicePreview.template} />
             <AddSupplierModal isOpen={isAddCardModalOpen} onClose={() => setAddCardModalOpen(false)} onSelect={handleAddCard} title="Add a New Card" />
             <PaymentMethodModal isOpen={isPaymentMethodModalOpen} onClose={() => setPaymentMethodModalOpen(false)} onSelect={handlePaymentMethodChange} order={order} />
+            {variantModalState.isOpen && variantModalState.parentOrderItem && (
+                <CreateVariantModal
+                    isOpen={variantModalState.isOpen}
+                    onClose={() => setVariantModalState({ isOpen: false, parentOrderItem: null })}
+                    parentItem={state.items.find(i => i.id === variantModalState.parentOrderItem!.itemId)!}
+                    isStockVariantFlow={false}
+                    onCreate={handleCreateVariant}
+                />
+            )}
+            {stockVariantModalState.isOpen && stockVariantModalState.parentItem && (
+                 <CreateVariantModal
+                    isOpen={stockVariantModalState.isOpen}
+                    onClose={() => setStockVariantModalState({ isOpen: false, parentItem: null })}
+                    parentItem={stockVariantModalState.parentItem}
+                    isStockVariantFlow={true}
+                    onCreate={handleCreateStockVariant}
+                />
+            )}
         </div>
     );
 };

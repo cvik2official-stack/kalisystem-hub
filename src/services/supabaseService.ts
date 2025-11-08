@@ -29,6 +29,10 @@
 
   -- Add a text column to stores for a location URL
   ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS location_url TEXT;
+
+  -- Add columns for item variants
+  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.items(id) ON DELETE SET NULL;
+  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS is_variant BOOLEAN DEFAULT FALSE;
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -56,6 +60,8 @@ interface ItemFromDb {
   modified_at: string;
   track_stock?: boolean;
   stock_quantity?: number;
+  parent_id?: string;
+  is_variant?: boolean;
 }
 
 interface StoreFromDb {
@@ -152,6 +158,8 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
                 modifiedAt: i.modified_at,
                 trackStock: i.track_stock,
                 stockQuantity: i.stock_quantity,
+                parentId: i.parent_id,
+                isVariant: i.is_variant,
             });
         }
         return acc;
@@ -302,6 +310,10 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         name: item.name,
         unit: item.unit,
         supplier_id: item.supplierId,
+        parent_id: item.parentId,
+        is_variant: item.isVariant,
+        track_stock: item.trackStock,
+        stock_quantity: item.stockQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?select=*`, {
         method: 'POST',
@@ -311,7 +323,16 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
     if (!response.ok) throw new Error(`Failed to add item: ${await response.text()}`);
     const data = await response.json();
     const newItem = data[0];
-    return { ...item, id: newItem.id, createdAt: newItem.created_at, modifiedAt: newItem.modified_at };
+    return {
+        ...item,
+        id: newItem.id,
+        createdAt: newItem.created_at,
+        modifiedAt: newItem.modified_at,
+        parentId: newItem.parent_id,
+        isVariant: newItem.is_variant,
+        trackStock: newItem.track_stock,
+        stockQuantity: newItem.stock_quantity,
+    };
 };
 
 export const updateItem = async ({ item, url, key }: { item: Item, url: string, key: string }): Promise<Item> => {
@@ -321,6 +342,8 @@ export const updateItem = async ({ item, url, key }: { item: Item, url: string, 
         supplier_id: item.supplierId,
         track_stock: item.trackStock,
         stock_quantity: item.stockQuantity,
+        parent_id: item.parentId,
+        is_variant: item.isVariant,
     };
     const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
         method: 'PATCH',

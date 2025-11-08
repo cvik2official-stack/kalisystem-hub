@@ -42,6 +42,8 @@ export interface Item {
   modifiedAt?: string;
   trackStock?: boolean;
   stockQuantity?: number;
+  parentId?: string; // Foreign key to self for variants
+  isVariant?: boolean;
 }
 
 export interface SupplierBotSettings {

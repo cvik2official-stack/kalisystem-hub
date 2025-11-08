@@ -9,6 +9,7 @@ import ContextMenu from './ContextMenu';
 import MergeByPaymentModal from './modals/MergeByPaymentModal';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
+import DueReportModal from './modals/DueReportModal';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -39,8 +40,10 @@ const OrderWorkspace: React.FC = () => {
   const [isDragOverEmpty, setIsDragOverEmpty] = useState(false);
 
   const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
-  const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number, y: number } | null>(null);
+  const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number, y: number, dateGroupKey: string } | null>(null);
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
+  const [isDueReportModalOpen, setIsDueReportModalOpen] = useState(false);
+  const [ordersForDueReport, setOrdersForDueReport] = useState<Order[]>([]);
 
 
   const handleStatusChange = (status: OrderStatus) => {
@@ -186,12 +189,32 @@ const OrderWorkspace: React.FC = () => {
     });
   };
   
-  const headerContextMenuOptions = [
-    { label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) },
-    { label: 'Merge by Payment...', action: () => setIsMergeModalOpen(true) },
-    { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
-    { label: 'Store Report', action: handleGenerateStoreReport },
-  ];
+  const handleGenerateDueReportForGroup = (dateGroupKey: string) => {
+    const ordersForGroup = groupedCompletedOrders[dateGroupKey] || [];
+    if (ordersForGroup.length === 0) {
+        notify(`No completed orders for ${formatDateGroupHeader(dateGroupKey)} to generate a report.`, 'info');
+        return;
+    }
+    setOrdersForDueReport(ordersForGroup);
+    setIsDueReportModalOpen(true);
+  };
+
+  const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
+    const options = [];
+
+    if (dateGroupKey === 'Today') {
+        options.push(
+            { label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) },
+            { label: 'Merge by Payment...', action: () => setIsMergeModalOpen(true) },
+            { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
+            { label: 'Store Report', action: handleGenerateStoreReport }
+        );
+    }
+    
+    options.push({ label: 'Due Report...', action: () => handleGenerateDueReportForGroup(dateGroupKey) });
+
+    return options;
+  };
 
   const showEmptyState = filteredOrders.length === 0 && activeStatus !== OrderStatus.DISPATCHING;
   const tabsToShow = STATUS_TABS;
@@ -239,11 +262,9 @@ const OrderWorkspace: React.FC = () => {
                             </svg>
                             <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
                           </button>
-                          {key === 'Today' && (
-                             <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5 }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Today's Actions">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                             </button>
-                          )}
+                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                          </button>
                         </div>
                         {isExpanded && (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-1">
@@ -343,7 +364,7 @@ const OrderWorkspace: React.FC = () => {
           <ContextMenu
               x={headerContextMenu.x}
               y={headerContextMenu.y}
-              options={headerContextMenuOptions}
+              options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)}
               onClose={() => setHeaderContextMenu(null)}
           />
       )}
@@ -355,6 +376,11 @@ const OrderWorkspace: React.FC = () => {
                   actions.mergeTodaysCompletedOrdersByPayment(method);
               }
           }}
+      />
+      <DueReportModal
+        isOpen={isDueReportModalOpen}
+        onClose={() => setIsDueReportModalOpen(false)}
+        orders={ordersForDueReport}
       />
     </>
   );

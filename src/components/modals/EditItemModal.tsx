@@ -9,15 +9,15 @@ interface EditItemModalProps {
   onClose: () => void;
   onSave: (itemToSave: Item | Omit<Item, 'id'>) => Promise<void>;
   onDelete: (itemId: string) => Promise<void>;
+  onTriggerCreateVariant: () => void;
 }
 
-const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, onSave, onDelete }) => {
+const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, onSave, onDelete, onTriggerCreateVariant }) => {
     const { state, actions } = useContext(AppContext);
     const { notify } = useNotifier();
     const [name, setName] = useState('');
     const [unit, setUnit] = useState<Unit>(Unit.PC);
     const [supplierId, setSupplierId] = useState<string>('');
-    const [newVariantName, setNewVariantName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
     useEffect(() => {
@@ -81,7 +81,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                 name,
                 unit,
                 supplierId,
-                supplierName: selectedSupplier.name
+                supplierName: selectedSupplier.name,
             };
 
             await onSave(itemToSave);
@@ -100,36 +100,6 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
             onClose();
         } catch(e) {
             // Error toast is handled by the context action
-        } finally {
-            setIsSaving(false);
-        }
-    };
-    
-    const handleAddNewVariant = async () => {
-        if (!newVariantName.trim()) {
-            notify('Variant name cannot be empty.', 'error');
-            return;
-        }
-
-        const parentItem = item;
-        const newItemName = `${parentItem.name} (${newVariantName.trim()})`;
-
-        if (state.items.some(i => i.name.toLowerCase() === newItemName.toLowerCase())) {
-            notify(`Item "${newItemName}" already exists.`, 'error');
-            return;
-        }
-        
-        setIsSaving(true);
-        try {
-            await actions.addItem({
-                name: newItemName,
-                supplierId: parentItem.supplierId,
-                supplierName: parentItem.supplierName,
-                unit: parentItem.unit,
-            });
-            setNewVariantName('');
-        } catch(e) {
-            // Error toast is handled by context
         } finally {
             setIsSaving(false);
         }
@@ -195,18 +165,14 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
 
                 {!isNew && (
                     <div className="mt-6 border-t border-gray-700 pt-4">
-                        <label htmlFor="variant-name" className="block text-sm font-medium text-gray-300">Variant</label>
-                        <div className="flex items-center space-x-2 mt-1">
-                            <input
-                                type="text"
-                                id="variant-name"
-                                name="variant-name"
-                                value={newVariantName}
-                                onChange={(e) => setNewVariantName(e.target.value)}
-                                className="w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                            />
-                            <button onClick={handleAddNewVariant} disabled={isSaving} className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800">Add</button>
-                        </div>
+                        <h3 className="text-sm font-medium text-gray-300 mb-2">Variants</h3>
+                        <button 
+                            onClick={onTriggerCreateVariant} 
+                            disabled={isSaving} 
+                            className="w-full text-center p-2 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+                        >
+                            + Create a new variant...
+                        </button>
                     </div>
                 )}
 

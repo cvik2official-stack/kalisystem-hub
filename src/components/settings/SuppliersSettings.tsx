@@ -120,7 +120,6 @@ const SuppliersSettings: React.FC = () => {
       <div className="flex justify-between items-center mb-4 w-full">
         <input
           type="text"
-          placeholder="Search suppliers..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"

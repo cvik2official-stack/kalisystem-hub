@@ -87,7 +87,6 @@ const StoresSettings: React.FC = () => {
                           value={editedStoreData.chatId || ''}
                           onChange={(e) => handleStoreDataChange('chatId', e.target.value)}
                           className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
-                          placeholder="e.g., -1001234567890"
                         />
                       ) : (
                         store.chatId || '-'
@@ -100,7 +99,6 @@ const StoresSettings: React.FC = () => {
                           value={editedStoreData.locationUrl || ''}
                           onChange={(e) => handleStoreDataChange('locationUrl', e.target.value)}
                           className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
-                          placeholder="e.g., https://maps.app.goo.gl/..."
                         />
                       ) : (
                         store.locationUrl || '-'

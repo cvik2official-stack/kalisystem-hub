@@ -1,92 +1,159 @@
-/*
-  NOTE FOR DATABASE SETUP:
-  This component manages item stock, which requires new database columns.
-  Please run the following SQL commands in your Supabase SQL Editor to avoid errors:
-
-  -- Add a boolean to flag items for stock tracking
-  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS track_stock BOOLEAN DEFAULT FALSE;
-
-  -- Add a numeric column to store the stock quantity
-  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC DEFAULT 0;
-*/
-import React, { useContext, useState, useMemo, useRef } from 'react';
+import React, { useContext, useState, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
-import EditItemModal from '../modals/EditItemModal';
-import ContextMenu from '../ContextMenu';
+import { useNotifier } from '../../context/NotificationContext';
 
 const ItemsSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
+  const { notify } = useNotifier();
   
-  const [isNewItemModalOpen, setNewItemModalOpen] = useState(false);
-  const [itemForModal, setItemForModal] = useState<Item | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, item: Item } | null>(null);
-  
-  const [editingItemId, setEditingItemId] = useState<string | null>(null);
-  const [editedItemData, setEditedItemData] = useState<Partial<Item>>({});
+  const [editedItems, setEditedItems] = useState<Record<string, Partial<Item>>>({});
+  const [newItems, setNewItems] = useState<Partial<Item>[]>([]);
+  const [editedPrices, setEditedPrices] = useState<Record<string, { price: number }>>({});
+  const [isSaving, setIsSaving] = useState(false);
 
-  const longPressTimer = useRef<number | null>(null);
+  const hasChanges = useMemo(() => Object.keys(editedItems).length > 0 || newItems.some(item => item.name && item.supplierId) || Object.keys(editedPrices).length > 0, [editedItems, newItems, editedPrices]);
 
-  const handleSaveFromModal = async (item: Item | Omit<Item, 'id'>) => {
-    if ('id' in item && item.id.startsWith('new_')) {
-        const { id, ...newItem } = item;
-        await actions.addItem(newItem);
-    } else {
-        await actions.updateItem(item as Item);
-    }
-  };
-  
-  const handleDeleteItem = async (item: Item) => {
-    if (window.confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone.`)) {
-      await actions.deleteItem(item.id);
-    }
-  };
-  
-  const handleEditClick = (item: Item) => {
-    setEditingItemId(item.id);
-    setEditedItemData(item);
-  };
-  
-  const handleCancelEdit = () => {
-    setEditingItemId(null);
-    setEditedItemData({});
+  const handleItemChange = (id: string, field: keyof Item, value: any) => {
+    setEditedItems(prev => ({
+      ...prev,
+      [id]: {
+        ...prev[id],
+        [field]: value,
+      },
+    }));
   };
 
-  const handleInlineSave = async () => {
-    if (editingItemId && editedItemData) {
-      const supplier = state.suppliers.find(s => s.id === editedItemData.supplierId);
-      if (supplier) {
-        await actions.updateItem({ ...editedItemData, supplierName: supplier.name } as Item);
-      }
-      setEditingItemId(null);
-      setEditedItemData({});
-    }
+  const handleNewItemChange = (index: number, field: keyof Item, value: any) => {
+    setNewItems(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
   };
-  
-  const handleItemDataChange = (field: keyof Item, value: any) => {
-      setEditedItemData({ ...editedItemData, [field]: value });
+
+  const handlePriceChange = (id: string, value: string) => {
+    const price = parseFloat(value);
+    setEditedPrices(prev => ({
+        ...prev,
+        [id]: {
+            price: isNaN(price) ? 0 : price,
+        }
+    }));
   };
 
   const handleAddNewItem = () => {
     const defaultSupplier = state.suppliers[0];
     if (!defaultSupplier) {
-        alert('No suppliers found in the database.');
+        notify('Please create a supplier first.', 'error');
         return;
     }
-    setItemForModal({ 
-        id: `new_${Date.now()}`, 
-        name: '', 
-        supplierId: defaultSupplier.id,
-        supplierName: defaultSupplier.name,
-        unit: Unit.PC 
-    });
-    setNewItemModalOpen(true);
+    setNewItems(prev => [...prev, { name: '', unit: Unit.PC, supplierId: defaultSupplier.id }]);
   };
 
-  const handleEditItemInModal = (item: Item) => {
-    setItemForModal(item);
-    setNewItemModalOpen(true);
+  const handleDeleteItem = async (item: Item) => {
+    if (window.confirm(`Are you sure you want to delete "${item.name}"? This action cannot be undone.`)) {
+      await actions.deleteItem(item.id);
+      setEditedItems(prev => {
+        const { [item.id]: _, ...rest } = prev;
+        return rest;
+      });
+      setEditedPrices(prev => {
+        const { [item.id]: _, ...rest } = prev;
+        return rest;
+      });
+    }
+  };
+
+  const handleDeleteNewItem = (index: number) => {
+    setNewItems(prev => prev.filter((_, i) => i !== index));
+    setEditedPrices(prev => {
+        const key = `new-${index}`;
+        const { [key]: _, ...rest } = prev;
+        return rest;
+    });
+  };
+  
+  const handleDiscardChanges = () => {
+    if (window.confirm('Are you sure you want to discard all pending changes?')) {
+        setEditedItems({});
+        setNewItems([]);
+        setEditedPrices({});
+    }
+  };
+
+  const handleSaveAll = async () => {
+    setIsSaving(true);
+    try {
+        // Process item property updates first
+        const itemUpdatePromises = Object.keys(editedItems).map(itemId => {
+            const originalItem = state.items.find(i => i.id === itemId);
+            if (originalItem) {
+                const changes = editedItems[itemId];
+                const supplier = state.suppliers.find(s => s.id === (changes.supplierId || originalItem.supplierId));
+                if (supplier) {
+                    return actions.updateItem({ ...originalItem, ...changes, supplierName: supplier.name });
+                }
+            }
+            return Promise.resolve();
+        });
+        await Promise.all(itemUpdatePromises);
+
+        // Process price updates for existing items
+        const priceUpdatePromises = Object.keys(editedPrices).filter(key => !key.startsWith('new-')).map(itemId => {
+            const originalItem = state.items.find(i => i.id === itemId)!;
+            const currentData = { ...originalItem, ...(editedItems[itemId] || {}) };
+            const priceData = editedPrices[itemId];
+            const priceToSave = priceData.price > 1000 ? priceData.price / 4000 : priceData.price;
+
+            return actions.upsertItemPrice({
+                itemId,
+                supplierId: currentData.supplierId,
+                price: priceToSave,
+                unit: currentData.unit,
+                isMaster: true,
+            });
+        });
+        await Promise.all(priceUpdatePromises);
+
+        // Process new items and their prices sequentially
+        for (const [index, newItem] of newItems.entries()) {
+            const supplier = state.suppliers.find(s => s.id === newItem.supplierId);
+            if (newItem.name && supplier) {
+                const createdItem = await actions.addItem({
+                    name: newItem.name,
+                    unit: newItem.unit || Unit.PC,
+                    supplierId: supplier.id,
+                    supplierName: supplier.name,
+                    trackStock: newItem.trackStock || false,
+                    stockQuantity: newItem.stockQuantity || 0,
+                });
+                
+                const priceData = editedPrices[`new-${index}`];
+                if (priceData) {
+                    const priceToSave = priceData.price > 1000 ? priceData.price / 4000 : priceData.price;
+                    await actions.upsertItemPrice({
+                        itemId: createdItem.id,
+                        supplierId: createdItem.supplierId,
+                        price: priceToSave,
+                        unit: createdItem.unit,
+                        isMaster: true,
+                    });
+                }
+            }
+        }
+        
+        notify('All changes saved successfully!', 'success');
+        setEditedItems({});
+        setNewItems([]);
+        setEditedPrices({});
+
+    } catch (error) {
+        // Error toast is handled by context
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const filteredItems = useMemo(() => {
@@ -99,55 +166,33 @@ const ItemsSettings: React.FC = () => {
       item.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [state.items, searchTerm]);
-  
-  const handlePressStart = (e: React.MouseEvent | React.TouchEvent, item: Item) => {
-    if ('button' in e && e.button === 2) return; // Allow right-click to pass to onContextMenu
-    longPressTimer.current = window.setTimeout(() => {
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-      setContextMenu({ x: clientX, y: clientY, item });
-    }, 500);
-  };
-
-  const handlePressEnd = () => {
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, item: Item) => {
-    e.preventDefault();
-    setContextMenu({ x: e.clientX, y: e.clientY, item });
-  };
-  
-  const getContextMenuOptions = (item: Item) => {
-    return [
-      { label: 'Add to Dispatch', action: () => actions.addItemToDispatch(item) },
-      { label: item.trackStock ? 'Disable Stock Tracking' : 'Enable Stock Tracking', action: () => actions.updateItem({ ...item, trackStock: !item.trackStock }) },
-      { label: 'Edit...', action: () => handleEditItemInModal(item) },
-      { label: 'Delete Item', action: () => handleDeleteItem(item), isDestructive: true },
-    ];
-  };
 
   return (
     <div className="flex flex-col flex-grow">
-      <div className="flex justify-between items-center mb-4 w-full">
+      <div className="flex justify-between items-center mb-4 w-full gap-4">
         <input
             type="text"
-            id="item-settings-search-input"
-            name="item-settings-search-input"
-            placeholder="Search items..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
         />
-        <button 
-          onClick={handleAddNewItem}
-          className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
-          aria-label="Add New Item"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-        </button>
+        <div className="flex items-center gap-2">
+            {hasChanges && (
+                 <>
+                    <button onClick={handleDiscardChanges} disabled={isSaving} className="px-3 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-white">Discard</button>
+                    <button onClick={handleSaveAll} disabled={isSaving} className="px-3 py-2 text-sm font-medium rounded-md bg-green-600 hover:bg-green-700 text-white disabled:bg-green-800 disabled:cursor-wait">
+                        {isSaving ? 'Saving...' : 'Save All'}
+                    </button>
+                 </>
+            )}
+            <button 
+              onClick={handleAddNewItem}
+              className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
+              aria-label="Add New Item"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+            </button>
+        </div>
       </div>
 
       <div className="bg-gray-800 rounded-xl shadow-lg overflow-hidden flex-grow flex flex-col w-full">
@@ -155,118 +200,71 @@ const ItemsSettings: React.FC = () => {
               <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-800 sticky top-0 z-10">
                   <tr>
-                    <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
+                    <th className="pl-4 pr-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/3">Name</th>
                     <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Supplier</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unit</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Unit Price</th>
+                    <th className="px-2 py-3 text-center text-xs font-medium text-gray-300 uppercase tracking-wider" title="Track Stock">Track</th>
+                    <th className="px-2 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Stock Qty</th>
                     <th className="pl-2 pr-4 py-3 text-right text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                   </tr>
               </thead>
               <tbody className="bg-gray-800 divide-y divide-gray-700">
                   {filteredItems.map(item => {
-                      const isEditing = editingItemId === item.id;
+                      const currentData = { ...item, ...(editedItems[item.id] || {}) };
+                      const masterPrice = state.itemPrices.find(p => p.itemId === item.id && p.isMaster)?.price;
+                      const editedPrice = editedPrices[item.id]?.price;
+                      const displayPrice = editedPrice !== undefined ? editedPrice : (masterPrice !== undefined ? masterPrice : '');
+                      const trackStock = currentData.trackStock || false;
+                      
                       return (
-                        <tr 
-                          key={item.id}
-                          className="hover:bg-gray-700/50"
-                          onContextMenu={(e) => handleContextMenu(e, item)}
-                          onMouseDown={(e) => handlePressStart(e, item)}
-                          onMouseUp={handlePressEnd}
-                          onMouseLeave={handlePressEnd}
-                          onTouchStart={(e) => handlePressStart(e, item)}
-                          onTouchEnd={handlePressEnd}
-                        >
-                            <td className="pl-4 pr-2 py-1 text-white text-sm whitespace-nowrap">
-                              {isEditing ? (
-                                <input
-                                  type="text"
-                                  value={editedItemData.name || ''}
-                                  onChange={(e) => handleItemDataChange('name', e.target.value)}
-                                  className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
-                                />
-                              ) : (
-                                <>
-                                {item.name}
-                                {item.trackStock && (
-                                    <span className="ml-2 text-yellow-400 font-mono text-xs">
-                                        (stock: {item.stockQuantity ?? 0})
-                                    </span>
-                                )}
-                                </>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 text-gray-300 text-sm whitespace-nowrap">
-                              {isEditing ? (
-                                <select
-                                    value={editedItemData.supplierId || ''}
-                                    onChange={(e) => handleItemDataChange('supplierId', e.target.value)}
-                                    className="bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-1 w-full"
-                                >
-                                    {state.suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                </select>
-                              ) : (
-                                item.supplierName
-                              )}
-                            </td>
-                             <td className="pl-2 pr-4 py-1 text-right">
+                        <tr key={item.id} className={(editedItems[item.id] || editedPrices[item.id]) ? "bg-indigo-900/20" : ""}>
+                            <td className="pl-4 pr-2 py-1 text-sm"><input type="text" value={currentData.name} onChange={(e) => handleItemChange(item.id, 'name', e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-sm"><select value={currentData.supplierId} onChange={(e) => handleItemChange(item.id, 'supplierId', e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 border-none">
+                                {state.suppliers.map(s => <option key={s.id} value={s.id} className="bg-gray-800 text-white">{s.name}</option>)}
+                            </select></td>
+                            <td className="px-2 py-1 text-sm"><select value={currentData.unit} onChange={(e) => handleItemChange(item.id, 'unit', e.target.value as Unit)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 border-none">
+                                {Object.values(Unit).map(u => <option key={u} value={u} className="bg-gray-800 text-white">{u}</option>)}
+                            </select></td>
+                            <td className="px-2 py-1 text-sm"><input type="number" step="0.01" value={displayPrice} onChange={(e) => handlePriceChange(item.id, e.target.value)} className="bg-transparent p-1 w-24 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-center"><input type="checkbox" checked={trackStock} onChange={(e) => handleItemChange(item.id, 'trackStock', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-sm"><input type="number" value={trackStock ? currentData.stockQuantity ?? '' : ''} onChange={(e) => handleItemChange(item.id, 'stockQuantity', parseInt(e.target.value) || 0)} disabled={!trackStock} className="bg-transparent p-1 w-20 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 disabled:text-gray-600" /></td>
+                            <td className="pl-2 pr-4 py-1 text-right">
                                <div className="flex items-center justify-end space-x-2">
-                                  {isEditing ? (
-                                    <>
-                                        <button onClick={handleInlineSave} className="p-1 rounded-full text-green-400 hover:bg-green-600 hover:text-white" aria-label="Save item">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                                        </button>
-                                        <button onClick={handleCancelEdit} className="p-1 rounded-full text-red-400 hover:bg-red-600 hover:text-white" aria-label="Cancel edit">
-                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                                        </button>
-                                    </>
-                                  ) : (
-                                    <button
-                                      onClick={() => handleEditClick(item)}
-                                      className="p-1 rounded-full text-indigo-400 hover:bg-indigo-600 hover:text-white"
-                                      aria-label="Edit item"
-                                    >
-                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 pointer-events-none" viewBox="0 0 20 20" fill="currentColor">
-                                        <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
-                                        <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                </div>
+                                  <button onClick={() => actions.addItemToDispatch(item)} className="p-1 rounded-full text-gray-400 hover:bg-gray-600 hover:text-white" aria-label="Add to Dispatch"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                                  <button onClick={() => handleDeleteItem(item)} className="p-1 rounded-full text-red-500 hover:bg-red-600 hover:text-white" aria-label="Delete Item"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                               </div>
                             </td>
                         </tr>
                     )}
                   )}
+                  {newItems.map((item, index) => {
+                       const key = `new-${index}`;
+                       const trackStock = item.trackStock || false;
+                       const editedPrice = editedPrices[key]?.price;
+                       const displayPrice = editedPrice !== undefined ? editedPrice : '';
+                      return (
+                         <tr key={key} className="bg-green-900/20">
+                            <td className="pl-4 pr-2 py-1 text-sm"><input type="text" value={item.name || ''} onChange={(e) => handleNewItemChange(index, 'name', e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-sm"><select value={item.supplierId} onChange={(e) => handleNewItemChange(index, 'supplierId', e.target.value)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 border-none">
+                                {state.suppliers.map(s => <option key={s.id} value={s.id} className="bg-gray-800 text-white">{s.name}</option>)}
+                            </select></td>
+                            <td className="px-2 py-1 text-sm"><select value={item.unit} onChange={(e) => handleNewItemChange(index, 'unit', e.target.value as Unit)} className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 border-none">
+                                {Object.values(Unit).map(u => <option key={u} value={u} className="bg-gray-800 text-white">{u}</option>)}
+                            </select></td>
+                            <td className="px-2 py-1 text-sm"><input type="number" step="0.01" value={displayPrice} onChange={(e) => handlePriceChange(key, e.target.value)} className="bg-transparent p-1 w-24 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-center"><input type="checkbox" checked={trackStock} onChange={(e) => handleNewItemChange(index, 'trackStock', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" /></td>
+                            <td className="px-2 py-1 text-sm"><input type="number" value={trackStock ? item.stockQuantity ?? '' : ''} onChange={(e) => handleNewItemChange(index, 'stockQuantity', parseInt(e.target.value) || 0)} disabled={!trackStock} className="bg-transparent p-1 w-20 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 disabled:text-gray-600" /></td>
+                            <td className="pl-2 pr-4 py-1 text-right">
+                               <button onClick={() => handleDeleteNewItem(index)} className="p-1 rounded-full text-red-500 hover:bg-red-600 hover:text-white" aria-label="Delete new item row"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg></button>
+                            </td>
+                        </tr>
+                      )
+                  })}
               </tbody>
               </table>
           </div>
       </div>
-      
-      {contextMenu && (
-        <ContextMenu 
-          x={contextMenu.x}
-          y={contextMenu.y}
-          options={getContextMenuOptions(contextMenu.item)}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
-
-      {(itemForModal || isNewItemModalOpen) && (
-        <EditItemModal 
-            item={itemForModal!} 
-            isOpen={isNewItemModalOpen} 
-            onClose={() => {
-                setNewItemModalOpen(false);
-                setItemForModal(null);
-            }} 
-            onSave={handleSaveFromModal}
-            onDelete={async (itemId: string) => {
-                const item = state.items.find(i => i.id === itemId);
-                if (item) {
-                  await handleDeleteItem(item);
-                }
-                setNewItemModalOpen(false);
-                setItemForModal(null);
-            }}
-        />
-      )}
     </div>
   );
 };

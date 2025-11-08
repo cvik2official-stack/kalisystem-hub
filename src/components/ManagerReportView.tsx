@@ -65,8 +65,11 @@ const KaliSupplierCard: React.FC<{
         }
     };
 
+    const hasSingleStore = data.itemsByStore.size === 1;
+    const singleStoreName = hasSingleStore ? Array.from(data.itemsByStore.keys())[0] : null;
+
     return (
-        <div className="bg-gray-800 p-3 rounded-lg">
+        <div className="bg-gray-800 p-2 rounded-lg">
             <label className="flex items-center cursor-pointer">
                 <input
                     type="checkbox"
@@ -75,16 +78,19 @@ const KaliSupplierCard: React.FC<{
                     disabled={isProcessing}
                     className="h-5 w-5 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500 disabled:opacity-50"
                 />
-                <h3 className="ml-3 font-bold text-white text-lg">{supplierName}</h3>
+                <h3 className="ml-3 font-bold text-white flex items-center space-x-2">
+                    <span>{supplierName}</span>
+                    {hasSingleStore && <span className="text-sm font-semibold text-gray-400">{singleStoreName}</span>}
+                </h3>
                 {isProcessing && <svg className="animate-spin h-4 w-4 text-white ml-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>}
             </label>
-            <div className="mt-2 pl-8 space-y-2">
+            <div className="mt-2 pl-8 space-y-1">
                 {Array.from(data.itemsByStore.entries()).sort(([a], [b]) => a.localeCompare(b)).map(([storeName, items]) => (
                     <div key={storeName}>
-                        <h4 className="text-sm font-semibold text-gray-400">{storeName}</h4>
-                        <div className="pl-4 space-y-1 mt-1">
+                        {!hasSingleStore && <h4 className="text-sm font-semibold text-gray-400">{storeName}</h4>}
+                        <div className={!hasSingleStore ? "pl-4 mt-1" : ""}>
                             {items.map((item, index) => (
-                                <div key={index} className="flex justify-between items-center text-sm">
+                                <div key={index} className="flex justify-between items-center text-sm leading-tight">
                                     <span className="text-gray-300 flex-1 truncate pr-2">{item.name}</span>
                                     <span className="font-mono text-gray-400 w-16 text-right">{item.quantity}{item.unit}</span>
                                 </div>
@@ -211,8 +217,9 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
             await Promise.all(updates);
         };
         
-        const sortedTodoSuppliers = Array.from(todoBySupplier.keys()).sort((a,b) => a.localeCompare(b));
-        const sortedPickedUpSuppliers = Array.from(pickedUpBySupplier.keys()).sort((a,b) => a.localeCompare(b));
+        // FIX: Explicitly type `a` and `b` to resolve `localeCompare` error on type `unknown`.
+        const sortedTodoSuppliers = Array.from(todoBySupplier.keys()).sort((a: SupplierName, b: SupplierName) => a.localeCompare(b));
+        const sortedPickedUpSuppliers = Array.from(pickedUpBySupplier.keys()).sort((a: SupplierName, b: SupplierName) => a.localeCompare(b));
 
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">

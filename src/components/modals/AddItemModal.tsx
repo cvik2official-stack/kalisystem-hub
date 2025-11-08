@@ -1,26 +1,23 @@
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Order, OrderItem, Item, OrderStatus, Unit } from '../../types';
+import { Order, Item, OrderStatus, Unit } from '../../types';
 import { useNotifier } from '../../context/NotificationContext';
 
 interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddItem: (item: OrderItem) => void;
+  onItemSelect: (item: Item) => void;
   order: Order;
 }
 
-const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem, order }) => {
+const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSelect, order }) => {
   const { state, actions } = useContext(AppContext);
   const { notify } = useNotifier();
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
   const filteredItems = useMemo(() => {
-    // Exclude items already in the order
     const itemsInOrder = new Set(order.items.map(i => i.itemId));
-    
-    // Show all items, regardless of supplier, excluding those already in the order
     const availableItems = state.items.filter(i => !itemsInOrder.has(i.id));
 
     const searchFiltered = !search
@@ -33,15 +30,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
   }, [search, state.items, order.items]);
 
   const handleItemClick = (item: Item) => {
-    // FIX: Look for the price from the ORDER's supplier, not the item's default supplier.
-    const masterPrice = state.itemPrices.find(p => p.itemId === item.id && p.supplierId === order.supplierId && p.isMaster);
-    onAddItem({
-      itemId: item.id,
-      name: item.name,
-      quantity: 1,
-      unit: item.unit,
-      price: masterPrice?.price,
-    });
+    onItemSelect(item);
     setSearch('');
     onClose();
   };
@@ -58,41 +47,27 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
             return;
         }
 
-        // Find any item with this name, regardless of its primary supplier
         const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase());
         
         let itemToAdd: Item;
 
         if (existingItemInDb) {
-            // A master item with this name already exists. We'll use it.
             itemToAdd = existingItemInDb;
         } else {
-            // No master item found. Create a new one with the current order's supplier as its primary.
             notify(`Creating new master item: ${trimmedSearch}`, 'info');
             itemToAdd = await actions.addItem({
                 name: trimmedSearch,
                 supplierId: supplier.id,
                 supplierName: supplier.name,
-                unit: Unit.PC, // Default unit
+                unit: Unit.PC,
             });
         }
         
-        // Now, regardless of whether the item was found or created, look for its price
-        // from the CURRENT order's supplier.
-        const masterPrice = state.itemPrices.find(p => p.itemId === itemToAdd.id && p.supplierId === order.supplierId && p.isMaster);
-
-        onAddItem({
-            itemId: itemToAdd.id,
-            name: itemToAdd.name,
-            quantity: 1, // default quantity
-            unit: itemToAdd.unit,
-            price: masterPrice?.price,
-        });
+        onItemSelect(itemToAdd);
         
         setSearch('');
         onClose();
     } catch (e) {
-        // Error toast is handled by the context action
         console.error("Failed to create and add new item:", e);
     } finally {
         setIsCreating(false);
@@ -128,7 +103,6 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onAddItem,
                 type="text"
                 id="add-item-search-input"
                 name="add-item-search-input"
-                placeholder="Search or add a new item..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus

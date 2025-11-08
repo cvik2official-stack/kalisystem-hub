@@ -379,3 +379,82 @@ export const generateStoreReport = (orders: Order[]): string => {
 
     return report;
 };
+
+export const generateDueReportMessage = (orders: Order[], itemPrices: ItemPrice[], sortBy: 'store' | 'supplier', previousDue: number, topUp: number): string => {
+    if (orders.length === 0) return "No orders for this date.";
+
+    const dateFromOrder = new Date(orders[0].completedAt || orders[0].createdAt);
+    const formattedDate = `${String(dateFromOrder.getDate()).padStart(2, '0')}.${String(dateFromOrder.getMonth() + 1).padStart(2, '0')}.${String(dateFromOrder.getFullYear()).slice(-2)}`;
+
+    const groupMap = new Map<string, { total: number; items: Map<string, { name: string; quantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }> }>();
+
+    for (const order of orders) {
+        const key = sortBy === 'store' ? order.store : order.supplierName;
+        if (!groupMap.has(key)) {
+            groupMap.set(key, { total: 0, items: new Map() });
+        }
+        const group = groupMap.get(key)!;
+
+        for (const item of order.items) {
+            if (item.isSpoiled) continue;
+
+            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+            const price = item.price ?? masterPrice ?? 0;
+            const itemValue = price * item.quantity;
+            group.total += itemValue;
+
+            const itemKey = `${item.itemId}-${item.unit || 'none'}`;
+            const existingItem = group.items.get(itemKey);
+
+            if (existingItem) {
+                existingItem.quantity += item.quantity;
+                existingItem.totalValue += itemValue;
+                if (price > 0) existingItem.priceEntries.push(price);
+            } else {
+                group.items.set(itemKey, {
+                    name: item.name,
+                    quantity: item.quantity,
+                    unit: item.unit,
+                    totalValue: itemValue,
+                    priceEntries: price > 0 ? [price] : [],
+                });
+            }
+        }
+    }
+
+    const totalSpendings = Array.from(groupMap.values()).reduce((acc, group) => acc + group.total, 0);
+    const totalDue = previousDue + topUp;
+    const newDue = totalDue - totalSpendings;
+    
+    let message = `${formattedDate}\n`;
+    message += `Due: ${previousDue.toFixed(2)}\n`;
+    message += `Topup: ${topUp.toFixed(2)}\n`;
+    message += `Total: ${totalDue.toFixed(2)}\n`;
+    message += `__________________\n`;
+    
+    const sortedGroupKeys = Array.from(groupMap.keys()).sort((a, b) => a.localeCompare(b));
+    const groupBlocks: string[] = [];
+
+    for (const key of sortedGroupKeys) {
+        const group = groupMap.get(key)!;
+        if (group.total <= 0) continue;
+
+        let block = `${key} (${group.total.toFixed(2)})\n`;
+        const sortedItems = Array.from(group.items.values()).sort((a,b) => a.name.localeCompare(b.name));
+
+        for (const item of sortedItems) {
+            const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
+            const unitDisplay = item.unit || '';
+            block += `${item.name} x${item.quantity}${unitDisplay} @ ${avgPrice.toFixed(2)} = ${item.totalValue.toFixed(2)}\n`;
+        }
+        groupBlocks.push(block);
+    }
+
+    message += groupBlocks.join('__________________\n');
+    message += `__________________\n`;
+    message += `Total: ${totalDue.toFixed(2)}\n`;
+    message += `Spendings: ${totalSpendings.toFixed(2)}\n`;
+    message += `New Due: ${newDue.toFixed(2)}\n`;
+
+    return message;
+};

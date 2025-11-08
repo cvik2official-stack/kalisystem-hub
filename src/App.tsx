@@ -15,7 +15,7 @@ import KaliReportModal from './components/modals/KaliReportModal';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers } = state;
   const { notify } = useNotifier();
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
@@ -84,13 +84,16 @@ const App: React.FC = () => {
         today.setHours(0, 0, 0, 0);
 
         const todaysKaliOrders = orders.filter(order => {
-            const completedDate = order.completedAt ? new Date(order.completedAt) : null;
-            if (!completedDate) return false;
-            completedDate.setHours(0, 0, 0, 0);
+            if (order.status !== OrderStatus.COMPLETED || !order.completedAt) return false;
 
-            return order.supplierName === SupplierName.KALI &&
-                   order.status === OrderStatus.COMPLETED &&
-                   completedDate.getTime() === today.getTime();
+            const completedDate = new Date(order.completedAt);
+            completedDate.setHours(0, 0, 0, 0);
+            if (completedDate.getTime() !== today.getTime()) return false;
+
+            const supplier = suppliers.find(s => s.id === order.supplierId);
+            const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+
+            return paymentMethod === PaymentMethod.KALI;
         });
 
         if (todaysKaliOrders.length === 0) {

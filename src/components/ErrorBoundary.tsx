@@ -10,10 +10,8 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
+  // FIX: Initialize state as a class property. This is a modern and safe way to set initial state in a React class component, ensuring `this.state` is always available.
+  state: ErrorBoundaryState = { hasError: false, error: null };
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     // Update state so the next render will show the fallback UI.
@@ -26,6 +24,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
+    // FIX: Check this.state for errors.
     if (this.state.hasError) {
       // Fallback UI
       return (
@@ -42,6 +41,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
                 <details className="text-left bg-gray-900/50 p-3 rounded mt-6">
                     <summary className="cursor-pointer text-gray-400 text-sm">Error Details</summary>
                     <pre className="text-xs text-red-400 mt-2 overflow-auto whitespace-pre-wrap">
+                        {/* FIX: Display the error message from this.state. */}
                         {this.state.error?.toString()}
                     </pre>
                 </details>
@@ -50,6 +50,7 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
+    // FIX: Render children if no error.
     return this.props.children;
   }
 }

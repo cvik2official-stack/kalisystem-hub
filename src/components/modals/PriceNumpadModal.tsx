@@ -94,7 +94,6 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
           onKeyDown={handleKeyDown}
           className="w-full bg-gray-900 text-white text-3xl font-mono text-right rounded-md p-3 mb-3 outline-none ring-2 ring-transparent focus:ring-indigo-500"
           aria-label="Price input"
-          placeholder="0.00"
         />
 
         <div className="grid grid-cols-4 gap-2 text-xl">

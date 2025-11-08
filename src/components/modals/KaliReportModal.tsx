@@ -56,7 +56,6 @@ const KaliReportModal: React.FC<KaliReportModalProps> = ({ isOpen, onClose, onGe
               onChange={handleInputChange(setPreviousDue)}
               autoFocus
               className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-              placeholder="0.00"
               disabled={isSending}
             />
           </div>
@@ -70,7 +69,6 @@ const KaliReportModal: React.FC<KaliReportModalProps> = ({ isOpen, onClose, onGe
               value={topUp}
               onChange={handleInputChange(setTopUp)}
               className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-              placeholder="0.00"
               disabled={isSending}
             />
           </div>

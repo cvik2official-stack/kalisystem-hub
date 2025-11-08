@@ -26,11 +26,6 @@ const StoreTabs: React.FC = () => {
     });
   };
 
-  const handleContextMenu = (e: React.MouseEvent, storeName: StoreName) => {
-    e.preventDefault();
-    copyManagerUrl(storeName);
-  };
-  
   const handlePressStart = (storeName: StoreName) => {
     // Clear any existing timer to avoid conflicts
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
@@ -47,14 +42,17 @@ const StoreTabs: React.FC = () => {
   };
 
   // Create a comprehensive list of all stores from the enum.
-  const allStoreNames = Object.values(StoreName);
+  // FIX: Explicitly type allStoreNames to resolve type inference issues downstream.
+  const allStoreNames: StoreName[] = Object.values(StoreName);
   const storesFromStateMap = new Map(stores.map(s => [s.name, s]));
   const allStoresWithPlaceholders: Store[] = allStoreNames.map(name => {
       return storesFromStateMap.get(name) || { id: `enum_store_${name}`, name: name };
   });
 
   // Sort stores to ensure consistent order, with CV2 always first.
-  const sortedStores = allStoresWithPlaceholders.sort((a, b) => {
+  // FIX: Use spread syntax to create a new array before sorting to avoid mutation. This can also resolve obscure type errors from linters.
+  // FIX: Removed explicit types from sort callback parameters to allow for correct type inference.
+  const sortedStores = [...allStoresWithPlaceholders].sort((a, b) => {
     if (a.name === StoreName.CV2) return -1;
     if (b.name === StoreName.CV2) return 1;
     return a.name.localeCompare(b.name);
@@ -67,7 +65,6 @@ const StoreTabs: React.FC = () => {
           <button
             key={name}
             onClick={() => handleClick(name)}
-            onContextMenu={(e) => handleContextMenu(e, name)}
             onMouseDown={() => handlePressStart(name)}
             onMouseUp={handlePressEnd}
             onMouseLeave={handlePressEnd}

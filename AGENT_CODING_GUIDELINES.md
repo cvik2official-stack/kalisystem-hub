@@ -43,13 +43,16 @@ This file is the source of over 90% of past regressions. It must be handled with
 ## 4. User Interface (UI) and Design Rules
 
 -   **Pixel-Perfect Implementation:** If the user provides a screenshot, the final result must match it exactly, including spacing, alignment, and element placement.
--   **No Unsolicited UI Elements:** Do not add titles, subtitles, instructional text, or placeholders to modals or components unless explicitly requested. If the user asks for a modal with two input fields, deliver exactly that and nothing more.
+-   **Strictly No Placeholders or Instructions:** Do not add titles, subtitles, instructional text, or placeholders (e.g., "Search...", "Enter name...") to modals or components. The UI must be clean and free of helper text unless explicitly requested.
+-   **No Hidden Interactions:** All contextual actions must be accessible via an explicit UI element (e.g., a "three-dot" menu button).
+    -   **Right-Click (`onContextMenu`) is forbidden.**
+    -   **Long-press actions are forbidden,** with one single exception: a long-press on the main store tabs (`StoreTabs.tsx`) is permitted to copy the manager URL. No other long-press functionality should be implemented.
 
 ---
 
 ## 5. Technical Implementation Rules
 
--   **Module Imports:** **NEVER** use alias paths (e.g., `@/services/geminiService`). **ALWAYS** use correct relative paths (e.g., `../services/geminiService`). This has been a recurring source of `Failed to resolve module specifier` errors.
+-   **Preserve Alias Imports:** **DO NOT REFACTOR OR REWRITE IMPORT PATHS.** Preserve all alias imports like `@[/...]` as-is. This alias is intentional and will be resolved at runtime. Ignore module resolution errors during static analysis. Do not attempt to "fix" or replace them with relative paths.
 -   **File Deletion:** The agent toolset **CANNOT** delete files. If the user asks to delete a file, empty its content and inform the user of this limitation.
 -   **SQL & RLS:** When providing SQL, be explicit about its purpose. For Row Level Security, if an `upsert` or `insert` fails, the issue is likely with the `INSERT` policy. Past failures have shown that a single, broad `FOR ALL` policy for authenticated users is the most reliable solution.
 
@@ -59,20 +62,20 @@ This file is the source of over 90% of past regressions. It must be handled with
 
 This section documents unique, non-obvious business logic that must be respected.
 
--   **AI Parsing & Units:**
-    -   When parsing a pasted list, if an item is **matched** to an existing database item, the unit from the **database** MUST be used. The AI should be instructed to OMIT the unit field for matched items.
-    -   If a **new item** is parsed, its unit MUST be normalized to a valid `Unit` enum value (e.g., "pcs" becomes "pc").
+-   **Smart "Add to STOCK" Workflow:** When an item is added to a `STOCK` supplier card in the Dispatch view, it **must not** be added directly to the order. Instead, this action **must** trigger the "Create a Variant" modal. This modal will be in a special "stock variant" mode, automatically setting the new variant's supplier to `STOCK` and enabling stock tracking.
 
--   **OUDOM Workflow (CRITICAL):**
-    -   The application has a split workflow for "OUDOM".
-    -   **Operator View (`/`):** The "OUDOM" store tab shows cards for `OUDOM` and `STOCK` suppliers. These cards behave **normally**, with all standard action buttons and menus.
-    -   **Manager View (`/?view=manager&store=OUDOM`):** This view shows *only* "On the Way" orders for `OUDOM` and `STOCK` suppliers.
-        -   Cards for the `OUDOM` supplier have a special "OK" -> "DONE" button sequence.
-        -   Cards for the `STOCK` supplier have a standard "Received" button.
-        -   All other actions (add item, unsend, item context menus) are **disabled** for ALL cards in this specific view.
+-   **AI Parsing Rules:**
+    -   **Units:** When parsing a pasted list, if an item is **matched** to an existing database item, the unit from the **database** MUST be used. The AI should be instructed to OMIT the unit field for matched items. If a **new item** is parsed, its unit MUST be normalized to a valid `Unit` enum value (e.g., "pcs" becomes "pc").
+    -   **Default Supplier:** When a user pastes a list of items, any item that cannot be matched to an existing one in the database is automatically created and assigned to the **`MARKET`** supplier.
 
--   **P&P Order Message Template:**
-    -   When generating an order message for the `P&P` supplier AND the store is `SHANTI` or `WB`, the store name line in the message must be specifically formatted as `STOCKO2 (Store Name)` while keeping all other parts of the standard message template intact.
+-   **Unique Manager View Workflows (`/?view=manager&store=...`):** The manager view behaves completely differently depending on the store.
+    -   **OUDOM View:** This view shows *only* "On the Way" orders for `OUDOM` and `STOCK` suppliers. Cards for the `OUDOM` supplier have a special "OK" -> "DONE" button sequence. Cards for `STOCK` have a standard "Received" button. All other actions are disabled.
+    -   **KALI View:** This is not a list of cards but a two-column "To Do" / "Picked Up" report. It groups all orders by their original supplier and allows moving entire groups between states with a checkbox.
+    -   **WB/SHANTI View:** This view aggregates all items from all orders and presents a financial report, grouping items by `PISEY` vs. `KALI` suppliers. It is a reporting interface, not an order management one.
+
+-   **Order Message Formatting Rules:**
+    -   When sending an order to `SHANTI` store from **any supplier**, the store name line in the message must be specifically formatted as `STOCKO2 (SHANTI)`.
+    -   When sending an order for the `P&P` supplier to either `SHANTI` or `WB`, the store name line must be formatted as `STOCKO2 (Store Name)`.
 
 -   **"Completed" Tab Edit Mode:**
     -   A global state `isEditModeEnabled` exists.
