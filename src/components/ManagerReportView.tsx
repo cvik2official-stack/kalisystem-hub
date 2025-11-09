@@ -260,6 +260,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
             [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
             [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
             [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+            [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
         };
 
         return (

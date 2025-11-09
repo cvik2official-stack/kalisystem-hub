@@ -15,6 +15,7 @@ const MergeByPaymentModal: React.FC<MergeByPaymentModalProps> = ({ isOpen, onClo
     [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300 hover:bg-green-500 hover:text-white',
     [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300 hover:bg-purple-500 hover:text-white',
     [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300 hover:bg-gray-500 hover:text-white',
+    [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300 hover:bg-orange-500 hover:text-white',
   };
 
   const handleSelect = (method: PaymentMethod) => {

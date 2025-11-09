@@ -1,4 +1,3 @@
-
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -19,6 +18,7 @@ export enum PaymentMethod {
   CASH = 'cash',
   KALI = 'kali',
   STOCK = 'stock',
+  MISHA = 'misha',
 }
 
 // FIX: Define SyncStatus here to be the single source of truth.

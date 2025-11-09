@@ -38,6 +38,7 @@ const CardHeader: React.FC<{
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
         [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
         [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+        [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
     };
     const isManagerView = !!showStoreName;
     const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
@@ -1051,7 +1052,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
-    const isEffectivelyCollapsed = isManuallyCollapsed || (!!draggedItem && draggedItem.sourceOrderId !== order.id);
+    const isEffectivelyCollapsed = (!!draggedItem && draggedItem.sourceOrderId !== order.id) ? true : isManuallyCollapsed;
     const canEditCard = (!isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) || (order.status === OrderStatus.COMPLETED && isEditModeEnabled);
     const canChangePayment = canEditCard || (!isManagerView && order.status === OrderStatus.ON_THE_WAY);
     
@@ -1099,7 +1100,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 <div className="flex-grow pt-1 pb-1 px-2 space-y-1">
                     {order.items.map(item => {
                          const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-                         const displayPrice = (order.status === OrderStatus.COMPLETED && !isManagerView) ? (item.price ?? masterPrice) : undefined;
+                         const displayPrice = ((order.status === OrderStatus.COMPLETED || order.status === OrderStatus.ON_THE_WAY) && !isManagerView) ? (item.price ?? masterPrice) : undefined;
                         return (
                             <OrderItemRow
                                 key={`${item.itemId}-${item.isSpoiled ? 'spoiled' : 'ok'}`}
