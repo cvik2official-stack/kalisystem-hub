@@ -382,10 +382,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const handleQuantityClick = (item: OrderItem) => {
         setSelectedItem(item);
         if (order.status === OrderStatus.COMPLETED && !isManagerView && !isEditModeEnabled) {
-            setEditingPriceItemId(item.itemId);
-            const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-            const priceForEditing = item.price ?? masterPrice;
-            setEditedItemPrice(priceForEditing != null ? String(priceForEditing) : '');
+            setIsPriceNumpadOpen(true);
         } else if (order.status !== OrderStatus.COMPLETED || (order.status === OrderStatus.COMPLETED && isEditModeEnabled)) {
             setIsSpoilMode(false); // Default is quantity edit
             setNumpadOpen(true);
@@ -629,8 +626,19 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const handleChangeSupplier = async (newSupplier: Supplier) => {
         setIsProcessing(true);
         try {
-            await actions.updateOrder({ ...order, supplierId: newSupplier.id, supplierName: newSupplier.name });
-            notify(`Order changed to ${newSupplier.name}.`, 'success');
+            let supplierToUse = newSupplier;
+            // Check if a new supplier is being created on-the-fly
+            if (newSupplier.id.startsWith('new_')) {
+                notify(`Creating new supplier: ${newSupplier.name}...`, 'info');
+                // Call the action to add the supplier to the database first
+                const newSupplierFromDb = await actions.addSupplier({ name: newSupplier.name });
+                // Use the returned supplier object which has a real UUID
+                supplierToUse = newSupplierFromDb;
+            }
+    
+            // Now update the order with the correct supplier ID (which is a real UUID)
+            await actions.updateOrder({ ...order, supplierId: supplierToUse.id, supplierName: supplierToUse.name });
+            notify(`Order changed to ${supplierToUse.name}.`, 'success');
         } finally {
             setIsProcessing(false);
             setChangeSupplierModalOpen(false);
@@ -768,7 +776,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     { label: 'Telegram Receipt', action: handleSendTelegramReceipt }
                 );
                 if (isEditModeEnabled) {
-                     options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
+                     options.push(
+                        { label: 'Add Item...', action: () => setAddItemModalOpen(true) },
+                        { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) }
+                     );
                 }
                 if (!isManagerView) {
                     options.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
@@ -918,16 +929,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentMasterItem.name;
         
         let newItemName;
-        if (variantData.name) {
+        if (variantData.trackStock && !variantData.name) {
+            newItemName = `> ${baseName}`;
+        } else if (variantData.name) {
             newItemName = `${baseName} (${variantData.name})`;
-        } else {
-            newItemName = baseName;
-        }
-
-        if (variantData.trackStock) {
-            if (!newItemName.startsWith('> ')) {
+            if (variantData.trackStock) {
                 newItemName = `> ${newItemName}`;
             }
+        } else {
+            newItemName = baseName;
         }
     
         const parentIdForNewVariant = parentMasterItem.parentId || parentMasterItem.id;
@@ -973,18 +983,17 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentItem.name;
         
         let newItemName;
-        if (variantData.name) {
+        if (variantData.trackStock && !variantData.name) {
+            newItemName = `> ${baseName}`;
+        } else if (variantData.name) {
             newItemName = `${baseName} (${variantData.name})`;
+            if (variantData.trackStock) {
+                newItemName = `> ${newItemName}`;
+            }
         } else {
             newItemName = baseName;
         }
 
-        if (variantData.trackStock) {
-            if (!newItemName.startsWith('> ')) {
-                newItemName = `> ${newItemName}`;
-            }
-        }
-    
         const parentIdForNewVariant = parentItem.parentId || parentItem.id;
         const stockSupplier = state.suppliers.find(s => s.name === SupplierName.STOCK);
         if (!stockSupplier) {
@@ -1105,11 +1114,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                 onQuantityClick={() => handleQuantityClick(item)}
                                 onActionsClick={(e) => handleItemActionsClick(e, item)}
                                 isActionsDisabled={isOudomManagerWorkflow}
-                                isEditingPrice={editingPriceItemId === item.itemId}
-                                editedItemPrice={editedItemPrice}
-                                onPriceChange={setEditedItemPrice}
-                                onPriceSave={handleSaveItemPrice}
-                                onPriceCancel={() => setEditingPriceItemId(null)}
+                                isEditingPrice={false}
+                                editedItemPrice={''}
+                                onPriceChange={()=>{}}
+                                onPriceSave={()=>{}}
+                                onPriceCancel={()=>{}}
                                 displayPrice={displayPrice}
                                 dropZoneProps={{
                                     className: dragOverItemId === item.itemId ? 'border-t-2 border-indigo-500' : '',

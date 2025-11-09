@@ -437,7 +437,6 @@ export const generateDueReportMessage = (orders: Order[], itemPrices: ItemPrice[
 
     for (const key of sortedGroupKeys) {
         const group = groupMap.get(key)!;
-        if (group.total <= 0) continue;
 
         let block = `${key} (${group.total.toFixed(2)})\n`;
         const sortedItems = Array.from(group.items.values()).sort((a,b) => a.name.localeCompare(b.name));

@@ -147,7 +147,8 @@ const OrderWorkspace: React.FC = () => {
     } else if (activeStore === StoreName.KALI) {
         filtered = orders.filter(order => {
             const supplier = suppliers.find(s => s.id === order.supplierId);
-            return supplier?.paymentMethod === PaymentMethod.KALI && order.status === activeStatus;
+            const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
+            return effectivePaymentMethod === PaymentMethod.KALI && order.status === activeStatus;
         });
     } else {
         filtered = orders.filter(order => order.store === activeStore && order.status === activeStatus);
@@ -201,10 +202,13 @@ const OrderWorkspace: React.FC = () => {
 
   const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
     const options = [];
+    
+    // "Enable Edit" is now available for all date groups.
+    options.push({ label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) });
 
     if (dateGroupKey === 'Today') {
+        // These actions are still specific to "Today".
         options.push(
-            { label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) },
             { label: 'Merge by Payment...', action: () => setIsMergeModalOpen(true) },
             { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
