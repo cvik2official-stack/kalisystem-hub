@@ -1,9 +1,95 @@
-import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice, Supplier, Store } from '../types';
+import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice, Supplier, Store, AppSettings } from '../types';
 
-const escapeHtml = (text: string): string => {
+export const escapeHtml = (text: string): string => {
   if (typeof text !== 'string') return '';
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 };
+
+const replacePlaceholders = (template: string, replacements: Record<string, string>): string => {
+    let result = template;
+    for (const key in replacements) {
+        result = result.replace(new RegExp(`{{${key}}}`, 'g'), replacements[key]);
+    }
+    return result;
+};
+
+// --- START: UNIFIED REPORTING LOGIC ---
+
+/**
+ * A centralized, private utility for generating the body of an aggregated items report.
+ * This handles the complex logic of grouping, aggregating items, calculating totals,
+ * and formatting the final text block.
+ * @private
+ */
+const _generateAggregatedItemsReport = (
+    orders: Order[],
+    itemPrices: ItemPrice[],
+    groupBy: 'store' | 'supplier'
+): { reportBody: string; totalSpendings: number } => {
+    
+    const groupMap = new Map<string, { total: number; items: Map<string, { name: string; quantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }> }>();
+
+    for (const order of orders) {
+        const key = groupBy === 'store' ? order.store : order.supplierName;
+        if (!groupMap.has(key)) {
+            groupMap.set(key, { total: 0, items: new Map() });
+        }
+        const group = groupMap.get(key)!;
+
+        for (const item of order.items) {
+            if (item.isSpoiled) continue;
+
+            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+            const price = item.price ?? masterPrice ?? 0;
+            const itemValue = price * item.quantity;
+            group.total += itemValue;
+
+            const itemKey = `${item.itemId}-${item.unit || 'none'}`;
+            const existingItem = group.items.get(itemKey);
+
+            if (existingItem) {
+                existingItem.quantity += item.quantity;
+                existingItem.totalValue += itemValue;
+                if (price > 0) existingItem.priceEntries.push(price);
+            } else {
+                group.items.set(itemKey, {
+                    name: item.name,
+                    quantity: item.quantity,
+                    unit: item.unit,
+                    totalValue: itemValue,
+                    priceEntries: price > 0 ? [price] : [],
+                });
+            }
+        }
+    }
+
+    const totalSpendings = Array.from(groupMap.values()).reduce((acc, group) => acc + group.total, 0);
+    const sortedGroupKeys = Array.from(groupMap.keys()).sort((a, b) => a.localeCompare(b));
+    const groupBlocks: string[] = [];
+
+    for (const key of sortedGroupKeys) {
+        const group = groupMap.get(key)!;
+        if (group.total <= 0) continue;
+
+        let block = `${key} (${group.total.toFixed(2)})\n`;
+        const sortedItems = Array.from(group.items.values()).sort((a,b) => a.name.localeCompare(b.name));
+
+        for (const item of sortedItems) {
+            const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
+            const unitDisplay = item.unit || '';
+            block += `${item.name} x${item.quantity}${unitDisplay} @ ${avgPrice.toFixed(2)} = ${item.totalValue.toFixed(2)}\n`;
+        }
+        groupBlocks.push(block);
+    }
+    
+    return {
+        reportBody: groupBlocks.join('__________________\n'),
+        totalSpendings,
+    };
+};
+
+// --- END: UNIFIED REPORTING LOGIC ---
+
 
 export const renderReceiptTemplate = (template: string, order: Order, itemPrices: ItemPrice[]): string => {
     let grandTotal = 0;
@@ -39,15 +125,69 @@ export const renderReceiptTemplate = (template: string, order: Order, itemPrices
 };
 
 
-export const generateOrderMessage = (order: Order, format: 'plain' | 'html', supplier?: Supplier, stores?: Store[]): string => {
+export const generateOrderMessage = (order: Order, format: 'plain' | 'html', supplier: Supplier | undefined, stores: Store[] | undefined, settings: AppSettings): string => {
     const isHtml = format === 'html';
+    const templates = settings.messageTemplates || {};
 
-    // Determine the correct store display name based on supplier and store rules.
+    let template = supplier?.botSettings?.messageTemplate;
+    if (!template) {
+        switch (supplier?.name) {
+            case SupplierName.KALI:
+                template = templates.kaliOrder;
+                break;
+            case SupplierName.OUDOM:
+                template = templates.oudomOrder;
+                break;
+            default:
+                template = templates.defaultOrder;
+        }
+    }
+
+    // Fallback to original hardcoded logic if no template is found
+    if (!template) {
+        // This block is now a fallback and should mirror the original logic
+        let storeDisplayName: string = order.store;
+        if (order.supplierName === SupplierName.P_AND_P && (order.store === StoreName.SHANTI || order.store === StoreName.WB)) {
+            storeDisplayName = `STOCKO2 (${order.store})`;
+        } else if (order.store === StoreName.SHANTI) {
+            storeDisplayName = 'STOCKO2 (SHANTI)';
+        }
+
+        let finalStoreDisplay = isHtml ? escapeHtml(storeDisplayName) : storeDisplayName;
+        if (isHtml && supplier?.botSettings?.includeLocation) {
+            const store = stores?.find(s => s.name === order.store);
+            if (store?.locationUrl) {
+                finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${finalStoreDisplay}</a>`;
+            }
+        }
+
+        if (order.supplierName === SupplierName.KALI) {
+            const header = isHtml ? `<b>${finalStoreDisplay}</b>` : storeDisplayName;
+            const itemsList = order.items.map(item => `${isHtml ? escapeHtml(item.name) : item.name} x${item.quantity}${item.unit || ''}`).join('\n');
+            return `${header}\n${itemsList}`;
+        }
+
+        const header = isHtml
+            ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${finalStoreDisplay}</b>\n\n`
+            : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${storeDisplayName}\n\n`;
+        
+        const itemsList = order.items.map(item => `${isHtml ? escapeHtml(item.name) : item.name} x${item.quantity}${item.unit ? ` ${item.unit}` : ''}`).join('\n');
+
+        let message = `${header}${itemsList}`;
+
+        if (order.supplierName === SupplierName.OUDOM) {
+            const oudomFooter = isHtml ? `\n\nPlease approve and mark as done from the app:\n<a href="https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM">OUDOM TASKS</a>` : `\n\nPlease approve and mark as done from the app:\nOUDOM TASKS hyperlink: https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM`;
+            message += oudomFooter;
+        }
+
+        return message;
+    }
+
+    // --- Template-based rendering ---
     let storeDisplayName: string = order.store;
     if (order.supplierName === SupplierName.P_AND_P && (order.store === StoreName.SHANTI || order.store === StoreName.WB)) {
         storeDisplayName = `STOCKO2 (${order.store})`;
     } else if (order.store === StoreName.SHANTI) {
-        // This is the pre-existing special case for SHANTI with other suppliers.
         storeDisplayName = 'STOCKO2 (SHANTI)';
     }
 
@@ -58,157 +198,96 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html', sup
             finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${finalStoreDisplay}</a>`;
         }
     }
-
-    // KALI supplier has a special, simplified format
-    if (order.supplierName === SupplierName.KALI) {
-        const header = isHtml ? `<b>${finalStoreDisplay}</b>` : storeDisplayName;
-        const itemsList = order.items.map(item => {
-            const unitText = item.unit ? (isHtml ? escapeHtml(item.unit) : item.unit) : '';
-            const itemName = isHtml ? escapeHtml(item.name) : item.name;
-            return `${itemName} x${item.quantity}${unitText}`;
-        }).join('\n');
-        return `${header}\n${itemsList}`;
-    }
-
-    // Default message format for all other suppliers
-    const header = isHtml
-        ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${finalStoreDisplay}</b>\n\n`
-        : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${storeDisplayName}\n\n`;
     
     const itemsList = order.items.map(item => {
-        const unitText = item.unit ? ` ${isHtml ? escapeHtml(item.unit) : item.unit}` : '';
-        // Removed italic formatting from item name for HTML messages
-        const itemName = isHtml ? escapeHtml(item.name) : item.name;
-        return `${itemName} x${item.quantity}${unitText}`;
+        const name = isHtml ? escapeHtml(item.name) : item.name;
+        const unit = item.unit ? (isHtml ? ` ${escapeHtml(item.unit)}` : ` ${item.unit}`) : '';
+        return `${name} x${item.quantity}${unit}`;
     }).join('\n');
 
-    let message = `${header}${itemsList}`;
+    const replacements = {
+        orderId: isHtml ? escapeHtml(order.orderId) : order.orderId,
+        storeName: finalStoreDisplay,
+        items: itemsList
+    };
 
-    if (order.supplierName === SupplierName.OUDOM) {
-        const oudomFooterPlain = `Please approve and mark as done from the app:\nOUDOM TASKS hyperlink: https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM`;
-        const oudomFooterHtml = `Please approve and mark as done from the app:\n<a href="https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM">OUDOM TASKS</a>`;
-        message += `\n\n${isHtml ? oudomFooterHtml : oudomFooterPlain}`;
+    let message = replacePlaceholders(template, replacements);
+    if (!isHtml) {
+        // Strip HTML tags for plain text format
+        message = message.replace(/<[^>]*>?/gm, '');
     }
 
     return message;
 };
 
-export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[]): string => {
+
+export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[], settings: AppSettings): string => {
+    const template = settings.messageTemplates?.telegramReceipt;
     let grandTotal = 0;
 
     const itemsList = order.items.map(item => {
-        // Find price: first from the order item, then fallback to master price list
         const price = item.price ?? itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-        
-        const itemName = escapeHtml(item.name);
-        const quantityText = `${item.quantity}${item.unit ? escapeHtml(item.unit) : ''}`;
+        const itemName = item.name;
+        const quantityText = `${item.quantity}${item.unit || ''}`;
         
         let line = `- ${itemName} (${quantityText})`;
 
         if (price !== undefined) {
             const itemTotal = price * item.quantity;
             grandTotal += itemTotal;
-            line += ` @ $${price.toFixed(2)} = <b>$${itemTotal.toFixed(2)}</b>`;
+            line += ` @ $${price.toFixed(2)} = $${itemTotal.toFixed(2)}`;
         }
         return line;
     }).join('\n');
 
-    const header = `🧾 <b>Receipt for Order <code>${escapeHtml(order.orderId)}</code></b>\n` +
+    if (!template) {
+        // Fallback to hardcoded version if template is missing
+        const header = `🧾 <b>Receipt for Order <code>${escapeHtml(order.orderId)}</code></b>\n` +
                  `<b>Store:</b> ${escapeHtml(order.store)}\n` +
                  `<b>Supplier:</b> ${escapeHtml(order.supplierName)}\n` +
                  `<b>Date:</b> ${new Date(order.completedAt || order.createdAt).toLocaleDateString()}`;
 
-    const footer = `\n---------------------\n` +
-                   `<b>Grand Total: $${grandTotal.toFixed(2)}</b>`;
+        const footer = `\n---------------------\n` +
+                       `<b>Grand Total: $${grandTotal.toFixed(2)}</b>`;
 
-    return `${header}\n\n${itemsList}\n${footer}`;
+        return `${header}\n\n${itemsList.replace(/\$/g, '<b>$') .replace(/=/g, '=</b>')} \n${footer}`;
+    }
+
+    const replacements = {
+        orderId: order.orderId,
+        store: order.store,
+        supplierName: order.supplierName,
+        date: new Date(order.completedAt || order.createdAt).toLocaleDateString(),
+        items: itemsList,
+        grandTotal: `$${grandTotal.toFixed(2)}`
+    };
+
+    // For HTML telegram messages, we often want to bold prices. This is a simple heuristic.
+    let message = replacePlaceholders(template, replacements);
+    message = message.replace(/\$([0-9\.]+)/g, '<b>$$$1</b>');
+
+    return message;
 };
 
 export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[], previousDue: number, topUp: number): string => {
     const today = new Date();
     const formattedDate = `${String(today.getDate()).padStart(2, '0')}.${String(today.getMonth() + 1).padStart(2, '0')}`;
     
-    const topDue = previousDue;
-    const topTopup = topUp;
-    const topTotal = topDue + topTopup;
+    const topTotal = previousDue + topUp;
 
     let message = `Date ${formattedDate}\n`;
-    message += `Due: ${topDue.toFixed(2)}\n`;
-    message += `Topup: ${topTopup.toFixed(2)}\n`;
+    message += `Due: ${previousDue.toFixed(2)}\n`;
+    message += `Topup: ${topUp.toFixed(2)}\n`;
     message += `Total: ${topTotal.toFixed(2)}\n`;
     message += `__________________\n`;
 
-    const ordersByStore = orders.reduce((acc, order) => {
-        if (!acc[order.store]) {
-            acc[order.store] = [];
-        }
-        acc[order.store].push(order);
-        return acc;
-    }, {} as Record<string, Order[]>);
-
-    let totalSpendings = 0;
-    const storeBlocks: string[] = [];
-
-    // Calculate totals and details for each store
-    for (const storeName in ordersByStore) {
-        const storeOrders = ordersByStore[storeName];
-        if (storeOrders.length === 0) continue;
-
-        let storeTotalAmount = 0;
-        
-        // Aggregate items to handle multiple orders from the same supplier (KALI) to the same store
-        const aggregatedItems = new Map<string, { name: string; quantity: number; unit?: Unit, price: number }>();
-
-        storeOrders.forEach(order => {
-            order.items.forEach(item => {
-                if (item.isSpoiled) return;
-                
-                const price = item.price ?? itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price ?? 0;
-                
-                const key = `${item.itemId}-${item.unit || 'none'}`; // Key by item and unit to be safe
-                const existing = aggregatedItems.get(key);
-
-                if (existing) {
-                    const existingTotalValue = existing.price * existing.quantity;
-                    const newItemTotalValue = price * item.quantity;
-                    const newTotalQuantity = existing.quantity + item.quantity;
-                    
-                    existing.quantity = newTotalQuantity;
-                    if (newTotalQuantity > 0) {
-                        // Recalculate weighted average price
-                        existing.price = (existingTotalValue + newItemTotalValue) / newTotalQuantity;
-                    }
-                } else {
-                    aggregatedItems.set(key, { name: item.name, quantity: item.quantity, unit: item.unit, price: price });
-                }
-            });
-        });
-        
-        let storeItemDetails = '';
-        const sortedItems = Array.from(aggregatedItems.values()).sort((a,b) => a.name.localeCompare(b.name));
-
-        sortedItems.forEach(item => {
-            const itemTotal = item.price * item.quantity;
-            storeTotalAmount += itemTotal;
-            const unitDisplay = item.unit ? item.unit : '';
-            storeItemDetails += `${item.name} x${item.quantity}${unitDisplay} @ ${item.price.toFixed(2)} = ${itemTotal.toFixed(2)}\n`;
-        });
-
-        if (storeTotalAmount > 0) {
-            totalSpendings += storeTotalAmount;
-            const storeHeader = `${storeName} (${storeTotalAmount.toFixed(2)})\n`;
-            storeBlocks.push(storeHeader + storeItemDetails);
-        }
-    }
-
-    // Build the store summary section of the message
-    if (storeBlocks.length > 0) {
-        message += storeBlocks.join('__________________\n');
+    const { reportBody, totalSpendings } = _generateAggregatedItemsReport(orders, itemPrices, 'store');
+    
+    if (reportBody) {
+        message += reportBody + '\n';
     }
     
     message += `__________________\n`;
-
-    // Build the footer section
     message += `Total: ${topTotal.toFixed(2)}\n`;
     message += `Spendings: ${totalSpendings.toFixed(2)}\n`;
     
@@ -385,75 +464,100 @@ export const generateDueReportMessage = (orders: Order[], itemPrices: ItemPrice[
 
     const dateFromOrder = new Date(orders[0].completedAt || orders[0].createdAt);
     const formattedDate = `${String(dateFromOrder.getDate()).padStart(2, '0')}.${String(dateFromOrder.getMonth() + 1).padStart(2, '0')}.${String(dateFromOrder.getFullYear()).slice(-2)}`;
-
-    const groupMap = new Map<string, { total: number; items: Map<string, { name: string; quantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }> }>();
-
-    for (const order of orders) {
-        const key = sortBy === 'store' ? order.store : order.supplierName;
-        if (!groupMap.has(key)) {
-            groupMap.set(key, { total: 0, items: new Map() });
-        }
-        const group = groupMap.get(key)!;
-
-        for (const item of order.items) {
-            if (item.isSpoiled) continue;
-
-            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-            const price = item.price ?? masterPrice ?? 0;
-            const itemValue = price * item.quantity;
-            group.total += itemValue;
-
-            const itemKey = `${item.itemId}-${item.unit || 'none'}`;
-            const existingItem = group.items.get(itemKey);
-
-            if (existingItem) {
-                existingItem.quantity += item.quantity;
-                existingItem.totalValue += itemValue;
-                if (price > 0) existingItem.priceEntries.push(price);
-            } else {
-                group.items.set(itemKey, {
-                    name: item.name,
-                    quantity: item.quantity,
-                    unit: item.unit,
-                    totalValue: itemValue,
-                    priceEntries: price > 0 ? [price] : [],
-                });
-            }
-        }
-    }
-
-    const totalSpendings = Array.from(groupMap.values()).reduce((acc, group) => acc + group.total, 0);
+    
     const totalDue = previousDue + topUp;
-    const newDue = totalDue - totalSpendings;
     
     let message = `${formattedDate}\n`;
     message += `Due: ${previousDue.toFixed(2)}\n`;
     message += `Topup: ${topUp.toFixed(2)}\n`;
     message += `Total: ${totalDue.toFixed(2)}\n`;
     message += `__________________\n`;
-    
-    const sortedGroupKeys = Array.from(groupMap.keys()).sort((a, b) => a.localeCompare(b));
-    const groupBlocks: string[] = [];
 
-    for (const key of sortedGroupKeys) {
-        const group = groupMap.get(key)!;
+    const { reportBody, totalSpendings } = _generateAggregatedItemsReport(orders, itemPrices, sortBy);
 
-        let block = `${key} (${group.total.toFixed(2)})\n`;
-        const sortedItems = Array.from(group.items.values()).sort((a,b) => a.name.localeCompare(b.name));
-
-        for (const item of sortedItems) {
-            const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
-            const unitDisplay = item.unit || '';
-            block += `${item.name} x${item.quantity}${unitDisplay} @ ${avgPrice.toFixed(2)} = ${item.totalValue.toFixed(2)}\n`;
-        }
-        groupBlocks.push(block);
+    if (reportBody) {
+        message += reportBody + '\n';
     }
-
-    message += groupBlocks.join('__________________\n');
+    
     message += `__________________\n`;
     message += `Total: ${totalDue.toFixed(2)}\n`;
     message += `Spendings: ${totalSpendings.toFixed(2)}\n`;
+    
+    const newDue = totalDue - totalSpendings;
     message += `New Due: ${newDue.toFixed(2)}\n`;
 
     return message;
+};
+
+export const generateConsolidatedReceipt = (orders: Order[], itemPrices: ItemPrice[], format: 'plain' | 'html'): string => {
+    if (orders.length === 0) return "No completed orders for this date.";
+
+    const isHtml = format === 'html';
+    const storeName = orders[0].store;
+    const date = new Date(orders[0].completedAt || orders[0].createdAt);
+    const formattedDate = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getFullYear()).slice(-2)}`;
+
+    const ordersBySupplier = new Map<string, { name: SupplierName, items: Map<string, { name: string; quantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }> }>();
+    let grandTotal = 0;
+
+    for (const order of orders) {
+        if (!ordersBySupplier.has(order.supplierId)) {
+            ordersBySupplier.set(order.supplierId, { name: order.supplierName, items: new Map() });
+        }
+        const supplierGroup = ordersBySupplier.get(order.supplierId)!;
+
+        for (const item of order.items) {
+            if (item.isSpoiled) continue;
+            
+            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+            const price = item.price ?? masterPrice ?? 0;
+            const itemValue = price * item.quantity;
+            grandTotal += itemValue;
+
+            const itemKey = `${item.itemId}-${item.unit || 'none'}`;
+            const existingItem = supplierGroup.items.get(itemKey);
+
+            if (existingItem) {
+                existingItem.quantity += item.quantity;
+                existingItem.totalValue += itemValue;
+                if (price > 0) existingItem.priceEntries.push(price);
+            } else {
+                supplierGroup.items.set(itemKey, { name: item.name, quantity: item.quantity, unit: item.unit, totalValue: itemValue, priceEntries: [price] });
+            }
+        }
+    }
+
+    const h = (text: string) => isHtml ? escapeHtml(text) : text;
+    const b = (text: string) => isHtml ? `<b>${h(text)}</b>` : text;
+
+    let result = `${b('CONSOLIDATED RECEIPT')}\n`;
+    result += `${b('Store:')} ${h(storeName)}\n`;
+    result += `${b('Date:')} ${h(formattedDate)}\n`;
+    result += isHtml ? '<hr>\n' : '--------------------\n';
+
+    const sortedSuppliers = Array.from(ordersBySupplier.values()).sort((a,b) => a.name.localeCompare(b.name));
+
+    for (const supplier of sortedSuppliers) {
+        const supplierTotal = Array.from(supplier.items.values()).reduce((sum, item) => sum + item.totalValue, 0);
+        result += `\n${b(supplier.name)} - ${b(`$${supplierTotal.toFixed(2)}`)}\n`;
+        const sortedItems = Array.from(supplier.items.values()).sort((a,b) => a.name.localeCompare(b.name));
+        for (const item of sortedItems) {
+            const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
+            const unit = item.unit || '';
+            if (isHtml) {
+                 result += `${h(item.name)} (${item.quantity}${unit}) @ ${avgPrice.toFixed(2)} = <b>$${item.totalValue.toFixed(2)}</b><br>`;
+            } else {
+                 result += `- ${item.name} (${item.quantity}${unit}) @ ${avgPrice.toFixed(2)} = $${item.totalValue.toFixed(2)}\n`;
+            }
+        }
+    }
+
+    result += isHtml ? '<hr>\n' : '--------------------\n';
+    result += `\n${b('GRAND TOTAL:')} ${b(`$${grandTotal.toFixed(2)}`)}`;
+
+    if(isHtml){
+        return `<div style="font-family: monospace; font-size: 12px; max-width: 300px; white-space: pre-wrap;">${result.replace(/\n/g, '<br>')}</div>`;
+    }
+
+    return result;
 };

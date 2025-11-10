@@ -7,6 +7,7 @@
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC;
 
   -- Add a JSONB column to store bot settings for suppliers
+  -- This column stores an object for settings like 'showAttachInvoice', 'showMissingItems', and 'messageTemplate'.
   ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS bot_settings JSONB;
 
   -- Create a table to store item prices per supplier

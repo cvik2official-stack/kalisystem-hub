@@ -4,7 +4,7 @@ import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
-import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod } from './types';
+import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod, Order } from './types';
 import ManagerView from './components/ManagerView';
 import { generateKaliUnifyReport, generateKaliZapReport } from './utils/messageFormatter';
 import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramService';
@@ -23,6 +23,24 @@ const App: React.FC = () => {
   const prevSyncStatusRef = useRef<string | undefined>(undefined);
   const [headerMenu, setHeaderMenu] = useState<{ x: number, y: number } | null>(null);
   const [isKaliReportModalOpen, setIsKaliReportModalOpen] = useState(false);
+
+  const todaysKaliOrders = React.useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return orders.filter(order => {
+        if (order.status !== OrderStatus.COMPLETED || !order.completedAt) return false;
+
+        const completedDate = new Date(order.completedAt);
+        completedDate.setHours(0, 0, 0, 0);
+        if (completedDate.getTime() !== today.getTime()) return false;
+
+        const supplier = suppliers.find(s => s.id === order.supplierId);
+        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+
+        return paymentMethod === PaymentMethod.KALI;
+    });
+  }, [orders, suppliers]);
 
 
   useEffect(() => {
@@ -77,25 +95,9 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSendKaliUnifyReport = async (previousDue: number, topUp: number) => {
+  const handleSendKaliUnifyReport = async (message: string) => {
     setIsSendingReport(true);
     try {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const todaysKaliOrders = orders.filter(order => {
-            if (order.status !== OrderStatus.COMPLETED || !order.completedAt) return false;
-
-            const completedDate = new Date(order.completedAt);
-            completedDate.setHours(0, 0, 0, 0);
-            if (completedDate.getTime() !== today.getTime()) return false;
-
-            const supplier = suppliers.find(s => s.id === order.supplierId);
-            const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-
-            return paymentMethod === PaymentMethod.KALI;
-        });
-
         if (todaysKaliOrders.length === 0) {
             notify('No completed KALI orders found for today.', 'info');
             return;
@@ -106,7 +108,6 @@ const App: React.FC = () => {
             return;
         }
 
-        const message = generateKaliUnifyReport(todaysKaliOrders, itemPrices, previousDue, topUp);
         await sendKaliUnifyReport(message, settings.telegramBotToken);
         notify('Kali Unify Report sent successfully!', 'success');
         setIsKaliReportModalOpen(false);
@@ -156,6 +157,7 @@ const App: React.FC = () => {
         { label: '  Items', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' as SettingsTab }) },
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
         { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
+        { label: '  Templates', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'templates' as SettingsTab }) },
       ];
       if (activeStore !== 'Settings') {
         options.push(
@@ -249,6 +251,8 @@ const App: React.FC = () => {
         onClose={() => setIsKaliReportModalOpen(false)}
         onGenerate={handleSendKaliUnifyReport}
         isSending={isSendingReport}
+        orders={todaysKaliOrders}
+        itemPrices={itemPrices}
       />
     </>
   );

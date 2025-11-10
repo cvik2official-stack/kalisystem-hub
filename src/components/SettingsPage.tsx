@@ -4,6 +4,7 @@ import SuppliersSettings from './settings/SuppliersSettings';
 import StoresSettings from './settings/StoresSettings';
 import { AppContext } from '../context/AppContext';
 import { SettingsTab } from '../types';
+import TemplatesSettings from './settings/TemplatesSettings';
 
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -13,6 +14,7 @@ const SettingsPage: React.FC = () => {
     { id: 'items', label: 'Items' },
     { id: 'suppliers', label: 'Suppliers' },
     { id: 'stores', label: 'Stores' },
+    { id: 'templates', label: 'Templates' },
   ];
 
   return (
@@ -39,6 +41,7 @@ const SettingsPage: React.FC = () => {
         {activeSettingsTab === 'items' && <ItemsSettings />}
         {activeSettingsTab === 'suppliers' && <SuppliersSettings />}
         {activeSettingsTab === 'stores' && <StoresSettings />}
+        {activeSettingsTab === 'templates' && <TemplatesSettings />}
       </div>
     </div>
   );

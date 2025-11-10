@@ -15,6 +15,7 @@ export enum SupplierName {
     MIKHAIL = 'MIKHAIL',
     OUDOM = 'OUDOM',
     STOCK = 'STOCK',
+    PISEY = 'PISEY',
 }
 
 export enum Unit {

@@ -10,6 +10,7 @@ import MergeByPaymentModal from './modals/MergeByPaymentModal';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
 import DueReportModal from './modals/DueReportModal';
+import ReceiptModal from './modals/ReceiptModal';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -44,6 +45,8 @@ const OrderWorkspace: React.FC = () => {
   const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [isDueReportModalOpen, setIsDueReportModalOpen] = useState(false);
   const [ordersForDueReport, setOrdersForDueReport] = useState<Order[]>([]);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [ordersForReceipt, setOrdersForReceipt] = useState<Order[]>([]);
 
 
   const handleStatusChange = (status: OrderStatus) => {
@@ -199,16 +202,26 @@ const OrderWorkspace: React.FC = () => {
     setOrdersForDueReport(ordersForGroup);
     setIsDueReportModalOpen(true);
   };
+  
+  const handleGenerateReceiptForGroup = (dateGroupKey: string) => {
+    const ordersForGroup = groupedCompletedOrders[dateGroupKey] || [];
+     if (ordersForGroup.length === 0) {
+        notify(`No completed orders for ${formatDateGroupHeader(dateGroupKey)} to generate a receipt.`, 'info');
+        return;
+    }
+    setOrdersForReceipt(ordersForGroup);
+    setIsReceiptModalOpen(true);
+  };
 
   const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
     const options = [];
     
-    // "Enable Edit" is now available for all date groups.
     options.push({ label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) });
 
     if (dateGroupKey === 'Today') {
-        // These actions are still specific to "Today".
         options.push(
+            { label: 'Merge KALI...', action: () => (actions as any).mergeKaliOrders() },
+            { label: 'Merge PISEY...', action: () => (actions as any).mergePiseyOrders() },
             { label: 'Merge by Payment...', action: () => setIsMergeModalOpen(true) },
             { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
@@ -216,6 +229,7 @@ const OrderWorkspace: React.FC = () => {
     }
     
     options.push({ label: 'Due Report...', action: () => handleGenerateDueReportForGroup(dateGroupKey) });
+    options.push({ label: 'Receipt...', action: () => handleGenerateReceiptForGroup(dateGroupKey) });
 
     return options;
   };
@@ -385,6 +399,11 @@ const OrderWorkspace: React.FC = () => {
         isOpen={isDueReportModalOpen}
         onClose={() => setIsDueReportModalOpen(false)}
         orders={ordersForDueReport}
+      />
+      <ReceiptModal
+        isOpen={isReceiptModalOpen}
+        onClose={() => setIsReceiptModalOpen(false)}
+        orders={ordersForReceipt}
       />
     </>
   );

@@ -60,6 +60,8 @@ export interface AppContextActions {
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
     upsertItemPrice: (itemPrice: ItemPrice) => Promise<void>;
     mergeTodaysCompletedOrdersByPayment: (paymentMethod: PaymentMethod) => Promise<void>;
+    mergeKaliOrders: () => Promise<void>;
+    mergePiseyOrders: () => Promise<void>;
 }
 
 
@@ -224,6 +226,12 @@ const getInitialState = (): AppState => {
         }
       },
       receiptTemplates: {},
+      messageTemplates: {
+        defaultOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}',
+        kaliOrder: '<b>{{storeName}}</b>\n{{items}}',
+        oudomOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}\n\nPlease approve and mark as done from the app:\n<a href="https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM">OUDOM TASKS</a>',
+        telegramReceipt: '🧾 <b>Receipt for Order <code>{{orderId}}</code></b>\n<b>Store:</b> {{store}}\n<b>Supplier:</b> {{supplierName}}\n<b>Date:</b> {{date}}\n\n{{items}}\n---------------------\n<b>Grand Total: {{grandTotal}}</b>'
+      },
     },
     isLoading: false,
     isInitialized: false,
@@ -265,6 +273,8 @@ export const AppContext = createContext<{
       mergeOrders: async () => {},
       upsertItemPrice: async () => {},
       mergeTodaysCompletedOrdersByPayment: async () => {},
+      mergeKaliOrders: async () => {},
+      mergePiseyOrders: async () => {},
   }
 });
 
@@ -406,7 +416,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             }
             
             // Item does not exist in the order, so add it
-            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
+            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
             notify(`Added "${item.name}" to existing order.`, 'success');
@@ -417,7 +427,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 notify(`Supplier for "${item.name}" not found.`, 'error');
                 return;
             }
-            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, price: masterPrice };
+            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
             await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
         }
     },
@@ -502,6 +512,118 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
 
         notify(`Merged ${ordersToMerge.length} orders into one for ${paymentMethod.toUpperCase()}.`, 'success');
+    },
+    mergeKaliOrders: async () => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const ordersToMerge = state.orders.filter(o => {
+            if (o.status !== OrderStatus.COMPLETED || !o.completedAt) return false;
+            const completedDate = new Date(o.completedAt);
+            completedDate.setHours(0, 0, 0, 0);
+            if (completedDate.getTime() !== today.getTime()) return false;
+            
+            const supplier = state.suppliers.find(s => s.id === o.supplierId);
+            const paymentMethod = o.paymentMethod || supplier?.paymentMethod;
+
+            return paymentMethod === PaymentMethod.KALI || o.supplierName === SupplierName.KALI;
+        });
+
+        if (ordersToMerge.length < 2) {
+            notify(`Found ${ordersToMerge.length} KALI-related order(s). Need at least 2 to merge.`, 'info');
+            return;
+        }
+
+        const kaliSupplier = state.suppliers.find(s => s.name === SupplierName.KALI);
+        if (!kaliSupplier) {
+            notify('KALI supplier not found. Cannot merge.', 'error');
+            return;
+        }
+
+        const destinationOrder = { ...ordersToMerge[0] };
+        destinationOrder.supplierId = kaliSupplier.id;
+        destinationOrder.supplierName = kaliSupplier.name;
+        destinationOrder.paymentMethod = PaymentMethod.KALI;
+        
+        const sourceOrders = ordersToMerge.slice(1);
+        
+        const aggregatedItems = new Map<string, OrderItem>();
+        ordersToMerge[0].items.forEach(item => {
+            const key = `${item.itemId}-${item.unit || 'none'}`;
+            aggregatedItems.set(key, { ...item });
+        });
+
+        for (const sourceOrder of sourceOrders) {
+            for (const itemToMerge of sourceOrder.items) {
+                const key = `${itemToMerge.itemId}-${itemToMerge.unit || 'none'}`;
+                const existingItem = aggregatedItems.get(key);
+                if (existingItem) {
+                    existingItem.quantity += itemToMerge.quantity;
+                } else {
+                    aggregatedItems.set(key, { ...itemToMerge });
+                }
+            }
+        }
+
+        destinationOrder.items = Array.from(aggregatedItems.values());
+        
+        await actions.updateOrder(destinationOrder);
+
+        for (const sourceOrder of sourceOrders) {
+            if(sourceOrder.id !== destinationOrder.id) {
+                await actions.deleteOrder(sourceOrder.id);
+            }
+        }
+
+        notify(`Merged ${ordersToMerge.length} KALI orders into one.`, 'success');
+    },
+    mergePiseyOrders: async () => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const ordersToMerge = state.orders.filter(o => {
+            if (o.status !== OrderStatus.COMPLETED || !o.completedAt) return false;
+            const completedDate = new Date(o.completedAt);
+            completedDate.setHours(0, 0, 0, 0);
+            // FIX: Use enum for 'PISEY' to ensure type safety and prevent comparison errors.
+            return completedDate.getTime() === today.getTime() && o.supplierName === SupplierName.PISEY;
+        });
+
+        if (ordersToMerge.length < 2) {
+            notify(`Found ${ordersToMerge.length} PISEY order(s). Need at least 2 to merge.`, 'info');
+            return;
+        }
+
+        const destinationOrder = { ...ordersToMerge[0] };
+        const sourceOrders = ordersToMerge.slice(1);
+        
+        const aggregatedItems = new Map<string, OrderItem>();
+        destinationOrder.items.forEach(item => {
+            const key = `${item.itemId}-${item.unit || 'none'}`;
+            aggregatedItems.set(key, { ...item });
+        });
+
+        for (const sourceOrder of sourceOrders) {
+            for (const itemToMerge of sourceOrder.items) {
+                const key = `${itemToMerge.itemId}-${itemToMerge.unit || 'none'}`;
+                const existingItem = aggregatedItems.get(key);
+                if (existingItem) {
+                    existingItem.quantity += itemToMerge.quantity;
+                } else {
+                    aggregatedItems.set(key, { ...itemToMerge });
+                }
+            }
+        }
+        
+        destinationOrder.items = Array.from(aggregatedItems.values());
+        
+        await actions.updateOrder(destinationOrder);
+
+        for (const sourceOrder of sourceOrders) {
+            await actions.deleteOrder(sourceOrder.id);
+        }
+        
+        notify(`Merged ${ordersToMerge.length} PISEY orders into one.`, 'success');
     },
     syncWithSupabase,
   };

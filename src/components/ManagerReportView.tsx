@@ -119,8 +119,8 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
             return null;
         }
 
-        const piseyOrders = orders.filter(o => o.supplierName.toUpperCase() === 'PISEY');
-        const otherOrders = orders.filter(o => o.supplierName.toUpperCase() !== 'PISEY');
+        const piseyOrders = orders.filter(o => o.supplierName === SupplierName.PISEY);
+        const otherOrders = orders.filter(o => o.supplierName !== SupplierName.PISEY);
 
         const aggregate = (orderList: Order[]): AggregatedItem[] => {
             const itemMap = new Map<string, AggregatedItem>();

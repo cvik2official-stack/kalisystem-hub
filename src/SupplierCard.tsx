@@ -1,23 +1,23 @@
 import React, { useContext, useState, useRef, useEffect, useMemo } from 'react';
 // FIX: Correct import paths for modules based on the file's location.
-import { AppContext } from '../context/AppContext';
-import { Order, OrderItem, OrderStatus, Unit, Item, Supplier, PaymentMethod, StoreName, ItemPrice, SupplierName } from '../types';
-import NumpadModal from './modals/NumpadModal';
-import AddItemModal from './modals/AddItemModal';
-import ContextMenu from './ContextMenu';
-import { useNotifier } from '../context/NotificationContext';
-import EditItemModal from './modals/EditItemModal';
-import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from '../utils/messageFormatter';
-import EditSupplierModal from './modals/EditSupplierModal';
-import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram, sendReceiptToStoreOnTelegram } from '../services/telegramService';
-import AddSupplierModal from './modals/AddSupplierModal';
-import MergeOrderModal from './modals/MergeOrderModal';
-import PriceNumpadModal from './modals/PriceNumpadModal';
-import { generateReceiptTemplateHtml } from '../services/geminiService';
-import InvoicePreviewModal from './modals/InvoicePreviewModal';
-import PaymentMethodModal from './modals/PaymentMethodModal';
-import MoveToStoreModal from './modals/MoveToStoreModal';
-import CreateVariantModal from './modals/CreateVariantModal';
+import { AppContext } from './context/AppContext';
+import { Order, OrderItem, OrderStatus, Unit, Item, Supplier, PaymentMethod, StoreName, ItemPrice, SupplierName } from './types';
+import NumpadModal from './components/modals/NumpadModal';
+import AddItemModal from './components/modals/AddItemModal';
+import ContextMenu from './components/ContextMenu';
+import { useNotifier } from './context/NotificationContext';
+import EditItemModal from './components/modals/EditItemModal';
+import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from './utils/messageFormatter';
+import EditSupplierModal from './components/modals/EditSupplierModal';
+import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram, sendReceiptToStoreOnTelegram } from './services/telegramService';
+import AddSupplierModal from './components/modals/AddSupplierModal';
+import MergeOrderModal from './components/modals/MergeOrderModal';
+import PriceNumpadModal from './components/modals/PriceNumpadModal';
+import { generateReceiptTemplateHtml } from './services/geminiService';
+import InvoicePreviewModal from './components/modals/InvoicePreviewModal';
+import PaymentMethodModal from './components/modals/PaymentMethodModal';
+import MoveToStoreModal from './components/modals/MoveToStoreModal';
+import CreateVariantModal from './components/modals/CreateVariantModal';
 
 // --- SUB-COMPONENTS START ---
 

@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useContext } from 'react';
 import { Order, OrderStatus } from '../../types';
 import { useToasts } from '../../context/ToastContext';
 import { generateOrderMessage } from '../../utils/messageFormatter';
+import { AppContext } from '../../context/AppContext';
 
 interface OrderMessageModalProps {
   order: Order;
@@ -11,8 +12,11 @@ interface OrderMessageModalProps {
 
 const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, onClose }) => {
     const { addToast } = useToasts();
+    // FIX: Access app state to get data required by generateOrderMessage.
+    const { state } = useContext(AppContext);
+    const supplier = state.suppliers.find(s => s.id === order.supplierId);
     
-    const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain'), [order]);
+    const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain', supplier, state.stores, state.settings), [order, supplier, state.stores, state.settings]);
 
     const handleCopyToClipboard = () => {
         navigator.clipboard.writeText(plainTextMessage).then(() => {
@@ -31,7 +35,7 @@ const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, on
                 'border-green-500'
             }`} onClick={(e) => e.stopPropagation()}>
                 <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>

@@ -1,14 +1,9 @@
 import { Order, OrderItem, Supplier } from '../types';
-import { generateOrderMessage } from '../utils/messageFormatter';
+import { generateOrderMessage, escapeHtml } from '../utils/messageFormatter';
 
 interface ReplyMarkup {
   inline_keyboard: { text: string; callback_data: string; }[][];
 }
-
-const escapeHtml = (text: string): string => {
-    if (typeof text !== 'string') return '';
-    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-};
 
 /**
  * A helper function to send a message via the Telegram Bot API.
@@ -249,4 +244,19 @@ export const sendDueReport = async (
     // Re-using the same channel as the other main financial report.
     const DUE_REPORT_CHAT_ID = "-1003065576801";
     await sendMessage(token, DUE_REPORT_CHAT_ID, message);
+};
+
+/**
+ * Sends the consolidated receipt to a store's Telegram chat.
+ * @param storeChatId The store's Telegram chat ID.
+ * @param message The pre-formatted receipt message.
+ * @param token The Telegram Bot Token.
+ */
+export const sendConsolidatedReceiptToStore = async (
+    storeChatId: string,
+    message: string,
+    token: string
+): Promise<void> => {
+    // Plain text message, send without <pre> tags for consistent formatting.
+    await sendMessage(token, storeChatId, message);
 };

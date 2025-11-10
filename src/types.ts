@@ -23,7 +23,7 @@ export enum PaymentMethod {
 
 // FIX: Define SyncStatus here to be the single source of truth.
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
-export type SettingsTab = 'items' | 'suppliers' | 'stores';
+export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates';
 
 export interface Store {
   id: string; // uuid from Supabase
@@ -53,6 +53,7 @@ export interface SupplierBotSettings {
   showOkButton?: boolean;
   showDriverOnWayButton?: boolean;
   includeLocation?: boolean;
+  messageTemplate?: string;
 }
 
 export interface Supplier {
@@ -71,6 +72,7 @@ export interface OrderItem {
   unit?: Unit;
   isSpoiled?: boolean;
   isNew?: boolean;
+  // FIX: Add optional price property to OrderItem to allow for price overrides per item in an order.
   price?: number;
 }
 
@@ -124,6 +126,7 @@ export interface AppSettings {
     telegramBotToken?: string;
     aiParsingRules?: AiParsingRules;
     receiptTemplates?: Record<string, string>; // e.g. { 'default': '<html>...' }
+    messageTemplates?: { [key: string]: string; };
 }
 
 export interface AppState {
