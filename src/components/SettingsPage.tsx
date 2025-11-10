@@ -5,6 +5,7 @@ import StoresSettings from './settings/StoresSettings';
 import { AppContext } from '../context/AppContext';
 import { SettingsTab } from '../types';
 import TemplatesSettings from './settings/TemplatesSettings';
+import TelegramBotSettings from './settings/TelegramBotSettings';
 
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -15,6 +16,7 @@ const SettingsPage: React.FC = () => {
     { id: 'suppliers', label: 'Suppliers' },
     { id: 'stores', label: 'Stores' },
     { id: 'templates', label: 'Templates' },
+    { id: 'telegram-bot', label: 'Telegram Bot' },
   ];
 
   return (
@@ -42,6 +44,7 @@ const SettingsPage: React.FC = () => {
         {activeSettingsTab === 'suppliers' && <SuppliersSettings />}
         {activeSettingsTab === 'stores' && <StoresSettings />}
         {activeSettingsTab === 'templates' && <TemplatesSettings />}
+        {activeSettingsTab === 'telegram-bot' && <TelegramBotSettings />}
       </div>
     </div>
   );

@@ -38,6 +38,97 @@ This file is the source of over 90% of past regressions. It must be handled with
 -   **Touch ONLY that specific part.** Do not alter any other function, handler, or JSX in the file.
 -   If you encounter a type error after an edit, fix the type error locally. Do not use it as an excuse to refactor the surrounding code.
 
+### 3.1 Canonical Design for `SupplierCard`
+
+The design and functionality of the `SupplierCard` component are fixed and must adhere to the user-provided screenshots. The following code snippets represent the single source of truth for its layout and functionality.
+
+#### **A. Overall Structure Snippet**
+
+The component is composed of three main sub-components: `CardHeader`, `OrderItemRow` (mapped), and `CardFooter`.
+
+```jsx
+// Simplified structure of the SupplierCard component
+<div className="relative rounded-xl ...">
+    <CardHeader
+        order={order}
+        // ... other props
+    />
+    <div className="flex flex-col ..."> {/* Body */}
+        {order.items.map(item => (
+            <OrderItemRow
+                key={...}
+                item={item}
+                // ... other props
+            />
+        ))}
+    </div>
+    <CardFooter
+        order={order}
+        // ... other props
+    />
+</div>
+```
+
+#### **B. Header Context Menu Snippet**
+
+The three-dot menu in the header must generate this list of options for an "On the Way" order:
+
+```javascript
+// Header Context Menu (for 'On the Way' status)
+const options = [
+  { label: 'Change Supplier', action: handleChangeSupplier },
+  { label: 'Move to Store...', action: handleMoveToStore },
+  { label: 'Add a Card...', action: handleAddCard },
+  { label: 'Assign to Oudom', action: handleAssignToOudom },
+  { label: 'Drop', action: handleDeleteOrder, isDestructive: true },
+];
+```
+
+#### **C. Item Row Context Menu Snippet**
+
+The three-dot menu on each item row must generate this list of options for an "On the Way" order:
+
+```javascript
+// Item Row Context Menu (for 'On the Way' status)
+const options = [
+  { label: 'Edit Master Item...', action: handleOpenEditMasterItemModal },
+  { label: 'Create a variant...', action: handleOpenCreateVariantModal },
+  { label: 'Set Unit Price...', action: handleOpenSetUnitPriceModal },
+  { label: 'Spoil...', action: handleSpoilItem },
+  { label: 'Drop', action: handleDeleteItem, isDestructive: true },
+];
+```
+
+#### **D. Footer Action Row Snippet**
+
+The footer for an "On the Way" order must contain these specific buttons with these icons and text:
+
+```jsx
+// Footer Action Row (for 'On the Way' status)
+<div className="px-2 py-1 ... border-t">
+    <div className="flex items-center justify-between">
+        <div className="flex items-center space-x-2">
+            {/* Add Item Button */}
+            <button aria-label="Add Item">
+                <svg> {/* Plus Icon */} </svg>
+            </button>
+            {/* Unsend/Cancel Button */}
+            <button aria-label="Unsend">
+                <svg> {/* Curved Back Arrow Icon */} </svg>
+            </button>
+            {/* Telegram Button */}
+            <button aria-label="Send to Telegram">
+                <svg> {/* Paper Plane Icon */} </svg>
+            </button>
+        </div>
+        {/* Received Button */}
+        <button className="bg-green-600 ...">
+            Received
+        </button>
+    </div>
+</div>
+```
+
 ---
 
 ## 4. User Interface (UI) and Design Rules

@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates } from '../services/supabaseService';
 import { useNotifier } from './NotificationContext';
 
 export interface AppState {
@@ -318,6 +318,43 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       syncWithSupabase({ isInitialSync: true });
     }
   }, [state.isInitialized, syncWithSupabase]);
+
+  // Background polling for order acknowledgements
+  useEffect(() => {
+    const intervalId = setInterval(async () => {
+        // Only run polling if the app is online and initialized
+        if (navigator.onLine && state.isInitialized) {
+            try {
+                const { supabaseUrl, supabaseKey } = state.settings;
+                const unacknowledgedOnTheWay = state.orders
+                    .filter(o => o.status === OrderStatus.ON_THE_WAY && !o.isAcknowledged)
+                    .map(o => o.id);
+
+                if (unacknowledgedOnTheWay.length === 0) return;
+
+                const acknowledgedUpdates = await getAcknowledgedOrderUpdates({
+                    orderIds: unacknowledgedOnTheWay,
+                    url: supabaseUrl,
+                    key: supabaseKey,
+                });
+
+                for (const ackUpdate of acknowledgedUpdates) {
+                    const localOrder = state.orders.find(o => o.id === ackUpdate.id);
+                    // Double check it wasn't acknowledged in state between fetch and now
+                    if (localOrder && !localOrder.isAcknowledged) {
+                        notify(`Order ${ackUpdate.order_id} was acknowledged.`, 'success');
+                        dispatch({ type: 'UPDATE_ORDER', payload: { ...localOrder, isAcknowledged: true, modifiedAt: new Date().toISOString() } });
+                    }
+                }
+            } catch (e) {
+                // Silently fail in the background to avoid spamming the user
+                console.warn('Background sync for acknowledgements failed:', e);
+            }
+        }
+    }, 30000); // Poll every 30 seconds
+
+    return () => clearInterval(intervalId);
+  }, [state.isInitialized, state.settings, state.orders, dispatch, notify]);
 
   const actions: AppContextActions = {
     addItem: async (item) => {

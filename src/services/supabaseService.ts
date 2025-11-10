@@ -225,6 +225,18 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
         }, []);
 };
 
+export const getAcknowledgedOrderUpdates = async ({ orderIds, url, key }: { orderIds: string[]; url: string; key: string }): Promise<{id: string, order_id: string}[]> => {
+    const headers = getHeaders(key);
+    const response = await fetch(`${url}/rest/v1/orders?select=id,order_id&id=in.(${orderIds.join(',')})&is_acknowledged=eq.true`, { headers });
+    if (!response.ok) {
+        // It's okay for this lightweight poll to fail, don't throw a fatal error.
+        console.warn(`Failed to fetch order updates: ${await response.text()}`);
+        return [];
+    }
+    return await response.json();
+};
+
+
 // --- WRITE OPERATIONS ---
 
 export const addOrder = async ({ order, url, key }: { order: Order; url: string; key: string }): Promise<Order> => {

@@ -260,3 +260,20 @@ export const sendConsolidatedReceiptToStore = async (
     // Plain text message, send without <pre> tags for consistent formatting.
     await sendMessage(token, storeChatId, message);
 };
+
+
+/**
+ * Sets the webhook for the Telegram bot.
+ * @param webhookUrl The URL of the Supabase Edge Function.
+ * @param token The Telegram Bot Token.
+ */
+export const setWebhook = async (webhookUrl: string, token: string): Promise<void> => {
+    const TELEGRAM_API_URL = `https://api.telegram.org/bot${token}`;
+    const response = await fetch(`${TELEGRAM_API_URL}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Telegram API error:', errorData);
+        throw new Error(errorData.description || 'Failed to set webhook.');
+    }
+};

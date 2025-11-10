@@ -158,6 +158,7 @@ const App: React.FC = () => {
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
         { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
         { label: '  Templates', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'templates' as SettingsTab }) },
+        { label: '  Telegram Bot', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'telegram-bot' as SettingsTab }) },
       ];
       if (activeStore !== 'Settings') {
         options.push(
