@@ -39,7 +39,7 @@ const SettingsPage: React.FC = () => {
         </nav>
       </div>
 
-      <div className="mt-4 flex-grow flex flex-col">
+      <div className="mt-4">
         {activeSettingsTab === 'items' && <ItemsSettings />}
         {activeSettingsTab === 'suppliers' && <SuppliersSettings />}
         {activeSettingsTab === 'stores' && <StoresSettings />}

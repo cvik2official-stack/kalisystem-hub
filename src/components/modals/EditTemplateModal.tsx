@@ -9,18 +9,65 @@ interface EditTemplateModalProps {
   onSave: (updatedSupplier: Supplier) => void;
 }
 
+const BotSettingCheckbox: React.FC<{
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}> = ({ id, label, checked, onChange, disabled }) => (
+  <div className="flex items-center">
+    <input
+      id={id}
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      disabled={disabled}
+      className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500"
+    />
+    <label htmlFor={id} className="ml-2 block text-sm text-gray-300">
+      {label}
+    </label>
+  </div>
+);
+
+
 const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
     const { state } = useContext(AppContext);
     const [template, setTemplate] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
-    const defaultTemplate = state.settings.messageTemplates?.[`${supplier.name.toLowerCase()}Order`] || state.settings.messageTemplates?.defaultOrder || '';
+    // States for bot settings
+    const [showAttachInvoice, setShowAttachInvoice] = useState(false);
+    const [showMissingItems, setShowMissingItems] = useState(false);
+    const [showOkButton, setShowOkButton] = useState(false);
+    const [showDriverOnWayButton, setShowDriverOnWayButton] = useState(false);
+    const [includeLocation, setIncludeLocation] = useState(false);
+
+    const templates = state.settings.messageTemplates || {};
+    let defaultTemplate = templates.defaultOrder || '';
+    switch (supplier.name) {
+        case SupplierName.KALI:
+            defaultTemplate = templates.kaliOrder || defaultTemplate;
+            break;
+        case SupplierName.OUDOM:
+            defaultTemplate = templates.oudomOrder || defaultTemplate;
+            break;
+    }
 
     useEffect(() => {
         if (isOpen) {
-            setTemplate(supplier.botSettings?.messageTemplate || '');
+            const settings = supplier.botSettings || {};
+            setTemplate(settings.messageTemplate || defaultTemplate);
+
+            // Initialize checkbox states
+            setShowAttachInvoice(!!settings.showAttachInvoice);
+            setShowMissingItems(!!settings.showMissingItems);
+            setShowOkButton(!!settings.showOkButton);
+            setShowDriverOnWayButton(!!settings.showDriverOnWayButton);
+            setIncludeLocation(!!settings.includeLocation);
         }
-    }, [isOpen, supplier]);
+    }, [isOpen, supplier, defaultTemplate]);
 
     const handleSave = () => {
         setIsSaving(true);
@@ -28,7 +75,12 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             ...supplier,
             botSettings: {
                 ...supplier.botSettings,
-                messageTemplate: template.trim() ? template.trim() : undefined, // Store undefined if empty to use default
+                messageTemplate: (template.trim() === defaultTemplate.trim() || template.trim() === '') ? undefined : template.trim(),
+                showAttachInvoice,
+                showMissingItems,
+                showOkButton,
+                showDriverOnWayButton,
+                includeLocation,
             }
         };
         onSave(updatedSupplier);
@@ -46,22 +98,35 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
-                <h2 className="text-xl font-bold text-white mb-2">Edit Message Template</h2>
+                <h2 className="text-xl font-bold text-white mb-2">Telegram Bot Options</h2>
                 <p className="text-sm text-gray-400 mb-4">for <span className="font-semibold text-gray-300">{supplier.name}</span></p>
 
-                <textarea
-                    value={template}
-                    onChange={(e) => setTemplate(e.target.value)}
-                    rows={8}
-                    className="w-full bg-gray-900 text-gray-200 rounded-md p-3 font-mono text-xs outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                />
-                 <div className="text-xs text-gray-500 mt-2">
-                    Leave blank to use the default template. Placeholders: <code>{'{{storeName}}'}</code>, <code>{'{{orderId}}'}</code>, <code>{'{{items}}'}</code>.
+                <div className="mb-4 border-b border-gray-700 pb-4">
+                    <h3 className="text-base font-semibold text-white mb-2">Button Options</h3>
+                    <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                        <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving} />
+                        <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving} />
+                        <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving} />
+                        <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving} />
+                    </div>
+                </div>
+
+                <div className="mb-4 border-b border-gray-700 pb-4">
+                     <h3 className="text-base font-semibold text-white mb-2">Message Options</h3>
+                     <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving} />
                 </div>
                 
-                <div className="mt-4 p-3 bg-gray-900/50 rounded-md">
-                    <h4 className="text-xs font-semibold text-gray-400 mb-1">Default Template for this Supplier:</h4>
-                    <pre className="text-xs text-gray-500 whitespace-pre-wrap font-mono">{defaultTemplate}</pre>
+                <div>
+                    <h3 className="text-base font-semibold text-white mb-2">Message Template</h3>
+                    <textarea
+                        value={template}
+                        onChange={(e) => setTemplate(e.target.value)}
+                        rows={8}
+                        className="w-full bg-gray-900 text-gray-200 rounded-md p-3 font-mono text-xs outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <div className="text-xs text-gray-500 mt-2">
+                        Placeholders: <code>{'{{storeName}}'}</code>, <code>{'{{orderId}}'}</code>, <code>{'{{items}}'}</code>.
+                    </div>
                 </div>
 
                 <div className="mt-6 flex justify-end">

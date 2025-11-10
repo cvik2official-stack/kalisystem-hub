@@ -1,3 +1,7 @@
+// @ai-agent
+// Preserve JSX structure and alias imports.
+// Do not refactor or rewrite "@/..." paths.
+// These are resolved via tsconfig.json and bundler config.
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -70,10 +74,9 @@ export interface OrderItem {
   name: string;
   quantity: number;
   unit?: Unit;
+  price?: number;
   isSpoiled?: boolean;
   isNew?: boolean;
-  // FIX: Add optional price property to OrderItem to allow for price overrides per item in an order.
-  price?: number;
 }
 
 export interface Order {
@@ -146,4 +149,6 @@ export interface AppState {
   isManagerView: boolean;
   managerStoreFilter: StoreName | null;
   isEditModeEnabled: boolean;
+  isDualPaneMode: boolean;
+  multiColumnView: boolean;
 }

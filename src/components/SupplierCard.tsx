@@ -1,4 +1,4 @@
-import React, { useContext, useState, useRef, useEffect, useMemo } from 'react';
+import React, { useContext, useState, useRef, useEffect, useMemo, useCallback } from 'react';
 // FIX: Correct import paths for modules based on the file's location.
 import { AppContext } from '../context/AppContext';
 import { Order, OrderItem, OrderStatus, Unit, Item, Supplier, PaymentMethod, StoreName, ItemPrice, SupplierName } from '../types';
@@ -48,11 +48,11 @@ const CardHeader: React.FC<{
 
     return (
         <div
-            className="px-2 py-1 flex justify-between items-start"
+            className="px-1 py-1 flex justify-between items-start"
             onDoubleClick={(e) => e.stopPropagation()}
         >
             <div className="flex-grow">
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-1 flex-wrap">
                     {showActionsButton && (
                         <button onClick={onActionsClick} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Order Actions">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
@@ -101,6 +101,8 @@ const OrderItemRow: React.FC<{
   dragHandleProps: any;
   onQuantityClick: () => void;
   onActionsClick: (e: React.MouseEvent) => void;
+  onNameClick: () => void;
+  showActions: boolean;
   isEditingPrice: boolean;
   editedItemPrice: string;
   onPriceChange: (value: string) => void;
@@ -109,7 +111,7 @@ const OrderItemRow: React.FC<{
   displayPrice?: number;
   dropZoneProps: any;
   isActionsDisabled?: boolean;
-}> = ({ item, order, isDraggable, dragHandleProps, onQuantityClick, onActionsClick, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps, isActionsDisabled }) => {
+}> = ({ item, order, isDraggable, dragHandleProps, onQuantityClick, onActionsClick, onNameClick, showActions, isEditingPrice, editedItemPrice, onPriceChange, onPriceSave, onPriceCancel, displayPrice, dropZoneProps, isActionsDisabled }) => {
     return (
         <div
             {...dropZoneProps}
@@ -117,16 +119,19 @@ const OrderItemRow: React.FC<{
         >
             <div
                 {...(isDraggable ? dragHandleProps : {})}
-                className={`flex-shrink-0 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500' : 'text-transparent'} ${(order.status === OrderStatus.COMPLETED && !isDraggable) ? 'w-0' : 'pr-1'}`}
+                className={`flex-shrink-0 transition-opacity duration-200 ${isDraggable ? 'cursor-grab active:cursor-grabbing text-gray-500' : 'text-transparent'} ${(order.status === OrderStatus.COMPLETED && !isDraggable) ? 'w-0' : 'pr-1'} ${showActions ? 'opacity-100' : 'opacity-0'}`}
             >
                 {isDraggable && <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16">
                     <path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
                 </svg>}
             </div>
-            <span className={`flex-grow text-gray-300 truncate ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}>
+            <span 
+                onClick={onNameClick}
+                className={`flex-grow text-gray-300 truncate cursor-pointer ${item.isSpoiled ? 'line-through text-gray-500' : ''}`}
+            >
                 {item.name}
             </span>
-            <div className="flex-shrink-0 flex items-center space-x-2">
+            <div className="flex-shrink-0 flex items-center space-x-1">
                 {isEditingPrice ? (
                      <input
                         type="number"
@@ -139,26 +144,26 @@ const OrderItemRow: React.FC<{
                         }}
                         autoFocus
                         onClick={(e) => e.stopPropagation()}
-                        className="bg-gray-900 text-white w-24 p-1 rounded-md text-sm font-mono text-right ring-1 ring-indigo-500"
+                        className="bg-gray-900 text-white w-20 p-1 rounded-md text-sm font-mono text-right ring-1 ring-indigo-500"
                         step="0.01"
                     />
                 ) : (
                     displayPrice != null && (
-                         <span className="text-sm font-mono text-gray-400 w-24 text-right">
+                         <span className="text-sm font-mono text-gray-400 w-20 text-right">
                            {`$${displayPrice.toFixed(2)}`}
                          </span>
                     )
                 )}
                 <div
                     onClick={onQuantityClick}
-                    className="font-semibold text-white text-right w-16 p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer"
+                    className="font-semibold text-white text-right w-12 p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer"
                 >
                     {item.quantity}{item.unit}
                 </div>
                 <button
                     onClick={onActionsClick}
                     disabled={isActionsDisabled}
-                    className="p-1 text-gray-500 rounded-full hover:bg-gray-700 hover:text-white disabled:text-gray-700 disabled:cursor-not-allowed"
+                    className={`p-1 text-gray-500 rounded-full hover:bg-gray-700 hover:text-white disabled:text-gray-700 disabled:cursor-not-allowed transition-opacity duration-200 ${showActions ? 'opacity-100' : 'opacity-0'}`}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
@@ -171,6 +176,7 @@ const OrderItemRow: React.FC<{
 
 const CardFooter: React.FC<{
   order: Order;
+  supplier?: Supplier;
   isManagerView: boolean;
   isOudomManagerWorkflow: boolean;
   isProcessing: boolean;
@@ -183,7 +189,7 @@ const CardFooter: React.FC<{
   onCopy: () => void;
   onAcknowledge?: () => void;
   onCompleteOudom?: () => void;
-}> = ({ order, isManagerView, isOudomManagerWorkflow, isProcessing, canEditCard, onAddItem, onSend, onUnsend, onReceive, onTelegram, onCopy, onAcknowledge, onCompleteOudom }) => {
+}> = ({ order, supplier, isManagerView, isOudomManagerWorkflow, isProcessing, canEditCard, onAddItem, onSend, onUnsend, onReceive, onTelegram, onCopy, onAcknowledge, onCompleteOudom }) => {
     if (order.status === OrderStatus.COMPLETED) return null;
 
     if (order.status === OrderStatus.DISPATCHING && !isManagerView && !isOudomManagerWorkflow) {
@@ -220,6 +226,8 @@ const CardFooter: React.FC<{
             );
         }
 
+        const requiresAcknowledgement = supplier?.botSettings?.showOkButton;
+
         return (
             <div className="px-2 py-1 mt-1 border-t border-gray-700/50">
                 <div className="flex items-center justify-between">
@@ -228,7 +236,15 @@ const CardFooter: React.FC<{
                         <button onClick={onUnsend} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Unsend"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" /></svg></button>
                         {!isManagerView && <button onClick={onTelegram} disabled={isProcessing} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-md disabled:bg-gray-800 disabled:cursor-not-allowed" aria-label="Send to Telegram"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-300" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg></button>}
                     </div>
-                    <button onClick={onReceive} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">{isProcessing ? '...' : 'Received'}</button>
+                    {requiresAcknowledgement && !order.isAcknowledged ? (
+                        <button disabled className="bg-gray-600 text-gray-400 font-bold py-2 px-4 rounded-md text-sm cursor-not-allowed">
+                            Pending
+                        </button>
+                    ) : (
+                        <button onClick={onReceive} disabled={isProcessing} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md text-sm disabled:bg-green-800 disabled:cursor-not-allowed">
+                            {isProcessing ? '...' : 'Received'}
+                        </button>
+                    )}
                 </div>
             </div>
         );
@@ -286,6 +302,41 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     
     const [variantModalState, setVariantModalState] = useState<{ isOpen: boolean; parentOrderItem: OrderItem | null }>({ isOpen: false, parentOrderItem: null });
     const [stockVariantModalState, setStockVariantModalState] = useState<{ isOpen: boolean; parentItem: Item | null }>({ isOpen: false, parentItem: null });
+    
+    const [selectedForActionItemId, setSelectedForActionItemId] = useState<string | null>(null);
+
+    const cardRef = useRef<HTMLDivElement>(null);
+
+    const handleResizeWidthMouseDown = useCallback((e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const cardLeft = cardRef.current?.getBoundingClientRect().left;
+        if (cardLeft === undefined) return;
+
+        const handleMouseMove = (moveEvent: MouseEvent) => {
+            const newWidth = moveEvent.clientX - cardLeft;
+            if (newWidth > 300) { // Min width 300px
+                dispatch({ type: 'SET_CARD_WIDTH', payload: newWidth });
+            }
+        };
+
+        const handleMouseUp = () => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.style.cursor = '';
+            document.body.style.userSelect = 'none';
+        };
+
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    }, [dispatch]);
+
+    const handleResetWidth = useCallback(() => {
+        dispatch({ type: 'SET_CARD_WIDTH', payload: null });
+    }, [dispatch]);
 
     const orderTotal = useMemo(() => {
         if (order.status !== OrderStatus.COMPLETED) {
@@ -834,8 +885,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             
             if (order.status === OrderStatus.COMPLETED && isEditModeEnabled) {
                 options.push({ label: 'Quantity...', action: () => handleQuantityClick(item) });
+            } else if (order.status === OrderStatus.COMPLETED && !isEditModeEnabled) {
+                options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(item); setIsPriceNumpadOpen(true); } });
+            } else if (order.status !== OrderStatus.COMPLETED) {
+                 options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(item); setIsPriceNumpadOpen(true); } });
             }
-            options.push({ label: 'Set Unit Price...', action: () => { setSelectedItem(item); setIsPriceNumpadOpen(true); } });
             if (order.status === OrderStatus.ON_THE_WAY) {
                 if (item.isSpoiled) {
                     options.push({ label: 'Unspoil', action: () => handleUnspoilItem(item) });
@@ -847,6 +901,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
         if (order.status !== OrderStatus.COMPLETED || (order.status === OrderStatus.COMPLETED && isEditModeEnabled)) {
             options.push({ label: 'Drop', action: () => handleDeleteItem(item), isDestructive: true });
+        } else if (order.status === OrderStatus.COMPLETED && !isEditModeEnabled && !isManagerView) {
+             options.push({ label: 'Drop', action: () => handleDeleteItem(item), isDestructive: true });
         }
     
         if (options.length > 0) {
@@ -857,6 +913,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
 
     const handleCopyOrderMessage = () => {
         navigator.clipboard.writeText(generateOrderMessage(order, 'plain', supplier, state.stores, state.settings)).then(() => notify('Order copied!', 'success'));
+        setIsManuallyCollapsed(true);
     };
     
     const handleSendToTelegram = async () => {
@@ -869,9 +926,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         try {
             await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html', supplier, state.stores, settings), settings.telegramBotToken);
             notify(`Order sent to ${order.supplierName}.`, 'success');
-            if (order.status === OrderStatus.DISPATCHING) {
-                await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
-            }
+            // This logic is now handled by the separate 'Send' button.
+            // if (order.status === OrderStatus.DISPATCHING) {
+            //     await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
+            // }
+            setIsManuallyCollapsed(true);
         } catch (error: any) {
             notify(error.message || `Failed to send.`, 'error');
         } finally { setIsProcessing(false); }
@@ -883,6 +942,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             e.dataTransfer.setData('text/plain', item.itemId);
             e.dataTransfer.effectAllowed = "move";
             setDraggedItem({ item, sourceOrderId: order.id });
+            // @-fix-start
+            // FIX: When an item drag starts, all cards should collapse to provide a clear view of drop targets.
+            // This is achieved by setting a global or local state that all cards listen to.
+            // For now, we will use the existing `isManuallyCollapsed` state, but ideally this would be a global drag state.
+            // As a simplification, we'll just collapse the current card.
+            setIsManuallyCollapsed(true);
+            // @-fix-end
         }
     };
     
@@ -1053,12 +1119,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
-    const isEffectivelyCollapsed = (!!draggedItem && draggedItem.sourceOrderId !== order.id) ? true : isManuallyCollapsed;
+    const isEffectivelyCollapsed = !!draggedItem || isManuallyCollapsed;
     const canEditCard = (!isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) || (order.status === OrderStatus.COMPLETED && isEditModeEnabled);
     const canChangePayment = canEditCard || (!isManagerView && order.status === OrderStatus.ON_THE_WAY);
     
     return (
         <div
+            ref={cardRef}
+            style={!state.multiColumnView && state.cardWidth ? { width: `${state.cardWidth}px` } : {}}
             onDragOver={(e) => {
                 e.preventDefault();
                 if (draggedItem && draggedItem.sourceOrderId !== order.id) {
@@ -1074,7 +1142,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     onItemDrop(order.id);
                 }
             }}
-            className={`relative rounded-xl shadow-lg flex flex-col transition-all duration-300
+            className={`relative rounded-xl shadow-lg flex flex-col transition-all duration-100
                 ${isDragOver ? 'bg-indigo-900/50' : 'bg-gray-800'}
                 ${order.status === OrderStatus.DISPATCHING ? 'border-t-4 border-blue-500' : ''}
                 ${order.status === OrderStatus.ON_THE_WAY ? 'border-t-4 border-yellow-500' : ''}
@@ -1091,14 +1159,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 onHeaderClick={() => supplier && setEditSupplierModalOpen(true)}
                 onPaymentBadgeClick={() => setPaymentMethodModalOpen(true)}
                 showStoreName={showStoreName}
-                showActionsButton={true}
+                showActionsButton={!isEffectivelyCollapsed}
                 onActionsClick={handleHeaderActionsClick}
                 orderTotal={orderTotal}
                 canChangePayment={canChangePayment}
             />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
-                <div className="flex-grow pt-1 pb-1 px-2 space-y-1">
+                <div className="flex-grow pt-1 pb-1 px-2 space-y-1 overflow-y-auto hide-scrollbar">
                     {order.items.map(item => {
                          const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
                          const displayPrice = ((order.status === OrderStatus.COMPLETED || order.status === OrderStatus.ON_THE_WAY) && !isManagerView) ? (item.price ?? masterPrice) : undefined;
@@ -1115,6 +1183,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                                 }}
                                 onQuantityClick={() => handleQuantityClick(item)}
                                 onActionsClick={(e) => handleItemActionsClick(e, item)}
+                                onNameClick={() => setSelectedForActionItemId(prev => prev === item.itemId ? null : item.itemId)}
+                                showActions={selectedForActionItemId === item.itemId}
                                 isActionsDisabled={isOudomManagerWorkflow}
                                 isEditingPrice={false}
                                 editedItemPrice={''}
@@ -1136,6 +1206,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 
                 <CardFooter
                     order={order}
+                    supplier={supplier}
                     isManagerView={isManagerView}
                     isOudomManagerWorkflow={isOudomManagerWorkflow}
                     isProcessing={isProcessing}
@@ -1159,6 +1230,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                   onSave={ isManagerView ? handleEditQuantityManager : isSpoilMode ? handleSpoilItemWithQuantity : handleSaveItem }
                   onDelete={() => handleDeleteItem(selectedItem)} 
               />
+            )}
+            {!state.multiColumnView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && !isManagerView && (
+                <div
+                    onMouseDown={handleResizeWidthMouseDown}
+                    onDoubleClick={handleResetWidth}
+                    title="Drag to resize width. Double-click to reset."
+                    className="absolute -right-1.5 top-0 bottom-0 w-3 flex items-center justify-center cursor-ew-resize group z-10"
+                >
+                    <div className="h-12 w-1 bg-gray-600 rounded-full group-hover:bg-indigo-500 transition-colors" />
+                </div>
             )}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onItemSelect={handleAddItemSelect} />}
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} onTriggerCreateVariant={() => triggerCreateVariantFromEditModal(selectedMasterItem)} />}

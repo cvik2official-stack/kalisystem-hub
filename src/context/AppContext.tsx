@@ -20,6 +20,9 @@ export interface AppState {
   isManagerView: boolean;
   managerStoreFilter: StoreName | null;
   isEditModeEnabled: boolean;
+  isDualPaneMode: boolean;
+  multiColumnView: boolean;
+  cardWidth: number | null;
 }
 
 export type Action =
@@ -43,7 +46,10 @@ export type Action =
   | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
   | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
-  | { type: 'SET_EDIT_MODE'; payload: boolean };
+  | { type: 'SET_EDIT_MODE'; payload: boolean }
+  | { type: 'TOGGLE_DUAL_PANE_MODE' }
+  | { type: 'TOGGLE_MULTI_COLUMN_VIEW' }
+  | { type: 'SET_CARD_WIDTH'; payload: number | null };
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
@@ -77,6 +83,12 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, activeStore: 'Settings', activeSettingsTab: action.payload };
     case 'SET_EDIT_MODE':
         return { ...state, isEditModeEnabled: action.payload };
+    case 'TOGGLE_DUAL_PANE_MODE':
+        return { ...state, isDualPaneMode: !state.isDualPaneMode };
+    case 'TOGGLE_MULTI_COLUMN_VIEW':
+        return { ...state, multiColumnView: !state.multiColumnView };
+    case 'SET_CARD_WIDTH':
+        return { ...state, cardWidth: action.payload };
     case '_ADD_ITEM':
         return { ...state, items: [...state.items, action.payload] };
     case '_UPDATE_ITEM': {
@@ -239,6 +251,9 @@ const getInitialState = (): AppState => {
     isManagerView: false,
     managerStoreFilter: null,
     isEditModeEnabled: false,
+    isDualPaneMode: false,
+    multiColumnView: true,
+    cardWidth: null,
   };
 
   const finalState = { ...initialState, ...loadedState };
@@ -251,6 +266,8 @@ const getInitialState = (): AppState => {
   finalState.isLoading = false;
   finalState.isInitialized = false;
   finalState.isEditModeEnabled = false; // Always start with edit mode off
+  finalState.multiColumnView = loadedState.multiColumnView ?? true; // Default to true
+  finalState.cardWidth = loadedState.cardWidth ?? null;
 
   return finalState;
 };

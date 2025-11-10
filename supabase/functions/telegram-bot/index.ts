@@ -1,5 +1,5 @@
 // @formatter:off
-// FIX: Update Supabase edge runtime type reference to use esm.sh which is a more reliable CDN for Deno types. This resolves issues with the Deno namespace not being found.
+// FIX: Use a versioned URL for Supabase edge runtime types to improve stability and resolve type loading issues. This directive provides the necessary Deno types for the function.
 /// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 // @formatter:on
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -67,8 +67,8 @@ async function handleCallbackQuery(query: any) {
   const action = parts.join('_');
 
 
+  // FIX: Pass the full query object to the handler to resolve scope issues.
   if (action === 'approve_order' && orderId) {
-    // FIX: Pass the full query object to the handler to resolve scope issues.
     await handleApproveOrder(query, orderId, chatId);
   }
   // Other actions can be handled here with else-if blocks.
@@ -80,7 +80,7 @@ async function handleCallbackQuery(query: any) {
  * @param orderId The UUID of the order to update.
  * @param chatId The chat ID where the button was clicked (for potential feedback).
  */
-// FIX: Update function signature to accept the `query` object.
+// FIX: Update function signature to accept the `query` object to be used for sending feedback.
 async function handleApproveOrder(query: any, orderId: string, chatId: number) {
   try {
     // Initialize the Supabase client. The credentials must be set as environment variables in your Supabase project.
@@ -102,7 +102,6 @@ async function handleApproveOrder(query: any, orderId: string, chatId: number) {
       // If the update fails (e.g., order ID doesn't exist), log the error.
       console.error(`Failed to update order ${orderId}:`, error);
       // Optionally, send an error message back to the user on Telegram.
-      // FIX: Use the `query` object passed into the function.
       await answerCallbackQuery(query.id, "Error: Could not find or update order.", true);
       return;
     }
@@ -111,13 +110,11 @@ async function handleApproveOrder(query: any, orderId: string, chatId: number) {
       console.log(`Order ${orderId} successfully acknowledged.`);
       // Optionally, provide feedback to the user on Telegram by answering the callback query.
       // This can show a small notification at the top of their screen.
-      // FIX: Use the `query` object passed into the function.
       await answerCallbackQuery(query.id, `Order ${data.order_id} Acknowledged!`, false);
     }
 
   } catch (e) {
     console.error('An unexpected error occurred in handleApproveOrder:', e);
-    // FIX: Use the `query` object passed into the function.
     await answerCallbackQuery(query.id, "An internal error occurred.", true);
   }
 }

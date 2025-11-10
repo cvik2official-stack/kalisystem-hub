@@ -37,12 +37,13 @@ const TelegramBotSettings: React.FC = () => {
                 <p className="text-sm text-gray-400 mb-4">
                     Enter the URL of your Supabase Edge Function to receive bot interactions.
                 </p>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 max-w-2xl">
                     <input
                         type="text"
                         value={webhookUrl}
                         onChange={(e) => setWebhookUrl(e.target.value)}
                         className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                        placeholder="https://your-supabase-url.co/functions/v1/telegram-bot"
                     />
                     <button
                         onClick={handleSetWebhook}

@@ -16,6 +16,12 @@ This is the most important rule. The codebase, especially `SupplierCard.tsx`, is
     -   Altering file structure.
     -   Changing formatting or "stylistic" code patterns.
 
+### 1.1 Specific Prohibition: JSX Structure
+Do not refactor or rewrite JSX code structure. Preserve all formatting, indentation, and inline logic as-is. Do not convert arrow functions, destructuring, or JSX expressions into alternate forms.
+
+### 1.2 General Preservation Mandate
+Preserve all JSX and import syntax exactly as written. Do not apply opinionated formatting or "fixes" unless explicitly requested.
+
 **Reasoning:** The application contains highly specific, interconnected logic. Past attempts at general refactoring have consistently broken critical functionality.
 
 ---
@@ -143,7 +149,7 @@ The footer for an "On the Way" order must contain these specific buttons with th
 
 ## 5. Technical Implementation Rules
 
--   **Preserve Alias Imports:** **DO NOT REFACTOR OR REWRITE IMPORT PATHS.** Preserve all alias imports like `@[/...]` as-is. This alias is intentional and will be resolved at runtime. Ignore module resolution errors during static analysis. Do not attempt to "fix" or replace them with relative paths.
+-   **Preserve Alias Imports:** Do not rewrite or resolve alias imports like `@[/...]` or `@[/components/Button]`. These aliases are valid in our runtime and configured via `tsconfig.json` or `jsconfig.json`. Ignore module resolution errors during static analysis. Do not replace them with relative paths. Ignore errors like: `Uncaught TypeError: Failed to resolve module specifier "@/..."`. These are expected in static analysis and resolved at runtime.
 -   **File Deletion:** The agent toolset **CANNOT** delete files. If the user asks to delete a file, empty its content and inform the user of this limitation.
 -   **SQL & RLS:** When providing SQL, be explicit about its purpose. For Row Level Security, if an `upsert` or `insert` fails, the issue is likely with the `INSERT` policy. Past failures have shown that a single, broad `FOR ALL` policy for authenticated users is the most reliable solution.
 

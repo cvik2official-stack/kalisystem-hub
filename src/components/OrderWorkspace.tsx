@@ -30,7 +30,7 @@ const formatDateGroupHeader = (key: string): string => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled } = state;
+  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled, multiColumnView } = state;
   const { notify } = useNotifier();
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
@@ -55,7 +55,7 @@ const OrderWorkspace: React.FC = () => {
 
   const handleAddOrder = async (supplier: Supplier) => {
     if (activeStore === 'Settings' || !activeStore) return;
-    const status = activeStatus === OrderStatus.COMPLETED ? OrderStatus.COMPLETED : OrderStatus.DISPATCHING;
+    const status = multiColumnView ? OrderStatus.DISPATCHING : (activeStatus === OrderStatus.COMPLETED ? OrderStatus.COMPLETED : OrderStatus.DISPATCHING);
     await actions.addOrder(supplier, activeStore, [], status);
     setAddSupplierModalOpen(false);
   };
@@ -137,36 +137,42 @@ const OrderWorkspace: React.FC = () => {
     });
   };
 
+  const getFilteredOrdersForStatus = (status: OrderStatus) => {
+      if (activeStore === 'Settings') return [];
+  
+      let filtered: Order[];
+  
+      if (activeStore === StoreName.OUDOM) {
+          filtered = orders.filter(order => 
+              (order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK) &&
+              order.status === status
+          );
+      } else if (activeStore === StoreName.KALI) {
+          filtered = orders.filter(order => {
+              const supplier = suppliers.find(s => s.id === order.supplierId);
+              const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
+              return effectivePaymentMethod === PaymentMethod.KALI && order.status === status;
+          });
+      } else {
+          filtered = orders.filter(order => order.store === activeStore && order.status === status);
+      }
+      
+      return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  };
+
   const filteredOrders = useMemo(() => {
-    if (activeStore === 'Settings') return [];
-
-    let filtered: Order[];
-
-    if (activeStore === StoreName.OUDOM) {
-        filtered = orders.filter(order => 
-            (order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK) &&
-            order.status === activeStatus
-        );
-    } else if (activeStore === StoreName.KALI) {
-        filtered = orders.filter(order => {
-            const supplier = suppliers.find(s => s.id === order.supplierId);
-            const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
-            return effectivePaymentMethod === PaymentMethod.KALI && order.status === activeStatus;
-        });
-    } else {
-        filtered = orders.filter(order => order.store === activeStore && order.status === activeStatus);
-    }
-    
-    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return getFilteredOrdersForStatus(activeStatus);
   }, [orders, activeStore, activeStatus, suppliers]);
   
   const groupedCompletedOrders = useMemo(() => {
-    if (activeStatus !== OrderStatus.COMPLETED) return {};
+    const ordersToGroup = multiColumnView ? getFilteredOrdersForStatus(OrderStatus.COMPLETED) : filteredOrders;
+    if ((!multiColumnView && activeStatus !== OrderStatus.COMPLETED) || ordersToGroup.length === 0) return {};
+    
     const groups: Record<string, Order[]> = {};
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    filteredOrders.forEach(order => {
+    ordersToGroup.forEach(order => {
       const completedDate = new Date(order.completedAt || 0);
       completedDate.setHours(0, 0, 0, 0);
       const key = completedDate.getTime() === today.getTime() ? 'Today' : completedDate.toISOString().split('T')[0];
@@ -174,7 +180,7 @@ const OrderWorkspace: React.FC = () => {
       groups[key].push(order);
     });
     return groups;
-  }, [filteredOrders, activeStatus]);
+  }, [filteredOrders, activeStatus, multiColumnView, orders, activeStore]);
 
   const sortedCompletedGroupKeys = useMemo(() => {
     return Object.keys(groupedCompletedOrders).sort((a, b) => {
@@ -233,180 +239,216 @@ const OrderWorkspace: React.FC = () => {
 
     return options;
   };
-
-  const showEmptyState = filteredOrders.length === 0 && activeStatus !== OrderStatus.DISPATCHING;
-  const tabsToShow = STATUS_TABS;
-
-  return (
+  
+  const renderCompletedColumn = () => (
     <>
-      <div className="mt-2">
-        <nav className="-mb-px flex space-x-6">
-          {tabsToShow.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => handleStatusChange(tab.id)}
-              className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
-                activeStatus === tab.id
-                  ? 'border-indigo-500 text-indigo-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-      
-      <div
-        className="flex-grow pt-2 pb-4 overflow-y-auto hide-scrollbar relative transition-all duration-200"
-      >
-          {showEmptyState && (
-              <div className="text-center py-12">
-                  <p className="text-gray-500">No orders in this category.</p>
+      {sortedCompletedGroupKeys.length > 0 ? (
+        <div className="space-y-1">
+          {sortedCompletedGroupKeys.map(key => {
+            const isExpanded = expandedGroups.has(key);
+            return (
+              <div key={key}>
+                <div className="bg-gray-800/50 px-2 py-2 flex justify-between items-center w-full text-left rounded-md">
+                  <button onClick={() => toggleGroup(key)} className="flex items-center space-x-2 flex-grow">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
+                  </button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                  </button>
+                </div>
+                {isExpanded && (
+                  <div className="grid grid-cols-1 gap-2 p-1">
+                    {groupedCompletedOrders[key].map((order) => (
+                      <SupplierCard 
+                          key={order.id} 
+                          order={order}
+                          draggedItem={draggedItem}
+                          setDraggedItem={setDraggedItem}
+                          onItemDrop={handleItemDrop}
+                          showStoreName={activeStore === StoreName.KALI} 
+                          isEditModeEnabled={isEditModeEnabled}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-          )}
-
-          {activeStatus === OrderStatus.COMPLETED ? (
-              filteredOrders.length > 0 ? (
-                <div className="mt-4 space-y-1">
-                  {sortedCompletedGroupKeys.map(key => {
-                    const isExpanded = expandedGroups.has(key);
-                    return (
-                      <div key={key}>
-                        <div className="bg-gray-900/50 px-4 py-2 flex justify-between items-center w-full text-left">
-                          <button onClick={() => toggleGroup(key)} className="flex items-center space-x-2 flex-grow">
-                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
-                            <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
-                          </button>
-                          <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                          </button>
-                        </div>
-                        {isExpanded && (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 p-1">
-                            {groupedCompletedOrders[key].map((order) => (
-                              <SupplierCard 
-                                  key={order.id} 
-                                  order={order}
-                                  draggedItem={draggedItem}
-                                  setDraggedItem={setDraggedItem}
-                                  onItemDrop={handleItemDrop}
-                                  showStoreName={activeStore === StoreName.KALI} 
-                                  isEditModeEnabled={isEditModeEnabled}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">No orders in this category.</p>
-                </div>
-              )
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-              {filteredOrders.map((order) => (
-                  <SupplierCard 
-                      key={order.id} 
-                      order={order} 
-                      draggedItem={draggedItem}
-                      setDraggedItem={setDraggedItem}
-                      onItemDrop={handleItemDrop}
-                      showStoreName={activeStore === StoreName.KALI}
-                  />
-              ))}
-              {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
-                <div
-                  className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200
-                    ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
-                  `}
-                   onDragOver={(e) => {
-                    if (draggedItem) {
-                      e.preventDefault();
-                      setIsDragOverEmpty(true);
-                    }
-                  }}
-                  onDragLeave={() => {
-                    setIsDragOverEmpty(false);
-                  }}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    if (draggedItem) {
-                      setItemForNewOrder(draggedItem);
-                      setAddSupplierModalOpen(true);
-                    }
-                    setIsDragOverEmpty(false);
-                    setDraggedItem(null);
-                  }}
-                >
-                    <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
-                       <button 
-                         onClick={() => setAddSupplierModalOpen(true)} 
-                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
-                       >
-                         + select supplier
-                       </button>
-                       <span className="text-gray-500 text-xs">or</span>
-                       <button 
-                         onClick={() => setPasteModalOpen(true)} 
-                         className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
-                       >
-                         paste a list
-                       </button>
-                    </div>
-                </div>
-              )}
-            </div>
-          )}
-      </div>
-
-      <AddSupplierModal
-        isOpen={isAddSupplierModalOpen}
-        onClose={() => {
-            setAddSupplierModalOpen(false);
-            setItemForNewOrder(null);
-        }}
-        onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder}
-        title={itemForNewOrder ? "Select Supplier for New Order" : (activeStatus === OrderStatus.COMPLETED ? "Add New Completed Order" : "Start a New Order")}
-      />
-      <PasteItemsModal
-        isOpen={isPasteModalOpen}
-        onClose={() => setPasteModalOpen(false)}
-      />
-      {headerContextMenu && (
-          <ContextMenu
-              x={headerContextMenu.x}
-              y={headerContextMenu.y}
-              options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)}
-              onClose={() => setHeaderContextMenu(null)}
-          />
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-gray-500">No completed orders.</p>
+        </div>
       )}
-      <MergeByPaymentModal
-          isOpen={isMergeModalOpen}
-          onClose={() => setIsMergeModalOpen(false)}
-          onSelect={(method) => {
-              if (window.confirm(`Are you sure you want to merge all of today's completed orders for ${method.toUpperCase()}? This action cannot be undone.`)) {
-                  actions.mergeTodaysCompletedOrdersByPayment(method);
-              }
-          }}
-      />
-      <DueReportModal
-        isOpen={isDueReportModalOpen}
-        onClose={() => setIsDueReportModalOpen(false)}
-        orders={ordersForDueReport}
-      />
-      <ReceiptModal
-        isOpen={isReceiptModalOpen}
-        onClose={() => setIsReceiptModalOpen(false)}
-        orders={ordersForReceipt}
-      />
     </>
   );
+
+  const AddOrderDropZone = () => (
+    <div
+      className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200
+        ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
+      `}
+       onDragOver={(e) => {
+        if (draggedItem) {
+          e.preventDefault();
+          setIsDragOverEmpty(true);
+        }
+      }}
+      onDragLeave={() => setIsDragOverEmpty(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (draggedItem) {
+          setItemForNewOrder(draggedItem);
+          setAddSupplierModalOpen(true);
+        }
+        setIsDragOverEmpty(false);
+        setDraggedItem(null);
+      }}
+    >
+        <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
+           <button 
+             onClick={() => setAddSupplierModalOpen(true)} 
+             className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
+           >
+             + select supplier
+           </button>
+           <span className="text-gray-500 text-xs">or</span>
+           <button 
+             onClick={() => setPasteModalOpen(true)} 
+             className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
+           >
+             paste a list
+           </button>
+        </div>
+    </div>
+  );
+
+  if (multiColumnView) {
+    const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
+    const onTheWayOrders = getFilteredOrdersForStatus(OrderStatus.ON_THE_WAY);
+    
+    return (
+      <div className="flex-grow pt-4 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-hidden">
+        {/* Column 1: Dispatch */}
+        <section className="flex flex-col bg-gray-900/50 rounded-lg">
+          <h2 className="text-lg font-semibold text-white p-3">Dispatch</h2>
+          <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
+            {dispatchingOrders.map(order => (
+              <SupplierCard 
+                  key={order.id} 
+                  order={order} 
+                  draggedItem={draggedItem}
+                  setDraggedItem={setDraggedItem}
+                  onItemDrop={handleItemDrop}
+                  showStoreName={activeStore === StoreName.KALI}
+              />
+            ))}
+            <AddOrderDropZone />
+          </div>
+        </section>
+
+        {/* Column 2: On the Way */}
+        <section className="flex flex-col bg-gray-900/50 rounded-lg">
+          <h2 className="text-lg font-semibold text-white p-3">On the Way</h2>
+          <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
+            {onTheWayOrders.map(order => (
+              <SupplierCard 
+                  key={order.id} 
+                  order={order} 
+                  draggedItem={draggedItem}
+                  setDraggedItem={setDraggedItem}
+                  onItemDrop={handleItemDrop}
+                  showStoreName={activeStore === StoreName.KALI}
+              />
+            ))}
+             {onTheWayOrders.length === 0 && (
+                <div className="text-center py-12">
+                  <p className="text-gray-500">No orders on the way.</p>
+                </div>
+            )}
+          </div>
+        </section>
+
+        {/* Column 3: Completed */}
+        <section className="flex flex-col bg-gray-900/50 rounded-lg">
+          <h2 className="text-lg font-semibold text-white p-3">Completed</h2>
+          <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
+            {renderCompletedColumn()}
+          </div>
+        </section>
+        
+        {/* Render modals at the end */}
+        <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
+        <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
+        {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
+        <MergeByPaymentModal isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onSelect={(method) => { if (window.confirm(`Are you sure you want to merge all of today's completed orders for ${method.toUpperCase()}? This action cannot be undone.`)) { actions.mergeTodaysCompletedOrdersByPayment(method); } }} />
+        <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
+        <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
+      </div>
+    );
+  } else {
+    // --- Fallback to original tabbed view for smaller screens ---
+    const tabsToShow = STATUS_TABS;
+    return (
+      <>
+        <div className="mt-2">
+          <nav className="-mb-px flex space-x-6">
+            {tabsToShow.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => handleStatusChange(tab.id)}
+                className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                  activeStatus === tab.id
+                    ? 'border-indigo-500 text-indigo-400'
+                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
+        
+        <div className="flex-grow pt-2 pb-4 overflow-y-auto hide-scrollbar relative transition-all duration-200">
+            {filteredOrders.length === 0 && activeStatus !== OrderStatus.DISPATCHING && (
+                <div className="text-center py-12">
+                    <p className="text-gray-500">No orders in this category.</p>
+                </div>
+            )}
+
+            {activeStatus === OrderStatus.COMPLETED ? (
+                renderCompletedColumn()
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                {filteredOrders.map((order) => (
+                    <SupplierCard 
+                        key={order.id} 
+                        order={order} 
+                        draggedItem={draggedItem}
+                        setDraggedItem={setDraggedItem}
+                        onItemDrop={handleItemDrop}
+                        showStoreName={activeStore === StoreName.KALI}
+                    />
+                ))}
+                {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
+                  <AddOrderDropZone />
+                )}
+              </div>
+            )}
+        </div>
+
+        <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : (activeStatus === OrderStatus.COMPLETED ? "Add New Completed Order" : "Start a New Order")} />
+        <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
+        {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
+        <MergeByPaymentModal isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onSelect={(method) => { if (window.confirm(`Are you sure you want to merge all of today's completed orders for ${method.toUpperCase()}? This action cannot be undone.`)) { actions.mergeTodaysCompletedOrdersByPayment(method); } }} />
+        <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
+        <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
+      </>
+    );
+  }
 };
 
 export default OrderWorkspace;
