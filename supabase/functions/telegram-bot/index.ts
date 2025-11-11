@@ -1,6 +1,6 @@
 // @formatter:off
-// FIX: Pinned Supabase edge runtime types to a specific version for stability to resolve type loading issues.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
+// FIX: Using the recommended esm.sh URL for Supabase functions types to resolve type definition errors.
+/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
 // @formatter:on
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -190,8 +190,13 @@ async function answerCallbackQuery(callbackQueryId: string, text: string, showAl
             })
         });
         if (!response.ok) {
-            const errorData = await response.json();
-            console.error("Failed to answer callback query:", errorData);
+            const errorText = await response.text();
+            try {
+                const errorData = JSON.parse(errorText);
+                console.error("Failed to answer callback query with JSON response:", errorData);
+            } catch (e) {
+                console.error("Failed to answer callback query with non-JSON response:", errorText);
+            }
         }
     } catch (e) {
         console.error("Network error while answering callback query:", e);

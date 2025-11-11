@@ -30,7 +30,7 @@ const formatDateGroupHeader = (key: string): string => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled, columnCount } = state;
+  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled, columnCount, draggedOrderId } = state;
   const { notify } = useNotifier();
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
@@ -47,6 +47,8 @@ const OrderWorkspace: React.FC = () => {
   const [ordersForDueReport, setOrdersForDueReport] = useState<Order[]>([]);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [ordersForReceipt, setOrdersForReceipt] = useState<Order[]>([]);
+  const [dragOverColumn, setDragOverColumn] = useState<OrderStatus | null>(null);
+  const [dragOverTab, setDragOverTab] = useState<OrderStatus | null>(null);
 
 
   const handleStatusChange = (status: OrderStatus) => {
@@ -104,8 +106,8 @@ const OrderWorkspace: React.FC = () => {
 
         try {
             // If moving the item makes the source order empty, delete the source order
-            // to prevent empty cards from cluttering the UI (unless it's a new dispatch order).
-            if (newSourceItems.length === 0 && sourceOrder.status !== OrderStatus.DISPATCHING) {
+            // to prevent empty cards from cluttering the UI.
+            if (newSourceItems.length === 0) {
                 await Promise.all([
                     actions.deleteOrder(sourceOrder.id),
                     actions.updateOrder({ ...destinationOrder, items: newDestinationItems })
@@ -272,12 +274,12 @@ const OrderWorkspace: React.FC = () => {
             const isExpanded = expandedGroups.has(key);
             return (
               <div key={key}>
-                <div className="bg-gray-800/50 px-2 py-2 flex justify-between items-center w-full text-left rounded-md">
-                  <button onClick={() => toggleGroup(key)} className="flex items-center space-x-2 flex-grow">
+                <div className="bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl">
+                  <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
                     <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
                       <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                     </svg>
-                    <h3 className="font-semibold text-white">{formatDateGroupHeader(key)}</h3>
+                    <h3 className="font-bold text-white text-base">{formatDateGroupHeader(key)}</h3>
                   </button>
                   <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
@@ -361,7 +363,30 @@ const OrderWorkspace: React.FC = () => {
       <div className="flex-grow pt-4 overflow-x-auto hide-scrollbar">
         <div className={`h-full grid ${columnClass} ${minWidthClass} gap-4`}>
           {/* Column 1: Dispatch */}
-          <section className="flex flex-col bg-gray-900/50 rounded-lg">
+          <section 
+            className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === OrderStatus.DISPATCHING ? 'bg-indigo-900/50' : ''}`}
+            onDragOver={(e) => {
+                if (draggedOrderId) {
+                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                    if (sourceOrder && sourceOrder.status !== OrderStatus.DISPATCHING) {
+                        e.preventDefault();
+                        setDragOverColumn(OrderStatus.DISPATCHING);
+                    }
+                }
+            }}
+            onDragLeave={() => setDragOverColumn(null)}
+            onDrop={(e) => {
+                if (draggedOrderId) {
+                    e.preventDefault();
+                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                    if (sourceOrder && sourceOrder.status !== OrderStatus.DISPATCHING) {
+                        actions.updateOrder({ ...sourceOrder, status: OrderStatus.DISPATCHING, isSent: false, isReceived: false, completedAt: undefined });
+                    }
+                    setDragOverColumn(null);
+                    dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+                }
+            }}
+          >
             <h2 className="text-lg font-semibold text-white p-3">Dispatch</h2>
             <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
               {dispatchingOrders.map(order => (
@@ -379,7 +404,30 @@ const OrderWorkspace: React.FC = () => {
           </section>
 
           {/* Column 2: On the Way */}
-          <section className="flex flex-col bg-gray-900/50 rounded-lg">
+          <section 
+            className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === OrderStatus.ON_THE_WAY ? 'bg-indigo-900/50' : ''}`}
+            onDragOver={(e) => {
+                if (draggedOrderId) {
+                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                    if (sourceOrder && sourceOrder.status !== OrderStatus.ON_THE_WAY) {
+                        e.preventDefault();
+                        setDragOverColumn(OrderStatus.ON_THE_WAY);
+                    }
+                }
+            }}
+            onDragLeave={() => setDragOverColumn(null)}
+            onDrop={(e) => {
+                if (draggedOrderId) {
+                    e.preventDefault();
+                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                    if (sourceOrder && sourceOrder.status !== OrderStatus.ON_THE_WAY) {
+                        actions.updateOrder({ ...sourceOrder, status: OrderStatus.ON_THE_WAY, isSent: true, isReceived: false, completedAt: undefined });
+                    }
+                    setDragOverColumn(null);
+                    dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+                }
+            }}
+          >
             <h2 className="text-lg font-semibold text-white p-3">On the Way</h2>
             <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
               {onTheWayOrders.map(order => (
@@ -402,7 +450,30 @@ const OrderWorkspace: React.FC = () => {
 
           {/* Column 3: Completed */}
           {columnCount === 3 && (
-            <section className="flex flex-col bg-gray-900/50 rounded-lg">
+            <section 
+              className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === OrderStatus.COMPLETED ? 'bg-indigo-900/50' : ''}`}
+              onDragOver={(e) => {
+                  if (draggedOrderId) {
+                      const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                      if (sourceOrder && sourceOrder.status !== OrderStatus.COMPLETED) {
+                          e.preventDefault();
+                          setDragOverColumn(OrderStatus.COMPLETED);
+                      }
+                  }
+              }}
+              onDragLeave={() => setDragOverColumn(null)}
+              onDrop={(e) => {
+                  if (draggedOrderId) {
+                      e.preventDefault();
+                      const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                      if (sourceOrder && sourceOrder.status !== OrderStatus.COMPLETED) {
+                          actions.updateOrder({ ...sourceOrder, status: OrderStatus.COMPLETED, isSent: true, isReceived: true, completedAt: new Date().toISOString() });
+                      }
+                      setDragOverColumn(null);
+                      dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+                  }
+              }}
+            >
               <h2 className="text-lg font-semibold text-white p-3">Completed</h2>
               <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
                 {renderCompletedColumn()}
@@ -431,11 +502,40 @@ const OrderWorkspace: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => handleStatusChange(tab.id)}
-                className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md ${
                   activeStatus === tab.id
                     ? 'border-indigo-500 text-indigo-400'
                     : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                }`}
+                } ${dragOverTab === tab.id ? 'bg-indigo-900/50' : ''}`}
+                onDragOver={(e) => {
+                    if (draggedOrderId) {
+                        const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                        if (sourceOrder && sourceOrder.status !== tab.id) {
+                            e.preventDefault();
+                            setDragOverTab(tab.id);
+                        }
+                    }
+                }}
+                onDragLeave={() => setDragOverTab(null)}
+                onDrop={(e) => {
+                    if (draggedOrderId) {
+                        e.preventDefault();
+                        const sourceOrder = orders.find(o => o.id === draggedOrderId);
+                        if (sourceOrder && sourceOrder.status !== tab.id) {
+                            let updatedOrderPayload;
+                            if (tab.id === OrderStatus.COMPLETED) {
+                                updatedOrderPayload = { ...sourceOrder, status: OrderStatus.COMPLETED, isSent: true, isReceived: true, completedAt: new Date().toISOString() };
+                            } else if (tab.id === OrderStatus.ON_THE_WAY) {
+                                updatedOrderPayload = { ...sourceOrder, status: OrderStatus.ON_THE_WAY, isSent: true, isReceived: false, completedAt: undefined };
+                            } else { // DISPATCHING
+                                updatedOrderPayload = { ...sourceOrder, status: OrderStatus.DISPATCHING, isSent: false, isReceived: false, completedAt: undefined };
+                            }
+                            actions.updateOrder(updatedOrderPayload);
+                        }
+                        setDragOverTab(null);
+                        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+                    }
+                }}
               >
                 {tab.label}
               </button>

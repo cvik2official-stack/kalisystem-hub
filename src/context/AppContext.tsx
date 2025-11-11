@@ -24,6 +24,7 @@ export interface AppState {
   isDualPaneMode: boolean;
   columnCount: 1 | 2 | 3;
   cardWidth: number | null;
+  draggedOrderId: string | null;
 }
 
 export type Action =
@@ -51,6 +52,7 @@ export type Action =
   | { type: 'SET_EDIT_MODE'; payload: boolean }
   | { type: 'TOGGLE_DUAL_PANE_MODE' }
   | { type: 'CYCLE_COLUMN_COUNT' }
+  | { type: 'SET_DRAGGED_ORDER_ID'; payload: string | null }
   | { type: 'SET_CARD_WIDTH'; payload: number | null };
 
 export interface AppContextActions {
@@ -94,6 +96,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case 'SET_CARD_WIDTH':
         return { ...state, cardWidth: action.payload };
+    case 'SET_DRAGGED_ORDER_ID':
+        return { ...state, draggedOrderId: action.payload };
     case '_ADD_ITEM':
         return { ...state, items: [...state.items, action.payload] };
     case '_UPDATE_ITEM': {
@@ -260,6 +264,7 @@ const getInitialState = (): AppState => {
     isEditModeEnabled: false,
     isDualPaneMode: false,
     columnCount: 1,
+    draggedOrderId: null,
     cardWidth: null,
   };
 

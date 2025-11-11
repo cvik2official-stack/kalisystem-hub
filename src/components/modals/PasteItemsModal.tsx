@@ -108,8 +108,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           if (existingItem) {
             supplier = state.suppliers.find(s => s.id === existingItem.supplierId) || null;
             // For matched items, ALWAYS use the unit from the database, ignoring any parsed unit.
-            const masterPrice = state.itemPrices.find(p => p.itemId === existingItem.id && p.supplierId === existingItem.supplierId && p.isMaster);
-            orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: existingItem.unit, price: masterPrice?.price };
+            orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: existingItem.unit };
           }
         } else if (pItem.newItemName) {
            supplier = state.suppliers.find(s => s.name === 'MARKET') || null;
@@ -127,8 +126,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
                        unit: normalizeUnit(pItem.unit) ?? Unit.PC
                    });
                }
-               const masterPrice = state.itemPrices.find(p => p.itemId === finalItem.id && p.supplierId === finalItem.supplierId && p.isMaster);
-               orderItem = { itemId: finalItem.id, name: finalItem.name, quantity: pItem.quantity, unit: finalItem.unit, price: masterPrice?.price };
+               orderItem = { itemId: finalItem.id, name: finalItem.name, quantity: pItem.quantity, unit: finalItem.unit };
            }
         }
 

@@ -35,7 +35,10 @@ const CardHeader: React.FC<{
   canChangePayment: boolean;
   onNamePressStart?: () => void;
   onNamePressEnd?: () => void;
-}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderClick, onPaymentBadgeClick, showStoreName, showActionsButton, onActionsClick, orderTotal, canChangePayment, onNamePressStart, onNamePressEnd }) => {
+  isDraggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderClick, onPaymentBadgeClick, showStoreName, showActionsButton, onActionsClick, orderTotal, canChangePayment, onNamePressStart, onNamePressEnd, isDraggable, onDragStart, onDragEnd }) => {
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
@@ -64,12 +67,15 @@ const CardHeader: React.FC<{
                     )}
                     <h3 
                         onClick={onHeaderClick} 
-                        className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all cursor-pointer"
+                        className={`font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all ${isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'}`}
                         onMouseDown={onNamePressStart}
                         onMouseUp={onNamePressEnd}
                         onMouseLeave={onNamePressEnd}
                         onTouchStart={onNamePressStart}
                         onTouchEnd={onNamePressEnd}
+                        draggable={isDraggable}
+                        onDragStart={onDragStart}
+                        onDragEnd={onDragEnd}
                     >
                         {order.supplierName}
                     </h3>
@@ -378,7 +384,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 return acc;
             }
             const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-            const price = item.price ?? masterPrice ?? 0;
+            const price = masterPrice ?? 0;
             return acc + (price * item.quantity);
         }, 0);
         return total;
@@ -626,13 +632,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         if (order.supplierName === SupplierName.STOCK) {
             setStockVariantModalState({ isOpen: true, parentItem: selectedItem });
         } else {
-            const masterPrice = state.itemPrices.find(p => p.itemId === selectedItem.id && p.supplierId === order.supplierId && p.isMaster);
             const orderItem: OrderItem = {
               itemId: selectedItem.id,
               name: selectedItem.name,
               quantity: 1,
               unit: selectedItem.unit,
-              price: masterPrice?.price,
             };
             handleAddItem(orderItem);
         }
@@ -656,7 +660,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const handleSendOrder = async () => {
         setIsProcessing(true);
         try {
-            await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
+            await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true, modifiedAt: new Date().toISOString() });
         } finally { setIsProcessing(false); }
     }
 
@@ -878,9 +882,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     ];
                     if (order.status === OrderStatus.ON_THE_WAY) {
                         menuOptions.push({ label: 'Add a Card...', action: () => setAddCardModalOpen(true) });
-                    }
-                    if (order.supplierName !== SupplierName.OUDOM) {
-                        menuOptions.push({ label: 'Assign to Oudom', action: handleAssignToOudom });
                     }
                     menuOptions.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
                     options = menuOptions;
@@ -1122,7 +1123,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 name: newVariantMasterItem.name,
                 quantity: 1, // Default quantity when adding to stock order
                 unit: newVariantMasterItem.unit,
-                price: variantData.price,
             };
 
             handleAddItem(newVariantOrderItem);
@@ -1176,16 +1176,39 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleCardDragStart = (e: React.DragEvent) => {
+        e.stopPropagation();
+        e.dataTransfer.setData('text/plain', order.id);
+        e.dataTransfer.effectAllowed = 'move';
+        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: order.id });
+    };
+    
+    const handleCardDragEnd = () => {
+        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+    };
+
     const isEffectivelyCollapsed = (!!draggedItem) ? true : isManuallyCollapsed;
     const canEditCard = (!isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) || (order.status === OrderStatus.COMPLETED && isEditModeEnabled);
     const canChangePayment = canEditCard || (!isManagerView && order.status === OrderStatus.ON_THE_WAY);
+    const isCardDraggable = (order.status !== OrderStatus.COMPLETED || isEditModeEnabled);
     
     return (
         <div
             ref={cardRef}
             onDragOver={(e) => {
-                e.preventDefault();
-                if (draggedItem && draggedItem.sourceOrderId !== order.id) {
+                let canDrop = false;
+                const sourceOrderId = state.draggedOrderId;
+                if (sourceOrderId) { // Card drag
+                    const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
+                    if (sourceOrder && sourceOrderId !== order.id && sourceOrder.status === order.status) {
+                        canDrop = true;
+                    }
+                } else if (draggedItem && draggedItem.sourceOrderId !== order.id) { // Item drag
+                    canDrop = true;
+                }
+
+                if (canDrop) {
+                    e.preventDefault();
                     setIsDragOver(true);
                 }
             }}
@@ -1194,7 +1217,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 e.preventDefault();
                 e.stopPropagation();
                 setIsDragOver(false);
-                if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) {
+            
+                const sourceOrderId = state.draggedOrderId;
+                if (sourceOrderId) { // Card drop
+                    const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
+                    if (sourceOrder && sourceOrderId !== order.id && sourceOrder.status === order.status) {
+                        actions.mergeOrders(sourceOrderId, order.id);
+                    }
+                     dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+                } else if (onItemDrop && draggedItem && draggedItem.sourceOrderId !== order.id) { // Item drop
                     onItemDrop(order.id);
                 }
             }}
@@ -1223,13 +1254,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 canChangePayment={canChangePayment}
                 onNamePressStart={handleNamePressStart}
                 onNamePressEnd={handleNamePressEnd}
+                isDraggable={isCardDraggable}
+                onDragStart={isCardDraggable ? handleCardDragStart : undefined}
+                onDragEnd={isCardDraggable ? handleCardDragEnd : undefined}
             />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
                 <div className="flex-grow pt-1 pb-1 px-2 space-y-1 overflow-y-auto hide-scrollbar">
                     {order.items.map(item => {
                          const masterPrice = state.itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-                         const displayPrice = ((order.status === OrderStatus.COMPLETED || order.status === OrderStatus.ON_THE_WAY) && !isManagerView) ? (item.price ?? masterPrice) : undefined;
+                         const displayPrice = ((order.status === OrderStatus.COMPLETED || order.status === OrderStatus.ON_THE_WAY) && !isManagerView) ? masterPrice : undefined;
                         return (
                             <OrderItemRow
                                 key={`${item.itemId}-${item.isSpoiled ? 'spoiled' : 'ok'}`}

@@ -151,4 +151,5 @@ export interface AppState {
   isDualPaneMode: boolean;
   columnCount: 1 | 2 | 3;
   cardWidth: number | null;
+  draggedOrderId: string | null;
 }
