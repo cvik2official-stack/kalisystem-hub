@@ -7,7 +7,7 @@
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC;
 
   -- Add a JSONB column to store bot settings for suppliers
-  -- This column stores an object for settings like 'showAttachInvoice', 'showMissingItems', and 'messageTemplate'.
+  -- This column stores an object for settings like 'showAttachInvoice', 'showMissingItems', 'enableReminderTimer', and 'messageTemplate'.
   ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS bot_settings JSONB;
 
   -- Create a table to store item prices per supplier
@@ -433,6 +433,15 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
         modifiedAt: updated.modified_at,
         botSettings: updated.bot_settings,
     };
+};
+
+export const deleteSupplier = async ({ supplierId, url, key }: { supplierId: string; url: string; key: string }): Promise<void> => {
+    const headers = getHeaders(key);
+    const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplierId}`, {
+        method: 'DELETE',
+        headers
+    });
+    if (!response.ok) throw new Error(`Failed to delete supplier: ${await response.text()}`);
 };
 
 export const updateStore = async ({ store, url, key }: { store: Store; url: string; key: string }): Promise<Store> => {

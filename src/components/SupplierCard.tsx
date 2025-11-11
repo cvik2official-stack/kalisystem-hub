@@ -8,7 +8,6 @@ import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import EditItemModal from './modals/EditItemModal';
 import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from '../utils/messageFormatter';
-import EditSupplierModal from './modals/EditSupplierModal';
 import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram, sendReceiptToStoreOnTelegram } from '../services/telegramService';
 import AddSupplierModal from './modals/AddSupplierModal';
 import MergeOrderModal from './modals/MergeOrderModal';
@@ -18,6 +17,7 @@ import InvoicePreviewModal from './modals/InvoicePreviewModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
 import MoveToStoreModal from './modals/MoveToStoreModal';
 import CreateVariantModal from './modals/CreateVariantModal';
+import MoveOrderDateModal from './modals/MoveOrderDateModal';
 
 // --- SUB-COMPONENTS START ---
 
@@ -33,7 +33,9 @@ const CardHeader: React.FC<{
   onActionsClick?: (e: React.MouseEvent) => void;
   orderTotal?: number | null;
   canChangePayment: boolean;
-}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderClick, onPaymentBadgeClick, showStoreName, showActionsButton, onActionsClick, orderTotal, canChangePayment }) => {
+  onNamePressStart?: () => void;
+  onNamePressEnd?: () => void;
+}> = ({ order, supplier, isManuallyCollapsed, onToggleCollapse, onHeaderClick, onPaymentBadgeClick, showStoreName, showActionsButton, onActionsClick, orderTotal, canChangePayment, onNamePressStart, onNamePressEnd }) => {
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
@@ -63,6 +65,11 @@ const CardHeader: React.FC<{
                     <h3 
                         onClick={onHeaderClick} 
                         className="font-bold text-white text-lg select-none p-1 -m-1 rounded-md transition-all cursor-pointer"
+                        onMouseDown={onNamePressStart}
+                        onMouseUp={onNamePressEnd}
+                        onMouseLeave={onNamePressEnd}
+                        onTouchStart={onNamePressStart}
+                        onTouchEnd={onNamePressEnd}
                     >
                         {order.supplierName}
                     </h3>
@@ -289,7 +296,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isEditItemModalOpen, setEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
 
-    const [isEditSupplierModalOpen, setEditSupplierModalOpen] = useState(false);
     const supplier = state.suppliers.find(s => s.id === order.supplierId);
 
     const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
@@ -308,6 +314,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const cardRef = useRef<HTMLDivElement>(null);
     const [isOverdue, setIsOverdue] = useState(false);
     const isPending = order.status === OrderStatus.ON_THE_WAY && supplier?.botSettings?.showOkButton && !order.isAcknowledged;
+
+    const [isMoveDateModalOpen, setIsMoveDateModalOpen] = useState(false);
+    const longPressTimer = useRef<number | null>(null);
 
     useEffect(() => {
         if (!isPending) {
@@ -1135,6 +1144,38 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
         }
     };
 
+    const handleNamePressStart = () => {
+        if (order.status !== OrderStatus.COMPLETED) return;
+        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+        longPressTimer.current = window.setTimeout(() => {
+            setIsMoveDateModalOpen(true);
+        }, 500);
+    };
+
+    const handleNamePressEnd = () => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+        }
+    };
+
+    const handleDateChangeSave = async (newDate: string) => {
+        const originalDate = new Date(order.completedAt || order.createdAt);
+        const [year, month, day] = newDate.split('-').map(Number);
+        const newCompletedAt = new Date(
+            year, month - 1, day,
+            originalDate.getHours(), originalDate.getMinutes(), originalDate.getSeconds()
+        );
+
+        setIsProcessing(true);
+        try {
+            await actions.updateOrder({ ...order, completedAt: newCompletedAt.toISOString() });
+            notify(`Order moved to ${newCompletedAt.toLocaleDateString()}.`, 'success');
+        } finally {
+            setIsProcessing(false);
+            setIsMoveDateModalOpen(false);
+        }
+    };
+
     const isEffectivelyCollapsed = (!!draggedItem) ? true : isManuallyCollapsed;
     const canEditCard = (!isManagerView && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY)) || (order.status === OrderStatus.COMPLETED && isEditModeEnabled);
     const canChangePayment = canEditCard || (!isManagerView && order.status === OrderStatus.ON_THE_WAY);
@@ -1180,6 +1221,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 onActionsClick={handleHeaderActionsClick}
                 orderTotal={orderTotal}
                 canChangePayment={canChangePayment}
+                onNamePressStart={handleNamePressStart}
+                onNamePressEnd={handleNamePressEnd}
             />
 
             <div className={`flex flex-col flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`}>
@@ -1252,7 +1295,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             )}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onItemSelect={handleAddItemSelect} />}
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} onTriggerCreateVariant={() => triggerCreateVariantFromEditModal(selectedMasterItem)} />}
-            {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={actions.updateSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <MoveToStoreModal isOpen={isMoveToStoreModalOpen} onClose={() => setIsMoveToStoreModalOpen(false)} onSelect={handleMoveToStore} currentStore={order.store} />
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />
@@ -1278,6 +1320,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                     onCreate={handleCreateStockVariant}
                 />
             )}
+            <MoveOrderDateModal
+                isOpen={isMoveDateModalOpen}
+                onClose={() => setIsMoveDateModalOpen(false)}
+                onSave={handleDateChangeSave}
+                order={order}
+            />
         </div>
     );
 };

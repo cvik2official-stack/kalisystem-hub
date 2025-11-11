@@ -73,25 +73,49 @@ const OrderWorkspace: React.FC = () => {
                     (destinationOrder.status === OrderStatus.DISPATCHING || destinationOrder.status === OrderStatus.ON_THE_WAY || (destinationOrder.status === OrderStatus.COMPLETED && isEditModeEnabled));
 
     if (canDrop) {
-        const newSourceItems = sourceOrder.items.filter(i => i.itemId !== draggedItem.item.itemId);
+        // Correctly filter out the specific dragged item, respecting its spoiled status.
+        // This prevents accidentally removing both spoiled and non-spoiled versions of an item.
+        const newSourceItems = sourceOrder.items.filter(i => 
+            !(i.itemId === draggedItem.item.itemId && i.isSpoiled === draggedItem.item.isSpoiled)
+        );
         
-        const itemExistsInDest = destinationOrder.items.some(i => i.itemId === draggedItem.item.itemId);
         const isUpdateToSentOrder = destinationOrder.status === OrderStatus.ON_THE_WAY;
         const itemToDrop = { ...draggedItem.item, isNew: isUpdateToSentOrder };
 
-        const newDestinationItems = itemExistsInDest
-            ? destinationOrder.items.map(i => 
-                i.itemId === draggedItem.item.itemId 
-                ? { ...i, quantity: i.quantity + itemToDrop.quantity, isNew: isUpdateToSentOrder || i.isNew } 
-                : i
-            )
-            : [...destinationOrder.items, itemToDrop];
+        // Find if an item with the same ID and spoiled status already exists in the destination.
+        const existingItemInDestIndex = destinationOrder.items.findIndex(i => 
+            i.itemId === itemToDrop.itemId && i.isSpoiled === itemToDrop.isSpoiled
+        );
+
+        let newDestinationItems;
+        if (existingItemInDestIndex > -1) {
+            // If it exists, update its quantity.
+            newDestinationItems = [...destinationOrder.items];
+            const existingItem = newDestinationItems[existingItemInDestIndex];
+            newDestinationItems[existingItemInDestIndex] = {
+                ...existingItem,
+                quantity: existingItem.quantity + itemToDrop.quantity,
+                isNew: isUpdateToSentOrder || existingItem.isNew,
+            };
+        } else {
+            // If it's new to this order, add it to the list.
+            newDestinationItems = [...destinationOrder.items, itemToDrop];
+        }
 
         try {
-            await Promise.all([
-                actions.updateOrder({ ...sourceOrder, items: newSourceItems }),
-                actions.updateOrder({ ...destinationOrder, items: newDestinationItems })
-            ]);
+            // If moving the item makes the source order empty, delete the source order
+            // to prevent empty cards from cluttering the UI (unless it's a new dispatch order).
+            if (newSourceItems.length === 0 && sourceOrder.status !== OrderStatus.DISPATCHING) {
+                await Promise.all([
+                    actions.deleteOrder(sourceOrder.id),
+                    actions.updateOrder({ ...destinationOrder, items: newDestinationItems })
+                ]);
+            } else {
+                 await Promise.all([
+                    actions.updateOrder({ ...sourceOrder, items: newSourceItems }),
+                    actions.updateOrder({ ...destinationOrder, items: newDestinationItems })
+                ]);
+            }
         } catch (error) {
             console.error("Failed to move item between orders:", error);
         }

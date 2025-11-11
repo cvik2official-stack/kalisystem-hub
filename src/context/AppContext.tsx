@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier } from '../services/supabaseService';
 import { useNotifier } from './NotificationContext';
 import { sendReminderToSupplier } from '../services/telegramService';
 
@@ -36,6 +36,7 @@ export type Action =
   | { type: '_DELETE_ITEM'; payload: string }
   | { type: '_ADD_SUPPLIER'; payload: Supplier }
   | { type: '_UPDATE_SUPPLIER'; payload: Supplier }
+  | { type: '_DELETE_SUPPLIER'; payload: string }
   | { type: '_UPDATE_STORE'; payload: Store }
   | { type: 'ADD_ORDERS'; payload: Order[] }
   | { type: 'UPDATE_ORDER'; payload: Order }
@@ -58,6 +59,7 @@ export interface AppContextActions {
     deleteItem: (itemId: string) => Promise<void>;
     addSupplier: (supplier: Omit<Supplier, 'id' | 'modifiedAt'>) => Promise<Supplier>;
     updateSupplier: (supplier: Supplier) => Promise<void>;
+    deleteSupplier: (supplierId: string) => Promise<void>;
     updateStore: (store: Store) => Promise<void>;
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[], status?: OrderStatus) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
@@ -114,6 +116,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, suppliers: [...state.suppliers, action.payload] };
     case '_UPDATE_SUPPLIER':
         return { ...state, suppliers: state.suppliers.map(s => s.id === action.payload.id ? action.payload : s) };
+    case '_DELETE_SUPPLIER':
+        return { ...state, suppliers: state.suppliers.filter(s => s.id !== action.payload) };
     case '_UPDATE_STORE':
         return { ...state, stores: state.stores.map(s => s.id === action.payload.id ? action.payload : s) };
     case 'ADD_ORDERS': {
@@ -231,7 +235,7 @@ const getInitialState = (): AppState => {
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
       geminiApiKey: 'AIzaSyDN0Z_WM4PvhMhJ0nTPF9lM06lepFrZ-qM',
-      telegramBotToken: '8347024604:AAHotssxpa41D53fMP10_8kIR6PCcVgw0i0',
+      telegramBotToken: '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og',
       aiParsingRules: {
         global: {
           "Chicken": "Chicken breast",
@@ -286,7 +290,7 @@ export const AppContext = createContext<{
       addItem: async () => { throw new Error('addItem not implemented'); },
       updateItem: async () => {}, deleteItem: async () => {},
       addSupplier: async () => { throw new Error('addSupplier not implemented'); },
-      updateSupplier: async () => {}, updateStore: async () => {}, addOrder: async () => {},
+      updateSupplier: async () => {}, deleteSupplier: async () => {}, updateStore: async () => {}, addOrder: async () => {},
       updateOrder: async () => {}, deleteOrder: async () => {},
       syncWithSupabase: async () => {},
       addItemToDispatch: async () => {},
@@ -366,6 +370,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const updatedSupplier = await supabaseUpdateSupplier({ supplier, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: '_UPDATE_SUPPLIER', payload: updatedSupplier });
         notify(`Supplier "${updatedSupplier.name}" updated.`, 'success');
+    },
+    deleteSupplier: async (supplierId) => {
+        await supabaseDeleteSupplier({ supplierId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: '_DELETE_SUPPLIER', payload: supplierId });
     },
     updateStore: async (store) => {
         const updatedStore = await supabaseUpdateStore({ store, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
@@ -682,7 +690,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const ordersToRemind = state.orders.filter(o => {
                     if (o.status !== OrderStatus.ON_THE_WAY || o.isAcknowledged || o.reminderSentAt) return false;
                     const supplier = state.suppliers.find(s => s.id === o.supplierId);
-                    if (!supplier?.botSettings?.showOkButton) return false;
+                    if (!supplier?.botSettings?.showOkButton || !supplier.botSettings.enableReminderTimer) return false;
                     const timeDiff = new Date().getTime() - new Date(o.modifiedAt).getTime();
                     return timeDiff > FORTY_FIVE_MINUTES;
                 });

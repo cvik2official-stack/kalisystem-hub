@@ -8,7 +8,6 @@ import ContextMenu from './components/ContextMenu';
 import { useNotifier } from './context/NotificationContext';
 import EditItemModal from './components/modals/EditItemModal';
 import { generateOrderMessage, generateReceiptMessage, renderReceiptTemplate } from './utils/messageFormatter';
-import EditSupplierModal from './components/modals/EditSupplierModal';
 import { sendOrderToSupplierOnTelegram, sendReceiptOnTelegram, sendReceiptToStoreOnTelegram } from './services/telegramService';
 import AddSupplierModal from './components/modals/AddSupplierModal';
 import MergeOrderModal from './components/modals/MergeOrderModal';
@@ -273,7 +272,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
     const [isEditItemModalOpen, setEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
 
-    const [isEditSupplierModalOpen, setEditSupplierModalOpen] = useState(false);
     const supplier = state.suppliers.find(s => s.id === order.supplierId);
 
     const [editingPriceItemId, setEditingPriceItemId] = useState<string | null>(null);
@@ -1088,7 +1086,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
                 supplier={supplier}
                 isManuallyCollapsed={isEffectivelyCollapsed}
                 onToggleCollapse={() => setIsManuallyCollapsed(!isManuallyCollapsed)}
-                onHeaderClick={() => supplier && setEditSupplierModalOpen(true)}
+                onHeaderClick={() => {}}
                 onPaymentBadgeClick={() => setPaymentMethodModalOpen(true)}
                 showStoreName={showStoreName}
                 showActionsButton={true}
@@ -1162,7 +1160,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, isManagerView = fals
             )}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onItemSelect={handleAddItemSelect} />}
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} onTriggerCreateVariant={() => triggerCreateVariantFromEditModal(selectedMasterItem)} />}
-            {supplier && isEditSupplierModalOpen && <EditSupplierModal supplier={supplier} isOpen={isEditSupplierModalOpen} onClose={() => setEditSupplierModalOpen(false)} onSave={actions.updateSupplier} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <MoveToStoreModal isOpen={isMoveToStoreModalOpen} onClose={() => setIsMoveToStoreModalOpen(false)} onSelect={handleMoveToStore} currentStore={order.store} />
             <MergeOrderModal orderToMerge={order} isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onMerge={handleMergeOrder} />

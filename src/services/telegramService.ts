@@ -34,9 +34,15 @@ async function sendMessage(token: string, chatId: string, message: string, reply
     });
 
     if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Telegram API error:', errorData);
-        throw new Error(errorData.description || 'Failed to send message via Telegram.');
+        try {
+            const errorData = await response.json();
+            console.error('Telegram API error:', errorData);
+            const description = (typeof errorData.description === 'string') ? errorData.description : JSON.stringify(errorData);
+            throw new Error(description || 'Failed to send message via Telegram.');
+        } catch (jsonError) {
+            const textError = await response.text();
+            throw new Error(`Telegram API returned non-JSON error: ${textError}`);
+        }
     }
 }
 
@@ -299,8 +305,14 @@ export const setWebhook = async (webhookUrl: string, token: string): Promise<voi
     const response = await fetch(`${TELEGRAM_API_URL}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
 
     if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Telegram API error:', errorData);
-        throw new Error(errorData.description || 'Failed to set webhook.');
+        try {
+            const errorData = await response.json();
+            console.error('Telegram API error:', errorData);
+            const description = (typeof errorData.description === 'string') ? errorData.description : JSON.stringify(errorData);
+            throw new Error(description || 'Failed to set webhook.');
+        } catch (jsonError) {
+            const textError = await response.text();
+            throw new Error(`Telegram API returned non-JSON error: ${textError}`);
+        }
     }
 };

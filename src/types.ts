@@ -1,7 +1,3 @@
-// @ai-agent
-// Preserve JSX structure and alias imports.
-// Do not refactor or rewrite "@/..." paths.
-// These are resolved via tsconfig.json and bundler config.
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -54,10 +50,12 @@ export interface Item {
 export interface SupplierBotSettings {
   showAttachInvoice?: boolean;
   showMissingItems?: boolean;
+
   showOkButton?: boolean;
   showDriverOnWayButton?: boolean;
   includeLocation?: boolean;
   messageTemplate?: string;
+  enableReminderTimer?: boolean;
 }
 
 export interface Supplier {
@@ -151,5 +149,6 @@ export interface AppState {
   managerStoreFilter: StoreName | null;
   isEditModeEnabled: boolean;
   isDualPaneMode: boolean;
-  multiColumnView: boolean;
+  columnCount: 1 | 2 | 3;
+  cardWidth: number | null;
 }

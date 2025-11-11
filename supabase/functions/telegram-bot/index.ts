@@ -1,6 +1,6 @@
 // @formatter:off
-// FIX: Use a major versioned URL for Supabase edge runtime types to improve stability and resolve type loading issues. This directive provides the necessary Deno types for the function and should resolve the 'Cannot find name Deno' errors.
-/// <reference types="https://esm.sh/@supabase/functions-js@2" />
+// FIX: Pinned Supabase edge runtime types to a specific version for stability to resolve type loading issues.
+/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 // @formatter:on
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -174,15 +174,26 @@ async function handleCancelOrder(query: any, orderId: string, chatId: number) {
  * @param showAlert Whether to show the notification as a modal alert.
  */
 async function answerCallbackQuery(callbackQueryId: string, text: string, showAlert: boolean = false) {
-    if (!TELEGRAM_BOT_TOKEN) return;
+    if (!TELEGRAM_BOT_TOKEN) {
+        console.error("TELEGRAM_BOT_TOKEN is not set, cannot answer callback query.");
+        return;
+    };
     const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`;
-    await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            callback_query_id: callbackQueryId,
-            text: text,
-            show_alert: showAlert
-        })
-    });
+    try {
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                callback_query_id: callbackQueryId,
+                text: text,
+                show_alert: showAlert
+            })
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            console.error("Failed to answer callback query:", errorData);
+        }
+    } catch (e) {
+        console.error("Network error while answering callback query:", e);
+    }
 }

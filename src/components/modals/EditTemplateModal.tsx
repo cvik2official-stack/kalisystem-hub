@@ -43,6 +43,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     const [showOkButton, setShowOkButton] = useState(false);
     const [showDriverOnWayButton, setShowDriverOnWayButton] = useState(false);
     const [includeLocation, setIncludeLocation] = useState(false);
+    const [enableReminderTimer, setEnableReminderTimer] = useState(false);
 
     const templates = state.settings.messageTemplates || {};
     let defaultTemplate = templates.defaultOrder || '';
@@ -66,6 +67,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             setShowOkButton(!!settings.showOkButton);
             setShowDriverOnWayButton(!!settings.showDriverOnWayButton);
             setIncludeLocation(!!settings.includeLocation);
+            setEnableReminderTimer(!!settings.enableReminderTimer);
         }
     }, [isOpen, supplier, defaultTemplate]);
 
@@ -81,6 +83,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
                 showOkButton,
                 showDriverOnWayButton,
                 includeLocation,
+                enableReminderTimer,
             }
         };
         onSave(updatedSupplier);
@@ -116,6 +119,11 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
                      <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving} />
                 </div>
                 
+                <div className="mb-4 border-b border-gray-700 pb-4">
+                     <h3 className="text-base font-semibold text-white mb-2">Automations</h3>
+                     <BotSettingCheckbox id="enableReminderTimer" label="Enable 45min reminder timer" checked={enableReminderTimer} onChange={setEnableReminderTimer} disabled={isSaving} />
+                </div>
+
                 <div>
                     <h3 className="text-base font-semibold text-white mb-2">Message Template</h3>
                     <textarea

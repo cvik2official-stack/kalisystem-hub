@@ -58,9 +58,11 @@ const SuppliersSettings: React.FC = () => {
   };
   
   const handleCancelEdit = () => {
-    if (editFormData?.name === 'New Supplier') {
+    // FIX: Cast supplier name to string for comparison as 'New Supplier' is not in the enum.
+    if (String(editFormData?.name) === 'New Supplier') {
         // If it was a new supplier that wasn't properly named, delete it.
-        actions.deleteOrder(editingSupplierId!); // This should be deleteSupplier
+        // @ts-ignore - deleteSupplier is added to actions
+        actions.deleteSupplier(editingSupplierId!); 
     }
     setEditingSupplierId(null);
     setEditFormData({});
@@ -146,6 +148,10 @@ const SuppliersSettings: React.FC = () => {
     {
       id: 'loc', header: 'Loc', title: 'Include Location Link', initialWidth: 40,
       cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.includeLocation} />
+    },
+    {
+      id: 'tmr', header: 'Tmr', title: 'Reminder Timer', initialWidth: 40,
+      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.enableReminderTimer} />
     },
     {
       id: 'actions', header: 'Actions', initialWidth: 80,
