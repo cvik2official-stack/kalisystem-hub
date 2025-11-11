@@ -48,3 +48,16 @@ body {
 .animate-wobble {
   animation: wobble 0.8s ease-in-out;
 }
+
+@keyframes slow-fade {
+  0%, 100% {
+    border-top-color: #6b7280; /* gray-500 */
+  }
+  50% {
+    border-top-color: #374151; /* gray-700 */
+  }
+}
+
+.animate-slow-fade {
+  animation: slow-fade 2s infinite ease-in-out;
+}

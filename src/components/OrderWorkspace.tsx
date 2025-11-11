@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
 import SupplierCard from './SupplierCard';
@@ -30,7 +30,7 @@ const formatDateGroupHeader = (key: string): string => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled, multiColumnView } = state;
+  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled, columnCount } = state;
   const { notify } = useNotifier();
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
@@ -55,7 +55,7 @@ const OrderWorkspace: React.FC = () => {
 
   const handleAddOrder = async (supplier: Supplier) => {
     if (activeStore === 'Settings' || !activeStore) return;
-    const status = multiColumnView ? OrderStatus.DISPATCHING : (activeStatus === OrderStatus.COMPLETED ? OrderStatus.COMPLETED : OrderStatus.DISPATCHING);
+    const status = columnCount > 1 ? OrderStatus.DISPATCHING : (activeStatus === OrderStatus.COMPLETED ? OrderStatus.COMPLETED : OrderStatus.DISPATCHING);
     await actions.addOrder(supplier, activeStore, [], status);
     setAddSupplierModalOpen(false);
   };
@@ -165,8 +165,8 @@ const OrderWorkspace: React.FC = () => {
   }, [orders, activeStore, activeStatus, suppliers]);
   
   const groupedCompletedOrders = useMemo(() => {
-    const ordersToGroup = multiColumnView ? getFilteredOrdersForStatus(OrderStatus.COMPLETED) : filteredOrders;
-    if ((!multiColumnView && activeStatus !== OrderStatus.COMPLETED) || ordersToGroup.length === 0) return {};
+    const ordersToGroup = columnCount > 1 ? getFilteredOrdersForStatus(OrderStatus.COMPLETED) : filteredOrders;
+    if ((columnCount === 1 && activeStatus !== OrderStatus.COMPLETED) || ordersToGroup.length === 0) return {};
     
     const groups: Record<string, Order[]> = {};
     const today = new Date();
@@ -180,7 +180,7 @@ const OrderWorkspace: React.FC = () => {
       groups[key].push(order);
     });
     return groups;
-  }, [filteredOrders, activeStatus, multiColumnView, orders, activeStore]);
+  }, [filteredOrders, activeStatus, columnCount, orders, activeStore]);
 
   const sortedCompletedGroupKeys = useMemo(() => {
     return Object.keys(groupedCompletedOrders).sort((a, b) => {
@@ -288,7 +288,7 @@ const OrderWorkspace: React.FC = () => {
 
   const AddOrderDropZone = () => (
     <div
-      className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200
+      className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200 mx-auto max-w-md w-full
         ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
       `}
        onDragOver={(e) => {
@@ -325,60 +325,67 @@ const OrderWorkspace: React.FC = () => {
         </div>
     </div>
   );
-
-  if (multiColumnView) {
+  
+  if (columnCount > 1) {
     const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
     const onTheWayOrders = getFilteredOrdersForStatus(OrderStatus.ON_THE_WAY);
+    const columnClass = columnCount === 2 ? 'grid-cols-2' : 'grid-cols-3';
+    // Min width calculation: (column width + gap) * num columns. e.g. (320px + 16px) * 3 = 1008px
+    const minWidthClass = columnCount === 2 ? 'min-w-[672px]' : 'min-w-[1008px]';
     
     return (
-      <div className="flex-grow pt-4 grid grid-cols-1 md:grid-cols-3 gap-4 overflow-hidden">
-        {/* Column 1: Dispatch */}
-        <section className="flex flex-col bg-gray-900/50 rounded-lg">
-          <h2 className="text-lg font-semibold text-white p-3">Dispatch</h2>
-          <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
-            {dispatchingOrders.map(order => (
-              <SupplierCard 
-                  key={order.id} 
-                  order={order} 
-                  draggedItem={draggedItem}
-                  setDraggedItem={setDraggedItem}
-                  onItemDrop={handleItemDrop}
-                  showStoreName={activeStore === StoreName.KALI}
-              />
-            ))}
-            <AddOrderDropZone />
-          </div>
-        </section>
+      <div className="flex-grow pt-4 overflow-x-auto hide-scrollbar">
+        <div className={`h-full grid ${columnClass} ${minWidthClass} gap-4`}>
+          {/* Column 1: Dispatch */}
+          <section className="flex flex-col bg-gray-900/50 rounded-lg">
+            <h2 className="text-lg font-semibold text-white p-3">Dispatch</h2>
+            <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
+              {dispatchingOrders.map(order => (
+                <SupplierCard 
+                    key={order.id} 
+                    order={order} 
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    onItemDrop={handleItemDrop}
+                    showStoreName={activeStore === StoreName.KALI}
+                />
+              ))}
+              <AddOrderDropZone />
+            </div>
+          </section>
 
-        {/* Column 2: On the Way */}
-        <section className="flex flex-col bg-gray-900/50 rounded-lg">
-          <h2 className="text-lg font-semibold text-white p-3">On the Way</h2>
-          <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
-            {onTheWayOrders.map(order => (
-              <SupplierCard 
-                  key={order.id} 
-                  order={order} 
-                  draggedItem={draggedItem}
-                  setDraggedItem={setDraggedItem}
-                  onItemDrop={handleItemDrop}
-                  showStoreName={activeStore === StoreName.KALI}
-              />
-            ))}
-             {onTheWayOrders.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">No orders on the way.</p>
-                </div>
-            )}
-          </div>
-        </section>
+          {/* Column 2: On the Way */}
+          <section className="flex flex-col bg-gray-900/50 rounded-lg">
+            <h2 className="text-lg font-semibold text-white p-3">On the Way</h2>
+            <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
+              {onTheWayOrders.map(order => (
+                <SupplierCard 
+                    key={order.id} 
+                    order={order} 
+                    draggedItem={draggedItem}
+                    setDraggedItem={setDraggedItem}
+                    onItemDrop={handleItemDrop}
+                    showStoreName={activeStore === StoreName.KALI}
+                />
+              ))}
+               {onTheWayOrders.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500">No orders on the way.</p>
+                  </div>
+              )}
+            </div>
+          </section>
 
-        {/* Column 3: Completed */}
-        <section className="flex flex-col bg-gray-900/50 rounded-lg">
-          <h2 className="text-lg font-semibold text-white p-3">Completed</h2>
-          <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
-            {renderCompletedColumn()}
-          </div>
-        </section>
+          {/* Column 3: Completed */}
+          {columnCount === 3 && (
+            <section className="flex flex-col bg-gray-900/50 rounded-lg">
+              <h2 className="text-lg font-semibold text-white p-3">Completed</h2>
+              <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
+                {renderCompletedColumn()}
+              </div>
+            </section>
+          )}
+        </div>
         
         {/* Render modals at the end */}
         <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
@@ -390,7 +397,7 @@ const OrderWorkspace: React.FC = () => {
       </div>
     );
   } else {
-    // --- Fallback to original tabbed view for smaller screens ---
+    // --- Fallback to original tabbed view for single column view ---
     const tabsToShow = STATUS_TABS;
     return (
       <>

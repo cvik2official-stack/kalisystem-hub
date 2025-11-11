@@ -93,6 +93,33 @@ export const sendOrderToSupplierOnTelegram = async (
 };
 
 /**
+ * Sends an automated reminder message to a supplier for an unacknowledged order.
+ * @param order The pending order.
+ * @param supplier The supplier to remind.
+ * @param token The Telegram bot token.
+ */
+export const sendReminderToSupplier = async (
+  order: Order,
+  supplier: Supplier,
+  token: string
+): Promise<void> => {
+  if (!supplier.chatId) {
+    throw new Error("Supplier Chat ID is missing for reminder.");
+  }
+
+  const message = `⚠️ Dear manager, it seems you didn't see the order sent 45mn ago for ${escapeHtml(order.store)}. Press cancel if out of stock, press ok if you process with the order, thank you b.`;
+
+  const replyMarkup: ReplyMarkup = {
+    inline_keyboard: [[
+      { text: "cancel order", callback_data: `cancel_order_${order.id}` },
+      { text: "ok noted", callback_data: `ok_noted_${order.id}` }
+    ]]
+  };
+
+  await sendMessage(token, supplier.chatId, message, replyMarkup);
+};
+
+/**
  * Sends a formatted text receipt to a supplier's chat.
  * @param order The completed order object.
  * @param supplier The supplier object containing the chat ID.

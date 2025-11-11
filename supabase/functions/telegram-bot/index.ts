@@ -1,9 +1,18 @@
 // @formatter:off
-// FIX: Use a versioned URL for Supabase edge runtime types to improve stability and resolve type loading issues. This directive provides the necessary Deno types for the function.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
+// FIX: Use a major versioned URL for Supabase edge runtime types to improve stability and resolve type loading issues. This directive provides the necessary Deno types for the function and should resolve the 'Cannot find name Deno' errors.
+/// <reference types="https://esm.sh/@supabase/functions-js@2" />
 // @formatter:on
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// FIX: Declare the Deno global object to resolve "Cannot find name 'Deno'" errors in environments where the triple-slash directive for types is not being picked up correctly.
+declare global {
+  const Deno: {
+    env: {
+      get(key: string): string | undefined;
+    };
+  };
+}
 
 const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
 
@@ -70,6 +79,10 @@ async function handleCallbackQuery(query: any) {
   // FIX: Pass the full query object to the handler to resolve scope issues.
   if (action === 'approve_order' && orderId) {
     await handleApproveOrder(query, orderId, chatId);
+  } else if (action === 'ok_noted' && orderId) {
+    await handleApproveOrder(query, orderId, chatId);
+  } else if (action === 'cancel_order' && orderId) {
+    await handleCancelOrder(query, orderId, chatId);
   }
   // Other actions can be handled here with else-if blocks.
 }
@@ -118,6 +131,41 @@ async function handleApproveOrder(query: any, orderId: string, chatId: number) {
     await answerCallbackQuery(query.id, "An internal error occurred.", true);
   }
 }
+
+/**
+ * Deletes an order from the database when a supplier cancels it.
+ * @param query The full callback_query object from Telegram.
+ * @param orderId The UUID of the order to delete.
+ * @param chatId The chat ID where the button was clicked.
+ */
+async function handleCancelOrder(query: any, orderId: string, chatId: number) {
+  try {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}` } } }
+    );
+
+    const { error } = await supabaseClient
+      .from('orders')
+      .delete()
+      .eq('id', orderId);
+
+    if (error) {
+      console.error(`Failed to cancel/delete order ${orderId}:`, error);
+      await answerCallbackQuery(query.id, "Error: Could not cancel order.", true);
+      return;
+    }
+
+    console.log(`Order ${orderId} successfully canceled.`);
+    await answerCallbackQuery(query.id, `Order has been canceled.`, false);
+
+  } catch (e) {
+    console.error('An unexpected error occurred in handleCancelOrder:', e);
+    await answerCallbackQuery(query.id, "An internal error occurred while canceling.", true);
+  }
+}
+
 
 /**
  * Sends a response to a callback query, which can show a notification to the user in Telegram.

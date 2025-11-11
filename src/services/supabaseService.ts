@@ -28,6 +28,9 @@
   -- Add a boolean column to track OUDOM acknowledgment
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS is_acknowledged BOOLEAN DEFAULT FALSE;
 
+  -- Add a timestamp column to track when an automated reminder was sent
+  ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMPTZ;
+
   -- Add a text column to stores for a location URL
   ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS location_url TEXT;
 
@@ -88,6 +91,7 @@ interface OrderFromDb {
     invoice_amount?: number;
     payment_method?: PaymentMethod;
     is_acknowledged?: boolean;
+    reminder_sent_at?: string;
 }
 
 interface ItemPriceFromDb {
@@ -215,6 +219,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     invoiceAmount: order.invoice_amount,
                     paymentMethod: order.payment_method,
                     isAcknowledged: order.is_acknowledged,
+                    reminderSentAt: order.reminder_sent_at,
                     // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
@@ -259,6 +264,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         invoice_amount: orderData.invoiceAmount,
         payment_method: orderData.paymentMethod,
         is_acknowledged: orderData.isAcknowledged,
+        reminder_sent_at: orderData.reminderSentAt,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -296,6 +302,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         invoice_amount: order.invoiceAmount,
         payment_method: order.paymentMethod,
         is_acknowledged: order.isAcknowledged,
+        reminder_sent_at: order.reminderSentAt,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',

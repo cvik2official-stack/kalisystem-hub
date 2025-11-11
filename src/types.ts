@@ -96,6 +96,7 @@ export interface Order {
   invoiceAmount?: number;
   paymentMethod?: PaymentMethod;
   isAcknowledged?: boolean;
+  reminderSentAt?: string;
 }
 
 export interface ParsedItem {

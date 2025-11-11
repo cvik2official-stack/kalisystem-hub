@@ -15,7 +15,7 @@ import KaliReportModal from './components/modals/KaliReportModal';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, multiColumnView } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, columnCount } = state;
   const { notify } = useNotifier();
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
@@ -213,23 +213,21 @@ const App: React.FC = () => {
                           <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
                       </svg>
                   </button>
-                  <button
-                    onClick={() => dispatch({ type: 'TOGGLE_MULTI_COLUMN_VIEW' })}
-                    className="text-gray-400 hover:text-white p-1"
-                    aria-label="Toggle column view"
-                    title="Toggle column view"
-                  >
-                    {multiColumnView ? (
+                  <div className="relative">
+                    <button
+                      onClick={() => dispatch({ type: 'CYCLE_COLUMN_COUNT' })}
+                      className="text-gray-400 hover:text-white p-1"
+                      aria-label="Cycle column view"
+                      title={`Set to ${columnCount === 3 ? 1 : columnCount + 1} column(s)`}
+                    >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
                         <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
                       </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 5h10v10H5V5z" />
-                        <path d="M7 7h2v2H7V7zm4 0h2v2h-2V7zm-4 4h2v2H7v-2zm4 0h2v2h-2v-2z" />
-                      </svg>
-                    )}
-                  </button>
+                      <span className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold">
+                        {columnCount}
+                      </span>
+                    </button>
+                  </div>
                   <NotificationBell />
                   <button 
                     onClick={(e) => {

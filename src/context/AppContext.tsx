@@ -2,6 +2,7 @@ import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCa
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates } from '../services/supabaseService';
 import { useNotifier } from './NotificationContext';
+import { sendReminderToSupplier } from '../services/telegramService';
 
 export interface AppState {
   stores: Store[];
@@ -21,7 +22,7 @@ export interface AppState {
   managerStoreFilter: StoreName | null;
   isEditModeEnabled: boolean;
   isDualPaneMode: boolean;
-  multiColumnView: boolean;
+  columnCount: 1 | 2 | 3;
   cardWidth: number | null;
 }
 
@@ -48,7 +49,7 @@ export type Action =
   | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
   | { type: 'SET_EDIT_MODE'; payload: boolean }
   | { type: 'TOGGLE_DUAL_PANE_MODE' }
-  | { type: 'TOGGLE_MULTI_COLUMN_VIEW' }
+  | { type: 'CYCLE_COLUMN_COUNT' }
   | { type: 'SET_CARD_WIDTH'; payload: number | null };
 
 export interface AppContextActions {
@@ -85,8 +86,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, isEditModeEnabled: action.payload };
     case 'TOGGLE_DUAL_PANE_MODE':
         return { ...state, isDualPaneMode: !state.isDualPaneMode };
-    case 'TOGGLE_MULTI_COLUMN_VIEW':
-        return { ...state, multiColumnView: !state.multiColumnView };
+    case 'CYCLE_COLUMN_COUNT': {
+        const nextCount = state.columnCount === 3 ? 1 : (state.columnCount + 1);
+        return { ...state, columnCount: nextCount as (1 | 2 | 3) };
+    }
     case 'SET_CARD_WIDTH':
         return { ...state, cardWidth: action.payload };
     case '_ADD_ITEM':
@@ -252,7 +255,7 @@ const getInitialState = (): AppState => {
     managerStoreFilter: null,
     isEditModeEnabled: false,
     isDualPaneMode: false,
-    multiColumnView: true,
+    columnCount: 1,
     cardWidth: null,
   };
 
@@ -266,7 +269,7 @@ const getInitialState = (): AppState => {
   finalState.isLoading = false;
   finalState.isInitialized = false;
   finalState.isEditModeEnabled = false; // Always start with edit mode off
-  finalState.multiColumnView = loadedState.multiColumnView ?? true; // Default to true
+  finalState.columnCount = loadedState.columnCount ?? 1; // Default to 1
   finalState.cardWidth = loadedState.cardWidth ?? null;
 
   return finalState;
@@ -335,43 +338,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       syncWithSupabase({ isInitialSync: true });
     }
   }, [state.isInitialized, syncWithSupabase]);
-
-  // Background polling for order acknowledgements
-  useEffect(() => {
-    const intervalId = setInterval(async () => {
-        // Only run polling if the app is online and initialized
-        if (navigator.onLine && state.isInitialized) {
-            try {
-                const { supabaseUrl, supabaseKey } = state.settings;
-                const unacknowledgedOnTheWay = state.orders
-                    .filter(o => o.status === OrderStatus.ON_THE_WAY && !o.isAcknowledged)
-                    .map(o => o.id);
-
-                if (unacknowledgedOnTheWay.length === 0) return;
-
-                const acknowledgedUpdates = await getAcknowledgedOrderUpdates({
-                    orderIds: unacknowledgedOnTheWay,
-                    url: supabaseUrl,
-                    key: supabaseKey,
-                });
-
-                for (const ackUpdate of acknowledgedUpdates) {
-                    const localOrder = state.orders.find(o => o.id === ackUpdate.id);
-                    // Double check it wasn't acknowledged in state between fetch and now
-                    if (localOrder && !localOrder.isAcknowledged) {
-                        notify(`Order ${ackUpdate.order_id} was acknowledged.`, 'success');
-                        dispatch({ type: 'UPDATE_ORDER', payload: { ...localOrder, isAcknowledged: true, modifiedAt: new Date().toISOString() } });
-                    }
-                }
-            } catch (e) {
-                // Silently fail in the background to avoid spamming the user
-                console.warn('Background sync for acknowledgements failed:', e);
-            }
-        }
-    }, 30000); // Poll every 30 seconds
-
-    return () => clearInterval(intervalId);
-  }, [state.isInitialized, state.settings, state.orders, dispatch, notify]);
 
   const actions: AppContextActions = {
     addItem: async (item) => {
@@ -681,6 +647,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
     syncWithSupabase,
   };
+
+    // Background polling for acknowledgements and reminders
+    useEffect(() => {
+        const intervalId = setInterval(async () => {
+            if (!navigator.onLine || !state.isInitialized) return;
+
+            // --- Acknowledgement Polling ---
+            try {
+                const unacknowledgedOnTheWay = state.orders
+                    .filter(o => o.status === OrderStatus.ON_THE_WAY && !o.isAcknowledged)
+                    .map(o => o.id);
+
+                if (unacknowledgedOnTheWay.length > 0) {
+                    const acknowledgedUpdates = await getAcknowledgedOrderUpdates({
+                        orderIds: unacknowledgedOnTheWay,
+                        url: state.settings.supabaseUrl,
+                        key: state.settings.supabaseKey,
+                    });
+
+                    for (const ackUpdate of acknowledgedUpdates) {
+                        const localOrder = state.orders.find(o => o.id === ackUpdate.id);
+                        if (localOrder && !localOrder.isAcknowledged) {
+                            notify(`Order ${ackUpdate.order_id} was acknowledged.`, 'success');
+                            dispatch({ type: 'UPDATE_ORDER', payload: { ...localOrder, isAcknowledged: true, modifiedAt: new Date().toISOString() } });
+                        }
+                    }
+                }
+            } catch (e) { console.warn('Background sync for acknowledgements failed:', e); }
+
+            // --- Reminder Polling ---
+            try {
+                const FORTY_FIVE_MINUTES = 45 * 60 * 1000;
+                const ordersToRemind = state.orders.filter(o => {
+                    if (o.status !== OrderStatus.ON_THE_WAY || o.isAcknowledged || o.reminderSentAt) return false;
+                    const supplier = state.suppliers.find(s => s.id === o.supplierId);
+                    if (!supplier?.botSettings?.showOkButton) return false;
+                    const timeDiff = new Date().getTime() - new Date(o.modifiedAt).getTime();
+                    return timeDiff > FORTY_FIVE_MINUTES;
+                });
+                
+                if (ordersToRemind.length > 0 && state.settings.telegramBotToken) {
+                    for (const order of ordersToRemind) {
+                        const supplier = state.suppliers.find(s => s.id === order.supplierId)!;
+                        await sendReminderToSupplier(order, supplier, state.settings.telegramBotToken);
+                        // Silently update order without a user-facing notification
+                        const updatedOrder = await supabaseUpdateOrder({ order: { ...order, reminderSentAt: new Date().toISOString() }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+                        dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
+                    }
+                }
+            } catch (e) { console.warn('Background check for reminders failed:', e); }
+
+        }, 30000); // Poll every 30 seconds
+
+        return () => clearInterval(intervalId);
+    }, [state.isInitialized, state.settings, state.orders, state.suppliers, dispatch, notify]);
+
 
   for (const actionName in actions) {
       const originalAction = (actions as any)[actionName];
