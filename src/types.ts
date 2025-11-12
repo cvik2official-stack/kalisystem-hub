@@ -41,10 +41,6 @@ export interface Item {
   supplierName: SupplierName; 
   createdAt?: string;
   modifiedAt?: string;
-  trackStock?: boolean;
-  stockQuantity?: number;
-  parentId?: string; // Foreign key to self for variants
-  isVariant?: boolean;
 }
 
 export interface SupplierBotSettings {
@@ -110,7 +106,9 @@ export interface ItemPrice {
     supplierId: string;
     price: number;
     unit: Unit;
-    isMaster: boolean;
+    createdAt?: string;
+    // FIX: Add isMaster property to align with database schema.
+    isMaster?: boolean;
 }
 
 export interface AiParsingRules {
@@ -149,7 +147,8 @@ export interface AppState {
   managerStoreFilter: StoreName | null;
   isEditModeEnabled: boolean;
   isDualPaneMode: boolean;
-  columnCount: 1 | 2 | 3;
   cardWidth: number | null;
   draggedOrderId: string | null;
+  draggedItem: { item: OrderItem; sourceOrderId: string } | null;
+  columnCount: 1 | 2 | 3;
 }

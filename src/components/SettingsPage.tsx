@@ -16,12 +16,11 @@ const SettingsPage: React.FC = () => {
     { id: 'suppliers', label: 'Suppliers' },
     { id: 'stores', label: 'Stores' },
     { id: 'templates', label: 'Templates' },
-    { id: 'telegram-bot', label: 'Telegram Bot' },
   ];
 
   return (
     <div className="mt-6 flex flex-col flex-grow">
-      <div className="border-b border-gray-700">
+      <div>
         <nav className="-mb-px flex space-x-6">
           {tabs.map((tab) => (
             <button
@@ -44,7 +43,6 @@ const SettingsPage: React.FC = () => {
         {activeSettingsTab === 'suppliers' && <SuppliersSettings />}
         {activeSettingsTab === 'stores' && <StoresSettings />}
         {activeSettingsTab === 'templates' && <TemplatesSettings />}
-        {activeSettingsTab === 'telegram-bot' && <TelegramBotSettings />}
       </div>
     </div>
   );

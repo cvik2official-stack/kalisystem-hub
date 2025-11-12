@@ -9,10 +9,9 @@ interface EditItemModalProps {
   onClose: () => void;
   onSave: (itemToSave: Item | Omit<Item, 'id'>) => Promise<void>;
   onDelete: (itemId: string) => Promise<void>;
-  onTriggerCreateVariant: () => void;
 }
 
-const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, onSave, onDelete, onTriggerCreateVariant }) => {
+const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, onSave, onDelete }) => {
     const { state, actions } = useContext(AppContext);
     const { notify } = useNotifier();
     const [name, setName] = useState('');
@@ -163,28 +162,22 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                     </div>
                 </div>
 
-                {!isNew && (
-                    <div className="mt-6 border-t border-gray-700 pt-4">
-                        <h3 className="text-sm font-medium text-gray-300 mb-2">Variants</h3>
-                        <button 
-                            onClick={onTriggerCreateVariant} 
-                            disabled={isSaving} 
-                            className="w-full text-center p-2 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
-                        >
-                            + Create a new variant...
-                        </button>
-                    </div>
-                )}
-
                 <div className="mt-6 flex justify-between items-center">
                     <div>
                         {!isNew && (
                             <button
                                 onClick={handleDelete}
                                 disabled={isSaving}
-                                className="px-4 py-2 text-sm font-medium rounded-md bg-red-600 hover:bg-red-700 text-white disabled:bg-red-800"
+                                className="flex items-center justify-center px-4 py-2 text-sm font-medium rounded-md bg-red-600 hover:bg-red-700 text-white disabled:bg-red-800"
                             >
-                                {isSaving ? '...' : 'Delete'}
+                                {isSaving ? '...' : (
+                                    <>
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                        </svg>
+                                        <span>Delete</span>
+                                    </>
+                                )}
                             </button>
                         )}
                     </div>

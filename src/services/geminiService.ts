@@ -44,13 +44,9 @@ const parseItemListWithGemini = async (
           -   If no unit is found for a new item, omit the 'unit' field.
       5.  **CUSTOM ALIASING RULES**: Apply these specific aliases. If the user text contains the key, you should treat it as the value for matching purposes.
           ${aliasingRulesString}
-      6.  **STOCK AWARENESS RULE**: Some items are tracked in stock. These are variants, their name starts with '> ', and they have a 'stock_quantity'. When matching an item from the user's text:
-          -   If a stock variant exists for that item AND its 'stock_quantity' is greater than 0, you MUST return the 'matchedItemId' of the **stock variant**.
-          -   If its 'stock_quantity' is 0 or the stock variant does not exist, you MUST return the 'matchedItemId' of the **parent (non-stock) item**.
-          -   For example, if the user asks for "Coca-cola" and the database has "Coca-cola" (parent) and "> Coca-cola" (stock variant) with \`stock_quantity: 5\`, you must return the ID of "> Coca-cola". If \`stock_quantity\` was 0, you would return the ID of "Coca-cola".
       
       EXISTING ITEM DATABASE (for matching):
-      ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit, trackStock: item.trackStock, stock_quantity: item.stockQuantity, parentId: item.parentId })))}
+      ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit })))}
       
       USER TEXT TO PARSE:
       ---

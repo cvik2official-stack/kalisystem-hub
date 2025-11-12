@@ -23,7 +23,7 @@ const AggregatedItemList: React.FC<{ items: AggregatedItem[], showPrices: boolea
                         <div className="flex items-center space-x-4">
                             <span className="font-mono text-gray-400 w-16 text-right">{item.quantity}{item.unit}</span>
                             {showPrices && item.totalValue != null && (
-                                <span className="font-mono text-white w-20 text-right">${item.totalValue.toFixed(2)}</span>
+                                <span className="font-mono text-white w-20 text-right">{item.totalValue.toFixed(2)}</span>
                             )}
                         </div>
                     </div>
@@ -33,7 +33,7 @@ const AggregatedItemList: React.FC<{ items: AggregatedItem[], showPrices: boolea
                 <div className="mt-2 pt-2 border-t border-gray-700 flex justify-end">
                     <div className="flex items-center space-x-4">
                         <span className="font-semibold text-gray-300">Total:</span>
-                        <span className="font-mono font-bold text-white w-20 text-right">${groupTotal.toFixed(2)}</span>
+                        <span className="font-mono font-bold text-white w-20 text-right">{groupTotal.toFixed(2)}</span>
                     </div>
                 </div>
             )}

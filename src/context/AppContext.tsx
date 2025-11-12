@@ -22,9 +22,10 @@ export interface AppState {
   managerStoreFilter: StoreName | null;
   isEditModeEnabled: boolean;
   isDualPaneMode: boolean;
-  columnCount: 1 | 2 | 3;
   cardWidth: number | null;
   draggedOrderId: string | null;
+  draggedItem: { item: OrderItem; sourceOrderId: string } | null;
+  columnCount: 1 | 2 | 3;
 }
 
 export type Action =
@@ -52,7 +53,9 @@ export type Action =
   | { type: 'SET_EDIT_MODE'; payload: boolean }
   | { type: 'TOGGLE_DUAL_PANE_MODE' }
   | { type: 'CYCLE_COLUMN_COUNT' }
+  | { type: 'SET_COLUMN_COUNT'; payload: 1 | 2 | 3 }
   | { type: 'SET_DRAGGED_ORDER_ID'; payload: string | null }
+  | { type: 'SET_DRAGGED_ITEM'; payload: { item: OrderItem; sourceOrderId: string } | null }
   | { type: 'SET_CARD_WIDTH'; payload: number | null };
 
 export interface AppContextActions {
@@ -69,10 +72,7 @@ export interface AppContextActions {
     syncWithSupabase: (options?: { isInitialSync?: boolean }) => Promise<void>;
     addItemToDispatch: (item: Item) => Promise<void>;
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
-    upsertItemPrice: (itemPrice: ItemPrice) => Promise<void>;
-    mergeTodaysCompletedOrdersByPayment: (paymentMethod: PaymentMethod) => Promise<void>;
-    mergeKaliOrders: () => Promise<void>;
-    mergePiseyOrders: () => Promise<void>;
+    upsertItemPrice: (itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>) => Promise<void>;
 }
 
 
@@ -90,14 +90,20 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, isEditModeEnabled: action.payload };
     case 'TOGGLE_DUAL_PANE_MODE':
         return { ...state, isDualPaneMode: !state.isDualPaneMode };
-    case 'CYCLE_COLUMN_COUNT': {
-        const nextCount = state.columnCount === 3 ? 1 : (state.columnCount + 1);
-        return { ...state, columnCount: nextCount as (1 | 2 | 3) };
-    }
     case 'SET_CARD_WIDTH':
         return { ...state, cardWidth: action.payload };
+    case 'CYCLE_COLUMN_COUNT':
+        return {
+            ...state,
+            columnCount: (state.columnCount === 1 ? 2 : state.columnCount === 2 ? 3 : 1) as 1 | 2 | 3,
+        };
+    case 'SET_COLUMN_COUNT':
+        if (state.columnCount === action.payload) return state;
+        return { ...state, columnCount: action.payload };
     case 'SET_DRAGGED_ORDER_ID':
         return { ...state, draggedOrderId: action.payload };
+    case 'SET_DRAGGED_ITEM':
+        return { ...state, draggedItem: action.payload };
     case '_ADD_ITEM':
         return { ...state, items: [...state.items, action.payload] };
     case '_UPDATE_ITEM': {
@@ -217,6 +223,17 @@ const appReducer = (state: AppState, action: Action): AppState => {
 
 const APP_STATE_KEY = 'supplyChainCommanderState_v3';
 
+const getInitialColumnCount = (): 1 | 2 | 3 => {
+    const width = window.innerWidth;
+    // Phone portrait (< 640px) -> 1 column
+    if (width < 768) return 1;
+    // Phone landscape & Tablet portrait (768-1023) -> 2 columns
+    if (width < 1024) return 2;
+    // Tablet landscape & Larger screens -> 3 columns
+    return 3;
+};
+
+
 const getInitialState = (): AppState => {
   let loadedState: Partial<AppState> = {};
   try {
@@ -263,9 +280,10 @@ const getInitialState = (): AppState => {
     managerStoreFilter: null,
     isEditModeEnabled: false,
     isDualPaneMode: false,
-    columnCount: 1,
     draggedOrderId: null,
+    draggedItem: null,
     cardWidth: null,
+    columnCount: 3,
   };
 
   const finalState = { ...initialState, ...loadedState };
@@ -278,8 +296,8 @@ const getInitialState = (): AppState => {
   finalState.isLoading = false;
   finalState.isInitialized = false;
   finalState.isEditModeEnabled = false; // Always start with edit mode off
-  finalState.columnCount = loadedState.columnCount ?? 1; // Default to 1
   finalState.cardWidth = loadedState.cardWidth ?? null;
+  finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
 
   return finalState;
 };
@@ -301,9 +319,6 @@ export const AppContext = createContext<{
       addItemToDispatch: async () => {},
       mergeOrders: async () => {},
       upsertItemPrice: async () => {},
-      mergeTodaysCompletedOrdersByPayment: async () => {},
-      mergeKaliOrders: async () => {},
-      mergePiseyOrders: async () => {},
   }
 });
 
@@ -317,6 +332,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         localStorage.setItem(APP_STATE_KEY, JSON.stringify(stateToSave));
     } catch(err) { console.error("Could not save state to localStorage", err); }
   }, [state]);
+
+  useEffect(() => {
+    const handleResize = () => {
+        dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
+    };
+    window.addEventListener('resize', handleResize);
+    // Set initial count on mount
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, [dispatch]);
 
   const syncWithSupabase = useCallback(async (options?: { isInitialSync?: boolean }) => {
     dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
@@ -426,8 +451,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return;
         }
         
-        const masterPrice = itemPrices.find(p => p.itemId === item.id && p.supplierId === item.supplierId && p.isMaster)?.price;
-        
         const existingOrder = orders.find(o => 
             o.store === activeStore && 
             o.supplierId === item.supplierId && 
@@ -490,173 +513,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     upsertItemPrice: async (itemPrice) => {
         const savedPrice = await supabaseUpsertItemPrice({ itemPrice, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPSERT_ITEM_PRICE', payload: savedPrice });
-    },
-    mergeTodaysCompletedOrdersByPayment: async (paymentMethod: PaymentMethod) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const ordersToMerge = state.orders.filter(o => {
-            if (o.status !== OrderStatus.COMPLETED || !o.completedAt) return false;
-            const completedDate = new Date(o.completedAt);
-            completedDate.setHours(0, 0, 0, 0);
-            const orderPaymentMethod = o.paymentMethod || state.suppliers.find(s => s.id === o.supplierId)?.paymentMethod;
-            return completedDate.getTime() === today.getTime() && orderPaymentMethod === paymentMethod;
-        });
-
-        if (ordersToMerge.length < 2) {
-            notify(`Found ${ordersToMerge.length} order(s) for "${paymentMethod.toUpperCase()}". Need at least 2 to merge.`, 'info');
-            return;
-        }
-
-        const destinationOrder = { ...ordersToMerge[0] };
-        const sourceOrders = ordersToMerge.slice(1);
-        
-        const aggregatedItems = new Map<string, OrderItem>();
-        destinationOrder.items.forEach(item => {
-            const key = `${item.itemId}-${item.unit || 'none'}`;
-            aggregatedItems.set(key, { ...item });
-        });
-
-        for (const sourceOrder of sourceOrders) {
-            for (const itemToMerge of sourceOrder.items) {
-                const key = `${itemToMerge.itemId}-${itemToMerge.unit || 'none'}`;
-                const existingItem = aggregatedItems.get(key);
-                if (existingItem) {
-                    // Weighted average for price
-                    if (existingItem.price !== undefined && itemToMerge.price !== undefined) {
-                        const existingTotalValue = existingItem.price * existingItem.quantity;
-                        const toMergeTotalValue = itemToMerge.price * itemToMerge.quantity;
-                        const newTotalQuantity = existingItem.quantity + itemToMerge.quantity;
-                        existingItem.price = (existingTotalValue + toMergeTotalValue) / newTotalQuantity;
-                    }
-                    existingItem.quantity += itemToMerge.quantity;
-                } else {
-                    aggregatedItems.set(key, { ...itemToMerge });
-                }
-            }
-        }
-
-        destinationOrder.items = Array.from(aggregatedItems.values());
-        
-        await actions.updateOrder(destinationOrder);
-
-        for (const sourceOrder of sourceOrders) {
-            await actions.deleteOrder(sourceOrder.id);
-        }
-
-        notify(`Merged ${ordersToMerge.length} orders into one for ${paymentMethod.toUpperCase()}.`, 'success');
-    },
-    mergeKaliOrders: async () => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const ordersToMerge = state.orders.filter(o => {
-            if (o.status !== OrderStatus.COMPLETED || !o.completedAt) return false;
-            const completedDate = new Date(o.completedAt);
-            completedDate.setHours(0, 0, 0, 0);
-            if (completedDate.getTime() !== today.getTime()) return false;
-            
-            const supplier = state.suppliers.find(s => s.id === o.supplierId);
-            const paymentMethod = o.paymentMethod || supplier?.paymentMethod;
-
-            return paymentMethod === PaymentMethod.KALI || o.supplierName === SupplierName.KALI;
-        });
-
-        if (ordersToMerge.length < 2) {
-            notify(`Found ${ordersToMerge.length} KALI-related order(s). Need at least 2 to merge.`, 'info');
-            return;
-        }
-
-        const kaliSupplier = state.suppliers.find(s => s.name === SupplierName.KALI);
-        if (!kaliSupplier) {
-            notify('KALI supplier not found. Cannot merge.', 'error');
-            return;
-        }
-
-        const destinationOrder = { ...ordersToMerge[0] };
-        destinationOrder.supplierId = kaliSupplier.id;
-        destinationOrder.supplierName = kaliSupplier.name;
-        destinationOrder.paymentMethod = PaymentMethod.KALI;
-        
-        const sourceOrders = ordersToMerge.slice(1);
-        
-        const aggregatedItems = new Map<string, OrderItem>();
-        ordersToMerge[0].items.forEach(item => {
-            const key = `${item.itemId}-${item.unit || 'none'}`;
-            aggregatedItems.set(key, { ...item });
-        });
-
-        for (const sourceOrder of sourceOrders) {
-            for (const itemToMerge of sourceOrder.items) {
-                const key = `${itemToMerge.itemId}-${itemToMerge.unit || 'none'}`;
-                const existingItem = aggregatedItems.get(key);
-                if (existingItem) {
-                    existingItem.quantity += itemToMerge.quantity;
-                } else {
-                    aggregatedItems.set(key, { ...itemToMerge });
-                }
-            }
-        }
-
-        destinationOrder.items = Array.from(aggregatedItems.values());
-        
-        await actions.updateOrder(destinationOrder);
-
-        for (const sourceOrder of sourceOrders) {
-            if(sourceOrder.id !== destinationOrder.id) {
-                await actions.deleteOrder(sourceOrder.id);
-            }
-        }
-
-        notify(`Merged ${ordersToMerge.length} KALI orders into one.`, 'success');
-    },
-    mergePiseyOrders: async () => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const ordersToMerge = state.orders.filter(o => {
-            if (o.status !== OrderStatus.COMPLETED || !o.completedAt) return false;
-            const completedDate = new Date(o.completedAt);
-            completedDate.setHours(0, 0, 0, 0);
-            // FIX: Use enum for 'PISEY' to ensure type safety and prevent comparison errors.
-            return completedDate.getTime() === today.getTime() && o.supplierName === SupplierName.PISEY;
-        });
-
-        if (ordersToMerge.length < 2) {
-            notify(`Found ${ordersToMerge.length} PISEY order(s). Need at least 2 to merge.`, 'info');
-            return;
-        }
-
-        const destinationOrder = { ...ordersToMerge[0] };
-        const sourceOrders = ordersToMerge.slice(1);
-        
-        const aggregatedItems = new Map<string, OrderItem>();
-        destinationOrder.items.forEach(item => {
-            const key = `${item.itemId}-${item.unit || 'none'}`;
-            aggregatedItems.set(key, { ...item });
-        });
-
-        for (const sourceOrder of sourceOrders) {
-            for (const itemToMerge of sourceOrder.items) {
-                const key = `${itemToMerge.itemId}-${itemToMerge.unit || 'none'}`;
-                const existingItem = aggregatedItems.get(key);
-                if (existingItem) {
-                    existingItem.quantity += itemToMerge.quantity;
-                } else {
-                    aggregatedItems.set(key, { ...itemToMerge });
-                }
-            }
-        }
-        
-        destinationOrder.items = Array.from(aggregatedItems.values());
-        
-        await actions.updateOrder(destinationOrder);
-
-        for (const sourceOrder of sourceOrders) {
-            await actions.deleteOrder(sourceOrder.id);
-        }
-        
-        notify(`Merged ${ordersToMerge.length} PISEY orders into one.`, 'success');
     },
     syncWithSupabase,
   };

@@ -1,10 +1,10 @@
-import React, { useContext, useState, useMemo } from 'react';
+import React, { useContext, useState, useMemo, useEffect, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
 import { useNotifier } from '../../context/NotificationContext';
 import EditItemModal from '../modals/EditItemModal';
-import CreateVariantModal from '../modals/CreateVariantModal';
 import ResizableTable from '../common/ResizableTable';
+import { getLatestItemPrice } from '../../utils/messageFormatter';
 
 const ItemsSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
@@ -12,12 +12,11 @@ const ItemsSettings: React.FC = () => {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
-  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false);
-  const [parentItemForVariant, setParentItemForVariant] = useState<Item | null>(null);
-
+  
   const handleItemUpdate = async (item: Item, field: keyof Item, value: any) => {
     if (item[field] === value) return; // No change
     await actions.updateItem({ ...item, [field]: value });
@@ -25,8 +24,9 @@ const ItemsSettings: React.FC = () => {
 
   const handlePriceUpdate = async (item: Item, priceStr: string) => {
     const newPrice = priceStr.trim() === '' ? 0 : parseFloat(priceStr);
-    const masterPrice = state.itemPrices.find(p => p.itemId === item.id && p.isMaster);
-    if (masterPrice?.price === newPrice) return;
+    const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
+
+    if (latestPrice === newPrice) return;
 
     if (!isNaN(newPrice) && newPrice >= 0) {
         await actions.upsertItemPrice({
@@ -34,7 +34,6 @@ const ItemsSettings: React.FC = () => {
             supplierId: item.supplierId,
             price: newPrice,
             unit: item.unit,
-            isMaster: true,
         });
     } else {
         notify('Invalid price.', 'error');
@@ -63,72 +62,12 @@ const ItemsSettings: React.FC = () => {
   };
 
   const handleDeleteItem = async (itemId: string) => {
-    if (window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
-      await actions.deleteItem(itemId);
-    }
+    await actions.deleteItem(itemId);
   };
   
   const handleEditClick = (item: Item) => {
     setSelectedItemForModal(item);
     setIsEditModalOpen(true);
-  };
-
-  const handleTriggerCreateVariant = () => {
-    if (selectedItemForModal) {
-      setIsEditModalOpen(false);
-      setParentItemForVariant(selectedItemForModal);
-      setIsVariantModalOpen(true);
-    }
-  };
-
-  const handleCreateVariant = async (variantData: { name: string; supplierId: string; unit: Unit; price?: number; trackStock: boolean; stockQuantity?: number; }) => {
-    if (!parentItemForVariant) return;
-
-    const supplier = state.suppliers.find(s => s.id === variantData.supplierId);
-    if (!supplier) {
-      notify('Selected supplier not found.', 'error');
-      return;
-    }
-
-    const baseNameMatch = parentItemForVariant.name.match(/^(.*?)\s*\(/);
-    const baseName = baseNameMatch ? baseNameMatch[1].trim() : parentItemForVariant.name;
-    
-    let newItemName = variantData.name ? `${baseName} (${variantData.name})` : baseName;
-    if (variantData.trackStock && !newItemName.startsWith('> ')) {
-        newItemName = `> ${newItemName}`;
-    }
-
-    const parentIdForNewVariant = parentItemForVariant.parentId || parentItemForVariant.id;
-    
-    setIsCreating(true);
-    try {
-        const newVariantMasterItem = await actions.addItem({
-          name: newItemName,
-          unit: variantData.unit,
-          supplierId: variantData.supplierId,
-          supplierName: supplier.name,
-          parentId: parentIdForNewVariant,
-          isVariant: true,
-          trackStock: variantData.trackStock,
-          stockQuantity: variantData.stockQuantity,
-        });
-
-        if (variantData.price) {
-            await actions.upsertItemPrice({
-                itemId: newVariantMasterItem.id,
-                supplierId: variantData.supplierId,
-                price: variantData.price,
-                unit: variantData.unit,
-                isMaster: true,
-            });
-        }
-
-        notify(`Variant "${newVariantMasterItem.name}" created.`, 'success');
-    } finally {
-        setIsVariantModalOpen(false);
-        setParentItemForVariant(null);
-        setIsCreating(false);
-    }
   };
 
   const filteredItems = useMemo(() => {
@@ -150,12 +89,14 @@ const ItemsSettings: React.FC = () => {
     { 
       id: 'name', header: 'Name', initialWidth: 300,
       cell: (item: Item) => (
-        <input
-            type="text"
-            defaultValue={item.name}
-            onBlur={(e) => handleItemUpdate(item, 'name', e.target.value)}
-            className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
-        />
+        <div className="truncate max-w-xs">
+            <input
+                type="text"
+                defaultValue={item.name}
+                onBlur={(e) => handleItemUpdate(item, 'name', e.target.value)}
+                className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
+            />
+        </div>
       )
     },
     {
@@ -175,32 +116,20 @@ const ItemsSettings: React.FC = () => {
       )
     },
     {
-      id: 'unitPrice', header: 'Unit Price', initialWidth: 100,
+      id: 'unitPrice', header: 'PRICE', initialWidth: 100,
       cell: (item: Item) => {
-        const masterPrice = state.itemPrices.find(p => p.itemId === item.id && p.isMaster)?.price;
+        const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
         return (
             <input
                 type="text"
                 inputMode="decimal"
-                defaultValue={masterPrice != null ? masterPrice.toFixed(2) : ''}
+                defaultValue={latestPrice != null ? latestPrice.toFixed(2) : ''}
                 onBlur={(e) => handlePriceUpdate(item, e.target.value)}
                 placeholder="-"
                 className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-right"
             />
         );
       }
-    },
-    {
-      id: 'stockQty', header: 'Stock Qty', initialWidth: 100,
-      cell: (item: Item) => item.trackStock ? (
-        <input
-            type="text"
-            inputMode="numeric"
-            defaultValue={item.stockQuantity || 0}
-            onBlur={(e) => handleItemUpdate(item, 'stockQuantity', parseInt(e.target.value, 10) || 0)}
-            className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-right"
-        />
-      ) : '-'
     },
     {
       id: 'actions', header: 'Actions', initialWidth: 80,
@@ -219,34 +148,62 @@ const ItemsSettings: React.FC = () => {
   ], [state.itemPrices, state.items]);
 
   return (
-    <div className="flex flex-col flex-grow">
+    <div className="flex flex-col flex-grow w-full">
       <ResizableTable
         columns={columns}
         data={filteredItems}
         tableKey="items-settings"
         toolbar={
-          <div className="flex justify-between items-center mb-4 w-full">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Search items..."
-            />
-          </div>
+          isSearchVisible ? (
+            <div className="mb-4">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                autoFocus
+                onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
+                className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Search items..."
+              />
+            </div>
+          ) : <div className="mb-4 h-[42px]"></div>
         }
         rightAlignedActions={
-          <button 
-            onClick={handleAddNewItem}
-            disabled={isCreating}
-            className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700 disabled:cursor-wait"
-            aria-label="Add New Item"
-          >
-            {isCreating 
-              ? <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-              : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-            }
-          </button>
+          (toggleColumnMenu) => (
+            <div className="flex items-center space-x-1 bg-gray-700 p-1 rounded-full shadow-lg">
+                <button
+                    onClick={() => setIsSearchVisible(prev => !prev)}
+                    className={`text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600 ${isSearchVisible ? 'bg-gray-600 text-indigo-400' : ''}`}
+                    aria-label="Search items"
+                    title="Search items"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
+                </button>
+                <button 
+                    onClick={handleAddNewItem}
+                    disabled={isCreating}
+                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600 disabled:cursor-wait"
+                    aria-label="Add New Item"
+                    title="Add New Item"
+                >
+                    {isCreating 
+                        ? <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                    }
+                </button>
+                <button
+                    onClick={(e) => toggleColumnMenu(e)}
+                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
+                    aria-label="Toggle column visibility"
+                    title="Show/hide columns"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+          )
         }
       />
 
@@ -257,16 +214,6 @@ const ItemsSettings: React.FC = () => {
             onClose={() => setIsEditModalOpen(false)}
             onSave={actions.updateItem}
             onDelete={handleDeleteItem}
-            onTriggerCreateVariant={handleTriggerCreateVariant}
-        />
-      )}
-      {parentItemForVariant && isVariantModalOpen && (
-        <CreateVariantModal
-            isOpen={isVariantModalOpen}
-            onClose={() => { setIsVariantModalOpen(false); setParentItemForVariant(null); }}
-            parentItem={parentItemForVariant}
-            isStockVariantFlow={false}
-            onCreate={handleCreateVariant}
         />
       )}
     </div>

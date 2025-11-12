@@ -1,8 +1,14 @@
-import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice, Supplier, Store, AppSettings } from '../types';
+import { Order, SupplierName, StoreName, OrderItem, Unit, ItemPrice, Supplier, Store, AppSettings, PaymentMethod } from '../types';
 
 export const escapeHtml = (text: string): string => {
   if (typeof text !== 'string') return '';
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+};
+
+export const getLatestItemPrice = (itemId: string, supplierId: string, itemPrices: ItemPrice[]): ItemPrice | undefined => {
+    return itemPrices
+        .filter(p => p.itemId === itemId && p.supplierId === supplierId)
+        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())[0];
 };
 
 const replacePlaceholders = (template: string, replacements: Record<string, string>): string => {
@@ -39,8 +45,8 @@ const _generateAggregatedItemsReport = (
         for (const item of order.items) {
             if (item.isSpoiled) continue;
 
-            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-            const price = item.price ?? masterPrice ?? 0;
+            const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price;
+            const price = item.price ?? latestPrice ?? 0;
             const itemValue = price * item.quantity;
             group.total += itemValue;
 
@@ -77,7 +83,13 @@ const _generateAggregatedItemsReport = (
         for (const item of sortedItems) {
             const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
             const unitDisplay = item.unit || '';
-            block += `${item.name} x${item.quantity}${unitDisplay} @ ${avgPrice.toFixed(2)} = ${item.totalValue.toFixed(2)}\n`;
+            
+            // New columnar format for better alignment
+            const namePart = item.name.padEnd(20, ' ').substring(0, 20);
+            const qtyPart = `${item.quantity}${unitDisplay}`.padStart(7);
+            const pricePart = `@ ${avgPrice.toFixed(2)}`.padStart(8);
+            const totalPart = item.totalValue.toFixed(2).padStart(8);
+            block += `${namePart} ${qtyPart} ${pricePart} ${totalPart}\n`;
         }
         groupBlocks.push(block);
     }
@@ -97,19 +109,30 @@ export const renderReceiptTemplate = (template: string, order: Order, itemPrices
     const itemRows = order.items
         .filter(item => !item.isSpoiled)
         .map(item => {
-            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-            const price = item.price ?? masterPrice ?? 0;
+            const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price;
+            const price = item.price ?? latestPrice ?? 0;
             const itemTotal = price * item.quantity;
             grandTotal += itemTotal;
 
-            return `
-                <tr>
-                    <td>${escapeHtml(item.name)}</td>
-                    <td>${item.quantity}${escapeHtml(item.unit || '')}</td>
-                    <td>${price.toFixed(2)}</td>
-                    <td>${itemTotal.toFixed(2)}</td>
-                </tr>
-            `;
+            if (price > 0) {
+              return `
+                  <tr>
+                      <td>${escapeHtml(item.name)}</td>
+                      <td style="text-align: right;">${item.quantity}${escapeHtml(item.unit || '')}</td>
+                      <td style="text-align: right;">${price.toFixed(2)}</td>
+                      <td style="text-align: right;">${itemTotal.toFixed(2)}</td>
+                  </tr>
+              `;
+            } else {
+               return `
+                  <tr>
+                      <td>${escapeHtml(item.name)}</td>
+                      <td style="text-align: right;">${item.quantity}${escapeHtml(item.unit || '')}</td>
+                      <td></td>
+                      <td></td>
+                  </tr>
+              `;
+            }
         }).join('');
 
     let renderedHtml = template;
@@ -226,7 +249,8 @@ export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[], se
     let grandTotal = 0;
 
     const itemsList = order.items.map(item => {
-        const price = item.price ?? itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
+        const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price;
+        const price = item.price ?? latestPrice;
         const itemName = item.name;
         const quantityText = `${item.quantity}${item.unit || ''}`;
         
@@ -235,7 +259,7 @@ export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[], se
         if (price !== undefined) {
             const itemTotal = price * item.quantity;
             grandTotal += itemTotal;
-            line += ` @ $${price.toFixed(2)} = $${itemTotal.toFixed(2)}`;
+            line += ` @ ${price.toFixed(2)} = ${itemTotal.toFixed(2)}`;
         }
         return line;
     }).join('\n');
@@ -248,9 +272,9 @@ export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[], se
                  `<b>Date:</b> ${new Date(order.completedAt || order.createdAt).toLocaleDateString()}`;
 
         const footer = `\n---------------------\n` +
-                       `<b>Grand Total: $${grandTotal.toFixed(2)}</b>`;
+                       `<b>Grand Total: ${grandTotal.toFixed(2)}</b>`;
 
-        return `${header}\n\n${itemsList.replace(/\$/g, '<b>$') .replace(/=/g, '=</b>')} \n${footer}`;
+        return `${header}\n\n${itemsList} \n${footer}`;
     }
 
     const replacements = {
@@ -259,13 +283,11 @@ export const generateReceiptMessage = (order: Order, itemPrices: ItemPrice[], se
         supplierName: order.supplierName,
         date: new Date(order.completedAt || order.createdAt).toLocaleDateString(),
         items: itemsList,
-        grandTotal: `$${grandTotal.toFixed(2)}`
+        grandTotal: `${grandTotal.toFixed(2)}`
     };
 
-    // For HTML telegram messages, we often want to bold prices. This is a simple heuristic.
     let message = replacePlaceholders(template, replacements);
-    message = message.replace(/\$([0-9\.]+)/g, '<b>$$$1</b>');
-
+    
     return message;
 };
 
@@ -344,23 +366,7 @@ export const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]):
             let totalDisplay = '-';
             let unitPriceDisplay = '-';
             
-            // Look up the master price from the provided itemPrices array
-            let priceInfo: ItemPrice | undefined = undefined;
-            if (item.unit) {
-                priceInfo = itemPrices.find(p => 
-                    p.itemId === item.itemId && 
-                    p.supplierId === item.supplierId && 
-                    p.unit === item.unit &&
-                    p.isMaster
-                );
-            }
-            if (!priceInfo) {
-                 priceInfo = itemPrices.find(p => 
-                    p.itemId === item.itemId && 
-                    p.supplierId === item.supplierId &&
-                    p.isMaster
-                );
-            }
+            const priceInfo = getLatestItemPrice(item.itemId, item.supplierId, itemPrices);
 
             if (priceInfo) {
                 const total = priceInfo.price * item.quantity;
@@ -448,13 +454,13 @@ export const generateStoreReport = (orders: Order[]): string => {
         const name = item.name.padEnd(20, ' ');
         const quantity = `${item.totalQuantity}${item.unit || ''}`.padStart(8, ' ');
         const price = `@ ${avgPrice.toFixed(2)}`.padStart(10, ' ');
-        const total = `$${item.totalValue.toFixed(2)}`.padStart(12, ' ');
+        const total = `${item.totalValue.toFixed(2)}`.padStart(12, ' ');
 
         report += `${name}${quantity}${price}${total}\n`;
     }
 
     report += "\n========================================\n";
-    report += `GRAND TOTAL: $${grandTotal.toFixed(2)}\n`;
+    report += `GRAND TOTAL: ${grandTotal.toFixed(2)}\n`;
 
     return report;
 };
@@ -489,18 +495,29 @@ export const generateDueReportMessage = (orders: Order[], itemPrices: ItemPrice[
     return message;
 };
 
-export const generateConsolidatedReceipt = (orders: Order[], itemPrices: ItemPrice[], format: 'plain' | 'html'): string => {
-    if (orders.length === 0) return "No completed orders for this date.";
+export const generateConsolidatedReceipt = (
+    orders: Order[],
+    itemPrices: ItemPrice[],
+    suppliers: Supplier[],
+    format: 'plain' | 'html',
+    options: { showPaymentMethods: Set<string> }
+): string => {
+    if (orders.length === 0) return "No orders to display for the selected filters.";
 
     const isHtml = format === 'html';
     const storeName = orders[0].store;
     const date = new Date(orders[0].completedAt || orders[0].createdAt);
     const formattedDate = `${String(date.getDate()).padStart(2, '0')}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getFullYear()).slice(-2)}`;
 
-    const ordersBySupplier = new Map<string, { name: SupplierName, items: Map<string, { name: string; quantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }> }>();
+    const ordersBySupplier = new Map<string, { name: SupplierName; items: Map<string, { name: string; quantity: number; unit?: Unit; totalValue: number; priceEntries: number[] }> }>();
     let grandTotal = 0;
+    const paymentSubtotals = new Map<string, number>();
 
     for (const order of orders) {
+        // FIX: Use the passed 'suppliers' array instead of a non-existent 'state' object.
+        const supplier = suppliers.find(s => s.id === order.supplierId);
+        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+
         if (!ordersBySupplier.has(order.supplierId)) {
             ordersBySupplier.set(order.supplierId, { name: order.supplierName, items: new Map() });
         }
@@ -509,10 +526,15 @@ export const generateConsolidatedReceipt = (orders: Order[], itemPrices: ItemPri
         for (const item of order.items) {
             if (item.isSpoiled) continue;
             
-            const masterPrice = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.isMaster)?.price;
-            const price = item.price ?? masterPrice ?? 0;
+            const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price;
+            const price = item.price ?? latestPrice ?? 0;
             const itemValue = price * item.quantity;
             grandTotal += itemValue;
+
+            if (paymentMethod) {
+                const currentSubtotal = paymentSubtotals.get(paymentMethod) || 0;
+                paymentSubtotals.set(paymentMethod, currentSubtotal + itemValue);
+            }
 
             const itemKey = `${item.itemId}-${item.unit || 'none'}`;
             const existingItem = supplierGroup.items.get(itemKey);
@@ -522,41 +544,83 @@ export const generateConsolidatedReceipt = (orders: Order[], itemPrices: ItemPri
                 existingItem.totalValue += itemValue;
                 if (price > 0) existingItem.priceEntries.push(price);
             } else {
-                supplierGroup.items.set(itemKey, { name: item.name, quantity: item.quantity, unit: item.unit, totalValue: itemValue, priceEntries: [price] });
+                supplierGroup.items.set(itemKey, { name: item.name, quantity: item.quantity, unit: item.unit, totalValue: itemValue, priceEntries: price > 0 ? [price] : [] });
             }
         }
     }
 
     const h = (text: string) => isHtml ? escapeHtml(text) : text;
     const b = (text: string) => isHtml ? `<b>${h(text)}</b>` : text;
+    const separator = isHtml ? '<hr style="border-style: dashed;">\n' : '----------------------------------------\n';
 
-    let result = `${b('CONSOLIDATED RECEIPT')}\n`;
+    let result = `${b('Buy & Dispatch.')}\n`;
     result += `${b('Store:')} ${h(storeName)}\n`;
     result += `${b('Date:')} ${h(formattedDate)}\n`;
-    result += isHtml ? '<hr>\n' : '--------------------\n';
+    result += separator;
 
     const sortedSuppliers = Array.from(ordersBySupplier.values()).sort((a,b) => a.name.localeCompare(b.name));
 
+    if (isHtml) {
+        result += `<table style="width: 100%; border-collapse: collapse;">`;
+    }
+
     for (const supplier of sortedSuppliers) {
         const supplierTotal = Array.from(supplier.items.values()).reduce((sum, item) => sum + item.totalValue, 0);
-        result += `\n${b(supplier.name)} - ${b(`$${supplierTotal.toFixed(2)}`)}\n`;
+        result += isHtml ? `<tr><td colspan="4" style="padding-top: 8px;"><b>${h(supplier.name)} - ${supplierTotal.toFixed(2)}</b></td></tr>` : `\n${supplier.name} - ${supplierTotal.toFixed(2)}\n`;
         const sortedItems = Array.from(supplier.items.values()).sort((a,b) => a.name.localeCompare(b.name));
+        
         for (const item of sortedItems) {
             const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
             const unit = item.unit || '';
-            if (isHtml) {
-                 result += `${h(item.name)} (${item.quantity}${unit}) @ ${avgPrice.toFixed(2)} = <b>$${item.totalValue.toFixed(2)}</b><br>`;
+            
+            if (avgPrice > 0 || item.totalValue > 0) {
+                if (isHtml) {
+                    result += `<tr><td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;">${h(item.name)}</td><td style="text-align: right;">${item.quantity}${unit}</td><td style="text-align: right;">@ ${avgPrice.toFixed(2)}</td><td style="text-align: right;"><b>${item.totalValue.toFixed(2)}</b></td></tr>`;
+                } else {
+                    const namePart = item.name.padEnd(18, ' ').substring(0, 18);
+                    const qtyPart = `${item.quantity}${unit}`.padStart(6);
+                    const pricePart = `@${avgPrice.toFixed(2)}`.padStart(7);
+                    const totalPart = item.totalValue.toFixed(2).padStart(8);
+                    result += `${namePart} ${qtyPart} ${pricePart} ${totalPart}\n`;
+                }
             } else {
-                 result += `- ${item.name} (${item.quantity}${unit}) @ ${avgPrice.toFixed(2)} = $${item.totalValue.toFixed(2)}\n`;
+                if (isHtml) {
+                    result += `<tr><td>${h(item.name)}</td><td style="text-align: right;">${item.quantity}${unit}</td><td></td><td></td></tr>`;
+                } else {
+                    const namePart = item.name.padEnd(18, ' ').substring(0, 18);
+                    const qtyPart = `${item.quantity}${unit}`.padStart(6);
+                    result += `${namePart} ${qtyPart}\n`;
+                }
+            }
+        }
+    }
+    
+    if (isHtml) {
+        result += `</table>`;
+    }
+
+    if (paymentSubtotals.size > 0) {
+        result += `\n${separator}`;
+        for (const [method, total] of paymentSubtotals.entries()) {
+            if (options.showPaymentMethods.has(method)) {
+                if (isHtml) {
+                    result += `<div><span>${b(h(method.toUpperCase()) + ' TOTAL:')}</span><span style="float: right;">${b(total.toFixed(2))}</span></div>\n`;
+                } else {
+                    result += `${(method.toUpperCase() + ' TOTAL:').padEnd(31)}${total.toFixed(2).padStart(8)}\n`;
+                }
             }
         }
     }
 
-    result += isHtml ? '<hr>\n' : '--------------------\n';
-    result += `\n${b('GRAND TOTAL:')} ${b(`$${grandTotal.toFixed(2)}`)}`;
-
+    result += `\n${separator}`;
+    if (isHtml) {
+        result += `<div><span style="font-size: 1.1em;">${b('GRAND TOTAL:')}</span><span style="font-size: 1.1em; float: right;">${b(grandTotal.toFixed(2))}</span></div>`;
+    } else {
+        result += `${'GRAND TOTAL:'.padEnd(31)}${grandTotal.toFixed(2).padStart(8)}\n`;
+    }
+    
     if(isHtml){
-        return `<div style="font-family: monospace; font-size: 12px; max-width: 300px; white-space: pre-wrap;">${result.replace(/\n/g, '<br>')}</div>`;
+        return `<div style="font-family: 'Courier New', Courier, monospace; font-size: 12px; max-width: 300px; padding: 8px; background: white; color: black;">${result.replace(/\n/g, '<br>')}</div>`;
     }
 
     return result;

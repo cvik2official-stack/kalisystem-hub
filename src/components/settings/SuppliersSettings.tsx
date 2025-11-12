@@ -12,7 +12,7 @@
   ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS payment_method TEXT;
 
 */
-import React, { useContext, useState, useMemo } from 'react';
+import React, { useContext, useState, useMemo, useEffect, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Supplier, SupplierName, PaymentMethod, SupplierBotSettings } from '../../types';
 import EditTemplateModal from '../modals/EditTemplateModal';
@@ -38,14 +38,14 @@ const PaymentMethodBadge: React.FC<{ method?: PaymentMethod }> = ({ method }) =>
 const SuppliersSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
   
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const [selectedSupplierForTemplate, setSelectedSupplierForTemplate] = useState<Supplier | null>(null);
 
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Supplier>>({});
-
-
+  
   const handleAddNew = async () => {
     const newSupplier = await actions.addSupplier({ name: 'New Supplier' as SupplierName });
     setEditingSupplierId(newSupplier.id);
@@ -85,23 +85,29 @@ const SuppliersSettings: React.FC = () => {
   };
 
   const filteredSuppliers = useMemo(() => {
-    return state.suppliers
-      .filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const sortedSuppliers = [...state.suppliers].sort((a, b) => a.name.localeCompare(b.name));
+    if (!searchTerm.trim()) {
+        return sortedSuppliers;
+    }
+    return sortedSuppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
   }, [state.suppliers, searchTerm]);
 
   const columns = useMemo(() => [
     { 
       id: 'name', header: 'Name', initialWidth: 150,
-      cell: (supplier: Supplier) => editingSupplierId === supplier.id ? (
-        <input
-            type="text"
-            value={editFormData.name || ''}
-            autoFocus
-            onChange={(e) => handleInputChange('name', e.target.value.toUpperCase() as SupplierName)}
-            className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500 text-white whitespace-nowrap"
-        />
-      ) : supplier.name
+      cell: (supplier: Supplier) => (
+        <div className="truncate max-w-xs">
+          {editingSupplierId === supplier.id ? (
+            <input
+                type="text"
+                value={editFormData.name || ''}
+                autoFocus
+                onChange={(e) => handleInputChange('name', e.target.value.toUpperCase() as SupplierName)}
+                className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500 text-white whitespace-nowrap"
+            />
+          ) : supplier.name}
+        </div>
+      )
     },
     { 
       id: 'paymentMethod', header: 'Payment Method', initialWidth: 120,
@@ -128,30 +134,6 @@ const SuppliersSettings: React.FC = () => {
             className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500 font-mono"
         />
       ) : supplier.chatId || '-'
-    },
-    {
-      id: 'inv', header: 'Inv', title: 'Attach Invoice', initialWidth: 40,
-      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.showAttachInvoice} />
-    },
-    {
-      id: 'mis', header: 'Mis', title: 'Missing Items', initialWidth: 40,
-      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.showMissingItems} />
-    },
-    {
-      id: 'ok', header: 'OK', title: 'OK Button', initialWidth: 40,
-      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.showOkButton} />
-    },
-    {
-      id: 'drv', header: 'Drv', title: 'Driver on the Way', initialWidth: 40,
-      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.showDriverOnWayButton} />
-    },
-    {
-      id: 'loc', header: 'Loc', title: 'Include Location Link', initialWidth: 40,
-      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.includeLocation} />
-    },
-    {
-      id: 'tmr', header: 'Tmr', title: 'Reminder Timer', initialWidth: 40,
-      cell: (supplier: Supplier) => <CheckboxDisplay checked={supplier.botSettings?.enableReminderTimer} />
     },
     {
       id: 'actions', header: 'Actions', initialWidth: 80,
@@ -189,14 +171,6 @@ const SuppliersSettings: React.FC = () => {
     }
   ], [editingSupplierId, editFormData]);
 
-  const CheckboxDisplay: React.FC<{checked?: boolean}> = ({ checked }) => (
-    <div className="flex justify-center items-center h-full">
-      <div className={`h-4 w-4 rounded border flex items-center justify-center ${checked ? 'bg-indigo-500 border-indigo-500' : 'border-gray-600'}`}>
-        {checked && <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
-      </div>
-    </div>
-  );
-  
   return (
     <div className="flex flex-col flex-grow">
       <ResizableTable
@@ -204,26 +178,51 @@ const SuppliersSettings: React.FC = () => {
         data={filteredSuppliers}
         tableKey="suppliers-settings"
         toolbar={
-          <div className="flex justify-between items-center mb-4 w-full">
-            <input
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Search suppliers..."
-            />
-          </div>
+          isSearchVisible ? (
+            <div className="mb-4">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                autoFocus
+                onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
+                className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Search suppliers..."
+              />
+            </div>
+          ) : <div className="mb-4 h-[42px]"></div>
         }
         rightAlignedActions={
-          <button
-            onClick={handleAddNew}
-            className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
-            aria-label="Add New Supplier"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-          </button>
+          (toggleColumnMenu) => (
+            <div className="flex items-center space-x-1 bg-gray-700 p-1 rounded-full shadow-lg">
+                <button
+                    onClick={() => setIsSearchVisible(prev => !prev)}
+                    className={`text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600 ${isSearchVisible ? 'bg-gray-600 text-indigo-400' : ''}`}
+                    aria-label="Search suppliers"
+                    title="Search suppliers"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
+                </button>
+                 <button
+                    onClick={handleAddNew}
+                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600"
+                    aria-label="Add New Supplier"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                  </button>
+                <button
+                    onClick={(e) => toggleColumnMenu(e)}
+                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
+                    aria-label="Toggle column visibility"
+                    title="Show/hide columns"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
+                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+          )
         }
       />
       

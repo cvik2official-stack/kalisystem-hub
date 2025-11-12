@@ -148,13 +148,15 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
             <ManagerReportView storeName={storeName} orders={filteredOrders} />
           ) : (
              filteredOrders.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center">
                 {filteredOrders.map(order => (
                   <SupplierCard
                     key={order.id}
                     order={order}
                     isManagerView={true}
                     isOudomManagerWorkflow={isOudom && (order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK)}
+                    // FIX: Provide a dummy function for onItemDrop as this view doesn't support item dragging.
+                    onItemDrop={() => {}}
                   />
                 ))}
               </div>

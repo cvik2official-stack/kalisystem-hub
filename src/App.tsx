@@ -12,17 +12,32 @@ import { useNotifier } from './context/NotificationContext';
 import ContextMenu from './components/ContextMenu';
 import NotificationBell from './components/NotificationBell';
 import KaliReportModal from './components/modals/KaliReportModal';
+import TelegramWebhookModal from './components/modals/TelegramWebhookModal';
+import { useNotificationState, useNotificationDispatch } from './context/NotificationContext';
+
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, columnCount } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers } = state;
   const { notify } = useNotifier();
+  const { hasUnread } = useNotificationState();
+  const { markAllAsRead } = useNotificationDispatch();
+
+  // Animations
+  const [isRedAnimating, setIsRedAnimating] = useState(false);
+  const [isYellowAnimating, setIsYellowAnimating] = useState(false);
+  const prevHasUnreadRef = useRef(hasUnread);
+  
+  // Panel Control
+  const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
+  const yellowDotRef = useRef<HTMLButtonElement>(null);
+
+
   const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
-  const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
-  const prevSyncStatusRef = useRef<string | undefined>(undefined);
   const [headerMenu, setHeaderMenu] = useState<{ x: number, y: number } | null>(null);
   const [isKaliReportModalOpen, setIsKaliReportModalOpen] = useState(false);
+  const [isTelegramWebhookModalOpen, setIsTelegramWebhookModalOpen] = useState(false);
 
   const todaysKaliOrders = React.useMemo(() => {
     const today = new Date();
@@ -44,15 +59,14 @@ const App: React.FC = () => {
 
 
   useEffect(() => {
-    if (prevSyncStatusRef.current === 'syncing' && syncStatus === 'idle') {
-      setAnimateSyncSuccess(true);
-      const timer = setTimeout(() => {
-        setAnimateSyncSuccess(false);
-      }, 1500); // Animation + color visible for 1.5s
-      return () => clearTimeout(timer);
+    // Trigger bounce animation only when hasUnread changes from false to true
+    if (hasUnread && !prevHasUnreadRef.current) {
+        setIsYellowAnimating(true);
+        const timer = setTimeout(() => setIsYellowAnimating(false), 3000);
+        return () => clearTimeout(timer);
     }
-    prevSyncStatusRef.current = syncStatus;
-  }, [syncStatus]);
+    prevHasUnreadRef.current = hasUnread;
+  }, [hasUnread]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -158,7 +172,7 @@ const App: React.FC = () => {
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
         { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
         { label: '  Templates', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'templates' as SettingsTab }) },
-        { label: '  Telegram Bot', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'telegram-bot' as SettingsTab }) },
+        { label: '  Telegram Bot', action: () => setIsTelegramWebhookModalOpen(true) },
       ];
       if (activeStore !== 'Settings') {
         options.push(
@@ -168,6 +182,26 @@ const App: React.FC = () => {
       }
       return options;
   };
+
+  const handleRedDotClick = () => {
+    dispatch({ type: 'CYCLE_COLUMN_COUNT' });
+    setIsRedAnimating(true);
+    setTimeout(() => setIsRedAnimating(false), 3000);
+  };
+  
+  const handleYellowDotClick = () => {
+    setIsNotificationPanelOpen(prev => !prev);
+    if (hasUnread) {
+      markAllAsRead();
+    }
+  };
+  
+  const handleGreenDotClick = () => {
+    if (syncStatus !== 'syncing') {
+      actions.syncWithSupabase();
+    }
+  };
+
 
   if (!isInitialized) {
     return (
@@ -188,47 +222,55 @@ const App: React.FC = () => {
     return <ManagerView storeName={managerStoreFilter} />;
   }
 
+  const yellowDotRect = yellowDotRef.current?.getBoundingClientRect();
+
   return (
     <>
       <div className="min-h-screen bg-gray-900 text-gray-200">
         <div className="bg-gray-900 w-full xl:max-w-7xl xl:mx-auto min-h-screen flex flex-col">
             <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <div className="flex space-x-1.5">
-                  <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-                  <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
-                  <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                </div>
-                <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>
-              </div>
-              <div className="flex items-center space-x-2">
-                  <button
-                      onClick={() => actions.syncWithSupabase()}
-                      disabled={syncStatus === 'syncing'}
-                      className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed p-1"
-                      aria-label="Sync with database"
-                      title="Sync with database"
-                  >
-                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors duration-300 ${syncStatus === 'syncing' ? 'animate-spin' : ''} ${animateSyncSuccess ? 'text-green-400 bounce-once-animation' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                      </svg>
+                <div className="flex space-x-2">
+                  <button onClick={handleRedDotClick} aria-label="Cycle column view">
+                    <span className={`w-4 h-4 bg-red-500 rounded-full block ${isRedAnimating ? 'animate-spin-coin' : ''}`}></span>
                   </button>
-                  <div className="relative">
-                    <button
-                      onClick={() => dispatch({ type: 'CYCLE_COLUMN_COUNT' })}
-                      className="text-gray-400 hover:text-white p-1"
-                      aria-label="Cycle column view"
-                      title={`Set to ${columnCount === 3 ? 1 : columnCount + 1} column(s)`}
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                      </svg>
-                      <span className="absolute -top-1 -right-1 bg-indigo-600 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-bold">
-                        {columnCount}
-                      </span>
-                    </button>
-                  </div>
-                  <NotificationBell />
+                  <button onClick={handleYellowDotClick} aria-label="Notifications" ref={yellowDotRef}>
+                    <span className={`w-4 h-4 bg-yellow-400 rounded-full block relative ${isYellowAnimating ? 'animate-bounce-twice' : ''}`}>
+                       {hasUnread && <span className="absolute top-0 right-0 -mr-1 -mt-1 flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-400"></span></span>}
+                    </span>
+                  </button>
+                  <button onClick={handleGreenDotClick} disabled={syncStatus === 'syncing'} aria-label="Sync with database">
+                    <span className={`w-4 h-4 bg-green-500 rounded-full block ${syncStatus === 'syncing' ? 'animate-pulse-pulsar' : ''}`}></span>
+                  </button>
+                </div>
+                 {isManagerView && <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>}
+              </div>
+              
+              <div className="flex items-center space-x-2">
+                  {isManagerView && (
+                    <>
+                      <button
+                          onClick={() => dispatch({ type: 'CYCLE_COLUMN_COUNT' })}
+                          className="text-gray-400 hover:text-white p-1"
+                          aria-label="Cycle column view"
+                      >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
+                          </svg>
+                      </button>
+                      <button
+                          onClick={() => actions.syncWithSupabase()}
+                          disabled={syncStatus === 'syncing'}
+                          className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed p-1"
+                          aria-label="Sync with database"
+                      >
+                          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors duration-300 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+                          </svg>
+                      </button>
+                      <NotificationBell />
+                    </>
+                  )}
                   <button 
                     onClick={(e) => {
                         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -262,6 +304,14 @@ const App: React.FC = () => {
             onClose={() => setHeaderMenu(null)}
         />
       )}
+      {yellowDotRect && (
+        <NotificationBell
+            isControlled={true}
+            isOpen={isNotificationPanelOpen}
+            setIsOpen={setIsNotificationPanelOpen}
+            position={{ top: yellowDotRect.bottom + 5, left: yellowDotRect.left }}
+        />
+      )}
       <KaliReportModal
         isOpen={isKaliReportModalOpen}
         onClose={() => setIsKaliReportModalOpen(false)}
@@ -269,6 +319,10 @@ const App: React.FC = () => {
         isSending={isSendingReport}
         orders={todaysKaliOrders}
         itemPrices={itemPrices}
+      />
+      <TelegramWebhookModal
+        isOpen={isTelegramWebhookModalOpen}
+        onClose={() => setIsTelegramWebhookModalOpen(false)}
       />
     </>
   );

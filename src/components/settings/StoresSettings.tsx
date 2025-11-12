@@ -1,4 +1,6 @@
 
+
+
 /*
   NOTE FOR DATABASE SETUP:
   This component manages store properties that require the 'stores' table.
@@ -15,7 +17,7 @@
 
   -- 2. Seed the table with your store names (run this once)
   INSERT INTO public.stores (name)
-  VALUES ('CV2'), ('STOCK02'), ('WB'), ('SHANTI'), ('OUDOM'), ('KALI')
+  VALUES ('CV2'), ('STOCKO2'), ('WB'), ('SHANTI'), ('OUDOM'), ('KALI')
   ON CONFLICT (name) DO NOTHING;
 
 */
@@ -38,7 +40,7 @@ const StoresSettings: React.FC = () => {
   const columns = useMemo(() => [
     { 
       id: 'name', header: 'Store Name', initialWidth: 200,
-      cell: (store: Store) => <span className="text-white whitespace-nowrap">{store.name}</span>
+      cell: (store: Store) => <span className="text-white whitespace-nowrap truncate max-w-xs">{store.name}</span>
     },
     {
       id: 'chatId', header: 'Chat ID', initialWidth: 200,
@@ -54,12 +56,14 @@ const StoresSettings: React.FC = () => {
     {
       id: 'locationUrl', header: 'Location URL', initialWidth: 400,
       cell: (store: Store) => (
-        <input
-          type="text"
-          defaultValue={store.locationUrl || ''}
-          onBlur={(e) => handleStoreUpdate(store, 'locationUrl', e.target.value)}
-          className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 font-mono"
-        />
+        <div className="truncate">
+            <input
+              type="text"
+              defaultValue={store.locationUrl || ''}
+              onBlur={(e) => handleStoreUpdate(store, 'locationUrl', e.target.value)}
+              className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 font-mono truncate"
+            />
+        </div>
       )
     },
   ], [state.stores]);

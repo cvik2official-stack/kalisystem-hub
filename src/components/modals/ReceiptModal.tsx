@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useContext } from 'react';
-import { Order } from '../../types';
+import React, { useState, useMemo, useContext, useEffect } from 'react';
+import { Order, PaymentMethod } from '../../types';
 import { AppContext } from '../../context/AppContext';
 import { useNotifier } from '../../context/NotificationContext';
 import { generateConsolidatedReceipt } from '../../utils/messageFormatter';
@@ -17,15 +17,71 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, orders }) 
   const [activeTab, setActiveTab] = useState<'telegram' | 'ticket'>('telegram');
   const [isSending, setIsSending] = useState(false);
 
+  // State for new filters
+  const [suppliersToShow, setSuppliersToShow] = useState<Set<string>>(new Set());
+  const [paymentMethodsToShow, setPaymentMethodsToShow] = useState<Set<string>>(new Set());
+
+  // Derive filter options from the orders passed to the modal
+  const uniqueSuppliers = useMemo(() => {
+    if (!isOpen) return [];
+    return Array.from(new Set(orders.map(o => o.supplierName))).sort();
+  }, [isOpen, orders]);
+  
+  const uniquePaymentMethods = useMemo(() => {
+    if (!isOpen) return [];
+    const methods = new Set<string>();
+    orders.forEach(order => {
+      const supplier = state.suppliers.find(s => s.id === order.supplierId);
+      const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+      if (paymentMethod) {
+        methods.add(paymentMethod);
+      }
+    });
+    return Array.from(methods).sort();
+  }, [isOpen, orders, state.suppliers]);
+
+  // Initialize filters when modal opens or orders change
+  useEffect(() => {
+    if (isOpen) {
+      setSuppliersToShow(new Set(uniqueSuppliers));
+      setPaymentMethodsToShow(new Set(uniquePaymentMethods));
+    }
+  }, [isOpen, uniqueSuppliers, uniquePaymentMethods]);
+
+  const handleSupplierToggle = (supplierName: string) => {
+    setSuppliersToShow(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(supplierName)) newSet.delete(supplierName);
+      else newSet.add(supplierName);
+      return newSet;
+    });
+  };
+
+  const handlePaymentMethodToggle = (paymentMethod: string) => {
+    setPaymentMethodsToShow(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(paymentMethod)) newSet.delete(paymentMethod);
+      else newSet.add(paymentMethod);
+      return newSet;
+    });
+  };
+
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => suppliersToShow.has(o.supplierName));
+  }, [orders, suppliersToShow]);
+
   const plainTextReceipt = useMemo(() => {
     if (!isOpen) return '';
-    return generateConsolidatedReceipt(orders, state.itemPrices, 'plain');
-  }, [isOpen, orders, state.itemPrices]);
+    // FIX: Pass suppliers to generateConsolidatedReceipt.
+    return generateConsolidatedReceipt(filteredOrders, state.itemPrices, state.suppliers, 'plain', { showPaymentMethods: paymentMethodsToShow });
+  }, [isOpen, filteredOrders, state.itemPrices, state.suppliers, paymentMethodsToShow]);
 
   const htmlReceipt = useMemo(() => {
     if (!isOpen) return '';
-    return generateConsolidatedReceipt(orders, state.itemPrices, 'html');
-  }, [isOpen, orders, state.itemPrices]);
+    // FIX: Pass suppliers to generateConsolidatedReceipt.
+    return generateConsolidatedReceipt(filteredOrders, state.itemPrices, state.suppliers, 'html', { showPaymentMethods: paymentMethodsToShow });
+  }, [isOpen, filteredOrders, state.itemPrices, state.suppliers, paymentMethodsToShow]);
+
 
   const handleCopyToClipboard = () => {
     navigator.clipboard.writeText(plainTextReceipt).then(() => {
@@ -62,7 +118,10 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, orders }) 
     const iframe = document.getElementById('receipt-iframe') as HTMLIFrameElement;
     if (iframe) {
       iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
+      // Add a small delay to ensure the srcDoc content is fully rendered before printing
+      setTimeout(() => {
+        iframe.contentWindow?.print();
+      }, 100);
     }
   };
 
@@ -74,7 +133,7 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, orders }) 
         <button onClick={onClose} disabled={isSending} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
           <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
-        <h2 className="text-xl font-bold text-white mb-4">Consolidated Receipt</h2>
+        <h2 className="text-xl font-bold text-white mb-4">Buy & Dispatch.</h2>
         
         <div className="border-b border-gray-700">
           <nav className="-mb-px flex space-x-4">
@@ -88,10 +147,37 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, orders }) 
         </div>
         
         <div className="mt-4">
+          <div className="bg-gray-900 rounded-lg p-3 mb-4">
+              <h3 className="text-sm font-semibold text-gray-300 mb-2">Filters</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                  <div>
+                      <h4 className="text-xs font-bold text-gray-500 uppercase mb-1">Suppliers</h4>
+                      <div className="flex flex-col space-y-1">
+                          {uniqueSuppliers.map(name => (
+                              <label key={name} className="flex items-center text-sm text-gray-300">
+                                  <input type="checkbox" checked={suppliersToShow.has(name)} onChange={() => handleSupplierToggle(name)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-indigo-600 focus:ring-indigo-500" />
+                                  <span className="ml-2">{name}</span>
+                              </label>
+                          ))}
+                      </div>
+                  </div>
+                   <div>
+                      <h4 className="text-xs font-bold text-gray-500 uppercase mb-1">Payments</h4>
+                      <div className="flex flex-col space-y-1">
+                          {uniquePaymentMethods.map(method => (
+                              <label key={method} className="flex items-center text-sm text-gray-300">
+                                  <input type="checkbox" checked={paymentMethodsToShow.has(method)} onChange={() => handlePaymentMethodToggle(method)} className="h-4 w-4 rounded bg-gray-700 border-gray-600 text-indigo-600 focus:ring-indigo-500" />
+                                  <span className="ml-2">{method.toUpperCase()}</span>
+                              </label>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+          </div>
           {activeTab === 'telegram' && (
             <div>
               <div className="bg-gray-900 rounded-md p-3 h-64 overflow-y-auto">
-                <pre className="text-gray-300 whitespace-pre-wrap text-sm font-sans">{plainTextReceipt}</pre>
+                <pre className="text-gray-300 whitespace-pre-wrap text-sm font-mono">{plainTextReceipt}</pre>
               </div>
               <div className="mt-6 flex justify-between items-center">
                 <button onClick={handleCopyToClipboard} disabled={isSending} className="px-4 py-2 text-sm font-medium rounded-md bg-gray-600 hover:bg-gray-500 text-gray-200">

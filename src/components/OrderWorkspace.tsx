@@ -1,4 +1,4 @@
-import React, { useContext, useMemo, useState, useEffect } from 'react';
+import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
 import SupplierCard from './SupplierCard';
@@ -6,7 +6,6 @@ import AddSupplierModal from './modals/AddSupplierModal';
 import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName } from '../types';
 import PasteItemsModal from './modals/PasteItemsModal';
 import ContextMenu from './ContextMenu';
-import MergeByPaymentModal from './modals/MergeByPaymentModal';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
 import DueReportModal from './modals/DueReportModal';
@@ -30,100 +29,134 @@ const formatDateGroupHeader = (key: string): string => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, activeStatus, orders, suppliers, isEditModeEnabled, columnCount, draggedOrderId } = state;
+  const { activeStore, orders, suppliers, isEditModeEnabled, draggedOrderId, columnCount, activeStatus, draggedItem } = state;
   const { notify } = useNotifier();
 
   const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
   
-  const [draggedItem, setDraggedItem] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [isDragOverEmpty, setIsDragOverEmpty] = useState(false);
 
   const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number, y: number, dateGroupKey: string } | null>(null);
-  const [isMergeModalOpen, setIsMergeModalOpen] = useState(false);
   const [isDueReportModalOpen, setIsDueReportModalOpen] = useState(false);
   const [ordersForDueReport, setOrdersForDueReport] = useState<Order[]>([]);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
   const [ordersForReceipt, setOrdersForReceipt] = useState<Order[]>([]);
   const [dragOverColumn, setDragOverColumn] = useState<OrderStatus | null>(null);
-  const [dragOverTab, setDragOverTab] = useState<OrderStatus | null>(null);
+  const [dragOverStatusTab, setDragOverStatusTab] = useState<OrderStatus | null>(null);
+  const [dragOverDateGroup, setDragOverDateGroup] = useState<string | null>(null);
+  const touchStartX = useRef(0);
+  const touchEndX = useRef(0);
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartX.current = e.targetTouches[0].clientX;
+    touchEndX.current = 0; // Reset endX on new touch
+  };
 
-  const handleStatusChange = (status: OrderStatus) => {
-    dispatch({ type: 'SET_ACTIVE_STATUS', payload: status });
+  const handleTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const handleTouchEnd = () => {
+    if (touchStartX.current === 0 || touchEndX.current === 0) return;
+    const swipeDistance = touchStartX.current - touchEndX.current;
+    const isLeftSwipe = swipeDistance > 75; // Minimum swipe distance
+    const isRightSwipe = swipeDistance < -75;
+
+    if (isLeftSwipe || isRightSwipe) {
+        const currentIndex = STATUS_TABS.findIndex(tab => tab.id === activeStatus);
+        if (isLeftSwipe && currentIndex < STATUS_TABS.length - 1) {
+            dispatch({ type: 'SET_ACTIVE_STATUS', payload: STATUS_TABS[currentIndex + 1].id });
+        } else if (isRightSwipe && currentIndex > 0) {
+            dispatch({ type: 'SET_ACTIVE_STATUS', payload: STATUS_TABS[currentIndex - 1].id });
+        }
+    }
+    // Reset refs
+    touchStartX.current = 0;
+    touchEndX.current = 0;
   };
 
   const handleAddOrder = async (supplier: Supplier) => {
     if (activeStore === 'Settings' || !activeStore) return;
-    const status = columnCount > 1 ? OrderStatus.DISPATCHING : (activeStatus === OrderStatus.COMPLETED ? OrderStatus.COMPLETED : OrderStatus.DISPATCHING);
-    await actions.addOrder(supplier, activeStore, [], status);
+    await actions.addOrder(supplier, activeStore, [], OrderStatus.DISPATCHING);
     setAddSupplierModalOpen(false);
   };
   
-  const handleItemDrop = async (destinationOrderId: string) => {
+  const handleItemDropOnCard = async (destinationOrderId: string) => {
     if (!draggedItem) return;
 
-    const sourceOrder = orders.find(o => o.id === draggedItem.sourceOrderId);
-    const destinationOrder = orders.find(o => o.id === destinationOrderId);
+    const { item: droppedItem, sourceOrderId } = draggedItem;
     
-    const canDrop = sourceOrder && 
-                    destinationOrder && 
-                    sourceOrder.id !== destinationOrder.id &&
-                    sourceOrder.status === destinationOrder.status &&
-                    (destinationOrder.status === OrderStatus.DISPATCHING || destinationOrder.status === OrderStatus.ON_THE_WAY || (destinationOrder.status === OrderStatus.COMPLETED && isEditModeEnabled));
-
-    if (canDrop) {
-        // Correctly filter out the specific dragged item, respecting its spoiled status.
-        // This prevents accidentally removing both spoiled and non-spoiled versions of an item.
-        const newSourceItems = sourceOrder.items.filter(i => 
-            !(i.itemId === draggedItem.item.itemId && i.isSpoiled === draggedItem.item.isSpoiled)
-        );
-        
-        const isUpdateToSentOrder = destinationOrder.status === OrderStatus.ON_THE_WAY;
-        const itemToDrop = { ...draggedItem.item, isNew: isUpdateToSentOrder };
-
-        // Find if an item with the same ID and spoiled status already exists in the destination.
-        const existingItemInDestIndex = destinationOrder.items.findIndex(i => 
-            i.itemId === itemToDrop.itemId && i.isSpoiled === itemToDrop.isSpoiled
-        );
-
-        let newDestinationItems;
-        if (existingItemInDestIndex > -1) {
-            // If it exists, update its quantity.
-            newDestinationItems = [...destinationOrder.items];
-            const existingItem = newDestinationItems[existingItemInDestIndex];
-            newDestinationItems[existingItemInDestIndex] = {
-                ...existingItem,
-                quantity: existingItem.quantity + itemToDrop.quantity,
-                isNew: isUpdateToSentOrder || existingItem.isNew,
-            };
-        } else {
-            // If it's new to this order, add it to the list.
-            newDestinationItems = [...destinationOrder.items, itemToDrop];
-        }
-
-        try {
-            // If moving the item makes the source order empty, delete the source order
-            // to prevent empty cards from cluttering the UI.
-            if (newSourceItems.length === 0) {
-                await Promise.all([
-                    actions.deleteOrder(sourceOrder.id),
-                    actions.updateOrder({ ...destinationOrder, items: newDestinationItems })
-                ]);
-            } else {
-                 await Promise.all([
-                    actions.updateOrder({ ...sourceOrder, items: newSourceItems }),
-                    actions.updateOrder({ ...destinationOrder, items: newDestinationItems })
-                ]);
-            }
-        } catch (error) {
-            console.error("Failed to move item between orders:", error);
-        }
+    // Prevent dropping on itself
+    if (sourceOrderId === destinationOrderId) {
+        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
+        return;
     }
-    setDraggedItem(null);
-  };
+
+    const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
+    const destinationOrder = state.orders.find(o => o.id === destinationOrderId);
+
+    if (!sourceOrder || !destinationOrder) {
+        notify('Drag-and-drop error: order not found.', 'error');
+        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
+        return;
+    }
+    
+    // Permission Check: Cannot modify completed orders without edit mode
+    if ((sourceOrder.status === OrderStatus.COMPLETED && !isEditModeEnabled) || (destinationOrder.status === OrderStatus.COMPLETED && !isEditModeEnabled)) {
+        notify('Enable Edit Mode to modify completed orders.', 'info');
+        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
+        return;
+    }
+
+    // --- Update Source Order ---
+    const newSourceItems = sourceOrder.items.filter(i => 
+        // A more robust check for item identity
+        !(i.itemId === droppedItem.itemId && i.isSpoiled === droppedItem.isSpoiled && i.name === droppedItem.name)
+    );
+
+    // --- Update Destination Order ---
+    const newDestinationItems = [...destinationOrder.items];
+    const existingItemIndex = newDestinationItems.findIndex(i => 
+        i.itemId === droppedItem.itemId && i.isSpoiled === droppedItem.isSpoiled
+    );
+    
+    // Add 'isNew' flag if dropping onto an "On The Way" order
+    const itemToDrop = { ...droppedItem, isNew: destinationOrder.status === OrderStatus.ON_THE_WAY };
+
+    if (existingItemIndex > -1) {
+        // Merge with existing item
+        const existingItem = newDestinationItems[existingItemIndex];
+        newDestinationItems[existingItemIndex] = {
+            ...existingItem,
+            quantity: existingItem.quantity + itemToDrop.quantity,
+            isNew: destinationOrder.status === OrderStatus.ON_THE_WAY || existingItem.isNew,
+        };
+    } else {
+        // Add as a new item
+        newDestinationItems.push(itemToDrop);
+    }
+    
+    // --- Commit changes via actions ---
+    try {
+        // If source order becomes empty, delete it. Otherwise, update it.
+        if (newSourceItems.length === 0) {
+            await actions.deleteOrder(sourceOrderId);
+        } else {
+            await actions.updateOrder({ ...sourceOrder, items: newSourceItems });
+        }
+
+        await actions.updateOrder({ ...destinationOrder, items: newDestinationItems });
+    } catch (e) {
+        // The context wrapper already shows a notification
+        console.error("Failed to move item:", e);
+    } finally {
+        // Clean up global drag state
+        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
+    }
+};
   
   const handleCreateOrderFromDrop = async (supplier: Supplier) => {
     if (!itemForNewOrder || activeStore === 'Settings') return;
@@ -185,14 +218,10 @@ const OrderWorkspace: React.FC = () => {
       
       return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   };
-
-  const filteredOrders = useMemo(() => {
-    return getFilteredOrdersForStatus(activeStatus);
-  }, [orders, activeStore, activeStatus, suppliers]);
   
   const groupedCompletedOrders = useMemo(() => {
-    const ordersToGroup = columnCount > 1 ? getFilteredOrdersForStatus(OrderStatus.COMPLETED) : filteredOrders;
-    if ((columnCount === 1 && activeStatus !== OrderStatus.COMPLETED) || ordersToGroup.length === 0) return {};
+    const ordersToGroup = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
+    if (ordersToGroup.length === 0) return {};
     
     const groups: Record<string, Order[]> = {};
     const today = new Date();
@@ -206,7 +235,7 @@ const OrderWorkspace: React.FC = () => {
       groups[key].push(order);
     });
     return groups;
-  }, [filteredOrders, activeStatus, columnCount, orders, activeStore]);
+  }, [orders, activeStore, suppliers]);
 
   const sortedCompletedGroupKeys = useMemo(() => {
     return Object.keys(groupedCompletedOrders).sort((a, b) => {
@@ -252,9 +281,6 @@ const OrderWorkspace: React.FC = () => {
 
     if (dateGroupKey === 'Today') {
         options.push(
-            { label: 'Merge KALI...', action: () => (actions as any).mergeKaliOrders() },
-            { label: 'Merge PISEY...', action: () => (actions as any).mergePiseyOrders() },
-            { label: 'Merge by Payment...', action: () => setIsMergeModalOpen(true) },
             { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
         );
@@ -265,56 +291,55 @@ const OrderWorkspace: React.FC = () => {
 
     return options;
   };
-  
-  const renderCompletedColumn = () => (
-    <>
-      {sortedCompletedGroupKeys.length > 0 ? (
-        <div className="space-y-1">
-          {sortedCompletedGroupKeys.map(key => {
-            const isExpanded = expandedGroups.has(key);
-            return (
-              <div key={key}>
-                <div className="bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl">
-                  <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    <h3 className="font-bold text-white text-base">{formatDateGroupHeader(key)}</h3>
-                  </button>
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                  </button>
-                </div>
-                {isExpanded && (
-                  <div className="grid grid-cols-1 gap-2 p-1">
-                    {groupedCompletedOrders[key].map((order) => (
-                      <SupplierCard 
-                          key={order.id} 
-                          order={order}
-                          draggedItem={draggedItem}
-                          setDraggedItem={setDraggedItem}
-                          onItemDrop={handleItemDrop}
-                          showStoreName={activeStore === StoreName.KALI} 
-                          isEditModeEnabled={isEditModeEnabled}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No completed orders.</p>
-        </div>
-      )}
-    </>
-  );
+
+  const handleDropOnDateGroup = (key: string) => {
+    if (!draggedOrderId) return;
+    const orderToMove = orders.find(o => o.id === draggedOrderId);
+    if (!orderToMove || orderToMove.status !== OrderStatus.COMPLETED) return;
+
+    const targetDate = new Date(key === 'Today' ? new Date() : new Date(key));
+    
+    const originalCompletedTime = new Date(orderToMove.completedAt || 0);
+    targetDate.setHours(
+        originalCompletedTime.getHours(),
+        originalCompletedTime.getMinutes(),
+        originalCompletedTime.getSeconds()
+    );
+
+    actions.updateOrder({ ...orderToMove, completedAt: targetDate.toISOString() });
+    dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+    setDragOverDateGroup(null);
+  }
+
+  const handleDropOnStatus = (status: OrderStatus) => {
+    if (draggedOrderId) {
+      const sourceOrder = orders.find((o) => o.id === draggedOrderId);
+      if (sourceOrder && sourceOrder.status !== status) {
+        const updatedOrder: Partial<Order> & { id: string } = { ...sourceOrder, status };
+        if (status === OrderStatus.DISPATCHING) {
+          updatedOrder.isSent = false;
+          updatedOrder.isReceived = false;
+          updatedOrder.completedAt = undefined;
+        } else if (status === OrderStatus.ON_THE_WAY) {
+          updatedOrder.isSent = true;
+          updatedOrder.isReceived = false;
+          updatedOrder.completedAt = undefined;
+        } else if (status === OrderStatus.COMPLETED) {
+          updatedOrder.isSent = true;
+          updatedOrder.isReceived = true;
+          updatedOrder.completedAt = new Date().toISOString();
+        }
+        actions.updateOrder(updatedOrder as Order);
+      }
+      setDragOverColumn(null);
+      setDragOverStatusTab(null);
+      dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+    }
+  };
 
   const AddOrderDropZone = () => (
     <div
-      className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200 mx-auto max-w-md w-full
+      className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200 w-full max-w-sm
         ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
       `}
        onDragOver={(e) => {
@@ -331,7 +356,7 @@ const OrderWorkspace: React.FC = () => {
           setAddSupplierModalOpen(true);
         }
         setIsDragOverEmpty(false);
-        setDraggedItem(null);
+        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
       }}
     >
         <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
@@ -351,235 +376,197 @@ const OrderWorkspace: React.FC = () => {
         </div>
     </div>
   );
-  
-  if (columnCount > 1) {
+
+  const DispatchingColumnContent = () => {
     const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
-    const onTheWayOrders = getFilteredOrdersForStatus(OrderStatus.ON_THE_WAY);
-    const columnClass = columnCount === 2 ? 'grid-cols-2' : 'grid-cols-3';
-    // Min width calculation: (column width + gap) * num columns. e.g. (320px + 16px) * 3 = 1008px
-    const minWidthClass = columnCount === 2 ? 'min-w-[672px]' : 'min-w-[1008px]';
-    
     return (
-      <div className="flex-grow pt-4 overflow-x-auto hide-scrollbar">
-        <div className={`h-full grid ${columnClass} ${minWidthClass} gap-4`}>
-          {/* Column 1: Dispatch */}
-          <section 
-            className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === OrderStatus.DISPATCHING ? 'bg-indigo-900/50' : ''}`}
-            onDragOver={(e) => {
-                if (draggedOrderId) {
-                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                    if (sourceOrder && sourceOrder.status !== OrderStatus.DISPATCHING) {
-                        e.preventDefault();
-                        setDragOverColumn(OrderStatus.DISPATCHING);
-                    }
-                }
-            }}
-            onDragLeave={() => setDragOverColumn(null)}
-            onDrop={(e) => {
-                if (draggedOrderId) {
-                    e.preventDefault();
-                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                    if (sourceOrder && sourceOrder.status !== OrderStatus.DISPATCHING) {
-                        actions.updateOrder({ ...sourceOrder, status: OrderStatus.DISPATCHING, isSent: false, isReceived: false, completedAt: undefined });
-                    }
-                    setDragOverColumn(null);
-                    dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
-                }
-            }}
-          >
-            <h2 className="text-lg font-semibold text-white p-3">Dispatch</h2>
-            <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
-              {dispatchingOrders.map(order => (
-                <SupplierCard 
-                    key={order.id} 
-                    order={order} 
-                    draggedItem={draggedItem}
-                    setDraggedItem={setDraggedItem}
-                    onItemDrop={handleItemDrop}
-                    showStoreName={activeStore === StoreName.KALI}
-                />
-              ))}
-              <AddOrderDropZone />
+      <>
+        {dispatchingOrders.map(order => (
+          <SupplierCard 
+              key={order.id} 
+              order={order} 
+              onItemDrop={handleItemDropOnCard}
+              showStoreName={activeStore === StoreName.KALI}
+          />
+        ))}
+        <AddOrderDropZone />
+      </>
+    );
+  };
+  
+  const OnTheWayColumnContent = () => {
+    const onTheWayOrders = getFilteredOrdersForStatus(OrderStatus.ON_THE_WAY);
+    return (
+      <>
+        {onTheWayOrders.map(order => (
+          <SupplierCard 
+              key={order.id} 
+              order={order} 
+              onItemDrop={handleItemDropOnCard}
+              showStoreName={activeStore === StoreName.KALI}
+          />
+        ))}
+        {onTheWayOrders.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500">No orders on the way.</p>
             </div>
-          </section>
-
-          {/* Column 2: On the Way */}
-          <section 
-            className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === OrderStatus.ON_THE_WAY ? 'bg-indigo-900/50' : ''}`}
-            onDragOver={(e) => {
-                if (draggedOrderId) {
-                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                    if (sourceOrder && sourceOrder.status !== OrderStatus.ON_THE_WAY) {
-                        e.preventDefault();
-                        setDragOverColumn(OrderStatus.ON_THE_WAY);
-                    }
-                }
-            }}
-            onDragLeave={() => setDragOverColumn(null)}
-            onDrop={(e) => {
-                if (draggedOrderId) {
-                    e.preventDefault();
-                    const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                    if (sourceOrder && sourceOrder.status !== OrderStatus.ON_THE_WAY) {
-                        actions.updateOrder({ ...sourceOrder, status: OrderStatus.ON_THE_WAY, isSent: true, isReceived: false, completedAt: undefined });
-                    }
-                    setDragOverColumn(null);
-                    dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
-                }
-            }}
-          >
-            <h2 className="text-lg font-semibold text-white p-3">On the Way</h2>
-            <div className="flex-grow overflow-y-auto hide-scrollbar space-y-4 px-2 pb-2">
-              {onTheWayOrders.map(order => (
-                <SupplierCard 
-                    key={order.id} 
-                    order={order} 
-                    draggedItem={draggedItem}
-                    setDraggedItem={setDraggedItem}
-                    onItemDrop={handleItemDrop}
-                    showStoreName={activeStore === StoreName.KALI}
-                />
-              ))}
-               {onTheWayOrders.length === 0 && (
-                  <div className="text-center py-12">
-                    <p className="text-gray-500">No orders on the way.</p>
-                  </div>
-              )}
-            </div>
-          </section>
-
-          {/* Column 3: Completed */}
-          {columnCount === 3 && (
-            <section 
-              className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === OrderStatus.COMPLETED ? 'bg-indigo-900/50' : ''}`}
-              onDragOver={(e) => {
-                  if (draggedOrderId) {
-                      const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                      if (sourceOrder && sourceOrder.status !== OrderStatus.COMPLETED) {
-                          e.preventDefault();
-                          setDragOverColumn(OrderStatus.COMPLETED);
-                      }
-                  }
-              }}
-              onDragLeave={() => setDragOverColumn(null)}
-              onDrop={(e) => {
-                  if (draggedOrderId) {
+        )}
+      </>
+    );
+  };
+  
+  const renderCompletedColumn = () => (
+    <>
+      {sortedCompletedGroupKeys.length > 0 ? (
+        <div className="space-y-1">
+          {sortedCompletedGroupKeys.map(key => {
+            const isExpanded = expandedGroups.has(key);
+            return (
+              <div 
+                key={key}
+                onDragOver={(e) => {
+                  const orderToMove = orders.find(o => o.id === draggedOrderId);
+                  if (orderToMove && orderToMove.status === OrderStatus.COMPLETED) {
                       e.preventDefault();
-                      const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                      if (sourceOrder && sourceOrder.status !== OrderStatus.COMPLETED) {
-                          actions.updateOrder({ ...sourceOrder, status: OrderStatus.COMPLETED, isSent: true, isReceived: true, completedAt: new Date().toISOString() });
-                      }
-                      setDragOverColumn(null);
-                      dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+                      setDragOverDateGroup(key);
                   }
-              }}
-            >
-              <h2 className="text-lg font-semibold text-white p-3">Completed</h2>
-              <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
-                {renderCompletedColumn()}
+                }}
+                onDragLeave={() => setDragOverDateGroup(null)}
+                onDrop={(e) => { e.preventDefault(); handleDropOnDateGroup(key); }}
+              >
+                <div className={`bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl transition-colors ${dragOverDateGroup === key ? 'bg-indigo-900/50' : ''}`}>
+                  <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                    <h3 className="font-bold text-white text-base">{formatDateGroupHeader(key)}</h3>
+                  </button>
+                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                  </button>
+                </div>
+                {isExpanded && (
+                  <div className="space-y-4 p-2">
+                    {groupedCompletedOrders[key].map((order) => (
+                      <SupplierCard 
+                          key={order.id} 
+                          order={order}
+                          onItemDrop={handleItemDropOnCard}
+                          showStoreName={activeStore === StoreName.KALI} 
+                          isEditModeEnabled={isEditModeEnabled}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
-            </section>
-          )}
+            );
+          })}
         </div>
-        
-        {/* Render modals at the end */}
+      ) : (
+        <div className="text-center py-12">
+          <p className="text-gray-500">No completed orders.</p>
+        </div>
+      )}
+    </>
+  );
+
+  const renderStatusContent = (status: OrderStatus) => {
+    switch (status) {
+      case OrderStatus.DISPATCHING:
+        return <DispatchingColumnContent />;
+      case OrderStatus.ON_THE_WAY:
+        return <OnTheWayColumnContent />;
+      case OrderStatus.COMPLETED:
+        return renderCompletedColumn();
+      default:
+        return null;
+    }
+  };
+
+  if (columnCount === 1) {
+    return (
+      <div className="flex-grow pt-4 flex flex-col">
+        <nav className="-mb-px flex space-x-6 px-3">
+          {STATUS_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => dispatch({ type: 'SET_ACTIVE_STATUS', payload: tab.id })}
+              onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverStatusTab(tab.id); }}}
+              onDragLeave={() => setDragOverStatusTab(null)}
+              onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
+              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md ${
+                activeStatus === tab.id
+                  ? 'border-indigo-500 text-indigo-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+              } ${dragOverStatusTab === tab.id ? 'bg-indigo-900/50' : ''}`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+        <div
+          className="mt-4 flex-grow overflow-y-auto hide-scrollbar px-2 pb-2"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
+            <div className="grid grid-cols-1 gap-4">
+              {renderStatusContent(activeStatus)}
+            </div>
+        </div>
         <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
         <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
         {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
-        <MergeByPaymentModal isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onSelect={(method) => { if (window.confirm(`Are you sure you want to merge all of today's completed orders for ${method.toUpperCase()}? This action cannot be undone.`)) { actions.mergeTodaysCompletedOrdersByPayment(method); } }} />
         <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
         <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
       </div>
     );
-  } else {
-    // --- Fallback to original tabbed view for single column view ---
-    const tabsToShow = STATUS_TABS;
-    return (
-      <>
-        <div className="mt-2">
-          <nav className="-mb-px flex space-x-6">
-            {tabsToShow.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => handleStatusChange(tab.id)}
-                className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md ${
-                  activeStatus === tab.id
-                    ? 'border-indigo-500 text-indigo-400'
-                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-                } ${dragOverTab === tab.id ? 'bg-indigo-900/50' : ''}`}
-                onDragOver={(e) => {
-                    if (draggedOrderId) {
-                        const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                        if (sourceOrder && sourceOrder.status !== tab.id) {
-                            e.preventDefault();
-                            setDragOverTab(tab.id);
-                        }
-                    }
-                }}
-                onDragLeave={() => setDragOverTab(null)}
-                onDrop={(e) => {
-                    if (draggedOrderId) {
-                        e.preventDefault();
-                        const sourceOrder = orders.find(o => o.id === draggedOrderId);
-                        if (sourceOrder && sourceOrder.status !== tab.id) {
-                            let updatedOrderPayload;
-                            if (tab.id === OrderStatus.COMPLETED) {
-                                updatedOrderPayload = { ...sourceOrder, status: OrderStatus.COMPLETED, isSent: true, isReceived: true, completedAt: new Date().toISOString() };
-                            } else if (tab.id === OrderStatus.ON_THE_WAY) {
-                                updatedOrderPayload = { ...sourceOrder, status: OrderStatus.ON_THE_WAY, isSent: true, isReceived: false, completedAt: undefined };
-                            } else { // DISPATCHING
-                                updatedOrderPayload = { ...sourceOrder, status: OrderStatus.DISPATCHING, isSent: false, isReceived: false, completedAt: undefined };
-                            }
-                            actions.updateOrder(updatedOrderPayload);
-                        }
-                        setDragOverTab(null);
-                        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
-                    }
-                }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        
-        <div className="flex-grow pt-2 pb-4 overflow-y-auto hide-scrollbar relative transition-all duration-200">
-            {filteredOrders.length === 0 && activeStatus !== OrderStatus.DISPATCHING && (
-                <div className="text-center py-12">
-                    <p className="text-gray-500">No orders in this category.</p>
-                </div>
-            )}
-
-            {activeStatus === OrderStatus.COMPLETED ? (
-                renderCompletedColumn()
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
-                {filteredOrders.map((order) => (
-                    <SupplierCard 
-                        key={order.id} 
-                        order={order} 
-                        draggedItem={draggedItem}
-                        setDraggedItem={setDraggedItem}
-                        onItemDrop={handleItemDrop}
-                        showStoreName={activeStore === StoreName.KALI}
-                    />
-                ))}
-                {activeStatus === OrderStatus.DISPATCHING && activeStore !== 'Settings' && (
-                  <AddOrderDropZone />
-                )}
-              </div>
-            )}
-        </div>
-
-        <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : (activeStatus === OrderStatus.COMPLETED ? "Add New Completed Order" : "Start a New Order")} />
-        <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
-        {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
-        <MergeByPaymentModal isOpen={isMergeModalOpen} onClose={() => setIsMergeModalOpen(false)} onSelect={(method) => { if (window.confirm(`Are you sure you want to merge all of today's completed orders for ${method.toUpperCase()}? This action cannot be undone.`)) { actions.mergeTodaysCompletedOrdersByPayment(method); } }} />
-        <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
-        <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
-      </>
-    );
   }
+
+  // Always use a 3-column grid for the multi-column layout to keep spacing consistent.
+  // We will conditionally render the columns inside the map based on `columnCount`.
+  const gridColsClass = 'grid-cols-3';
+
+  return (
+    <div className="flex-grow pt-4 overflow-x-auto hide-scrollbar">
+      <div className={`h-full grid ${gridColsClass} gap-4 min-w-[900px] xl:min-w-full`}>
+        {STATUS_TABS.map((tab, index) => {
+          // When in 2-column view, do not render the third column ("Completed").
+          if (columnCount === 2 && index === 2) return null;
+          return (
+            <section
+              key={tab.id}
+              className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === tab.id ? 'bg-indigo-900/50' : ''}`}
+              onDragOver={(e) => {
+                if (draggedOrderId) {
+                  const sourceOrder = orders.find((o) => o.id === draggedOrderId);
+                  if (sourceOrder && sourceOrder.status !== tab.id) {
+                    e.preventDefault();
+                    setDragOverColumn(tab.id);
+                  }
+                }
+              }}
+              onDragLeave={() => setDragOverColumn(null)}
+              onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
+            >
+              <h2 className="text-lg font-semibold text-white p-3">{tab.label}</h2>
+              <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
+                <div className="grid grid-cols-1 gap-4">
+                    {renderStatusContent(tab.id)}
+                </div>
+              </div>
+            </section>
+          );
+        })}
+      </div>
+      
+      <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
+      <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
+      {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
+      <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
+      <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
+    </div>
+  );
 };
 
 export default OrderWorkspace;

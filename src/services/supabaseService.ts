@@ -34,9 +34,6 @@
   -- Add a text column to stores for a location URL
   ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS location_url TEXT;
 
-  -- Add columns for item variants
-  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS parent_id UUID REFERENCES public.items(id) ON DELETE SET NULL;
-  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS is_variant BOOLEAN DEFAULT FALSE;
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -62,10 +59,6 @@ interface ItemFromDb {
   supplier_id: string;
   created_at: string;
   modified_at: string;
-  track_stock?: boolean;
-  stock_quantity?: number;
-  parent_id?: string;
-  is_variant?: boolean;
 }
 
 interface StoreFromDb {
@@ -100,7 +93,9 @@ interface ItemPriceFromDb {
     supplier_id: string;
     price: number;
     unit: Unit;
-    is_master: boolean;
+    created_at: string;
+    // FIX: Add is_master property to align with database schema.
+    is_master?: boolean;
 }
 
 
@@ -161,10 +156,6 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
                 supplierName: supplier.name,
                 createdAt: i.created_at,
                 modifiedAt: i.modified_at,
-                trackStock: i.track_stock,
-                stockQuantity: i.stock_quantity,
-                parentId: i.parent_id,
-                isVariant: i.is_variant,
             });
         }
         return acc;
@@ -176,6 +167,8 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         supplierId: p.supplier_id,
         price: p.price,
         unit: p.unit,
+        createdAt: p.created_at,
+        // FIX: Map is_master from database to isMaster in the application state.
         isMaster: p.is_master,
     }));
 
@@ -330,10 +323,6 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         name: item.name,
         unit: item.unit,
         supplier_id: item.supplierId,
-        parent_id: item.parentId,
-        is_variant: item.isVariant,
-        track_stock: item.trackStock,
-        stock_quantity: item.stockQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?select=*`, {
         method: 'POST',
@@ -348,10 +337,6 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         id: newItem.id,
         createdAt: newItem.created_at,
         modifiedAt: newItem.modified_at,
-        parentId: newItem.parent_id,
-        isVariant: newItem.is_variant,
-        trackStock: newItem.track_stock,
-        stockQuantity: newItem.stock_quantity,
     };
 };
 
@@ -360,10 +345,6 @@ export const updateItem = async ({ item, url, key }: { item: Item, url: string, 
         name: item.name,
         unit: item.unit,
         supplier_id: item.supplierId,
-        track_stock: item.trackStock,
-        stock_quantity: item.stockQuantity,
-        parent_id: item.parentId,
-        is_variant: item.isVariant,
     };
     const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
         method: 'PATCH',
@@ -464,7 +445,7 @@ export const updateStore = async ({ store, url, key }: { store: Store; url: stri
     };
 };
 
-export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: ItemPrice; url: string; key: string }): Promise<ItemPrice> => {
+export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>; url: string; key: string }): Promise<ItemPrice> => {
     const headers = getHeaders(key);
 
     // 1. Check if a price entry already exists
@@ -487,7 +468,7 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
             headers: { ...headers, 'Prefer': 'return=representation' },
             body: JSON.stringify({
                 price: itemPrice.price,
-                is_master: itemPrice.isMaster,
+                created_at: new Date().toISOString(), // Update timestamp on every price change
             })
         });
         if (!response.ok) throw new Error(`Failed to update item price: ${await response.text()}`);
@@ -499,7 +480,6 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
             supplier_id: itemPrice.supplierId,
             price: itemPrice.price,
             unit: itemPrice.unit,
-            is_master: itemPrice.isMaster,
         };
         response = await fetch(insertUrl, {
             method: 'POST',
@@ -517,6 +497,8 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
         supplierId: upsertedPrice.supplier_id,
         price: upsertedPrice.price,
         unit: upsertedPrice.unit,
+        createdAt: upsertedPrice.created_at,
+        // FIX: Map is_master from database to isMaster in the application state.
         isMaster: upsertedPrice.is_master,
     };
 };

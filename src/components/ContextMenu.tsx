@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 
 interface ContextMenuOption {
     label: string;
@@ -16,6 +16,7 @@ interface ContextMenuProps {
 
 const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => {
     const menuRef = useRef<HTMLDivElement>(null);
+    const [finalX, setFinalX] = useState(x);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -36,11 +37,35 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
         };
     }, [onClose]);
 
+    // This effect runs after the component renders and adjusts its position if it overflows.
+    useEffect(() => {
+        if (menuRef.current) {
+            const menuWidth = menuRef.current.offsetWidth;
+            const windowWidth = window.innerWidth;
+            const buffer = 8; // 8px padding from the edge
+
+            let newX = x;
+
+            // Check if the menu would overflow the right edge
+            if (x + menuWidth > windowWidth - buffer) {
+                // Reposition menu to be fully visible, aligning its right edge.
+                newX = windowWidth - menuWidth - buffer;
+            }
+
+            // Make sure it doesn't go off the left edge.
+            if (newX < buffer) {
+                newX = buffer;
+            }
+
+            setFinalX(newX);
+        }
+    }, [x, y]); // Re-run when initial position changes
+
     return (
         <div
             ref={menuRef}
             className="fixed bg-gray-700 rounded-md shadow-2xl py-1 z-[100] min-w-[150px]"
-            style={{ top: y, left: x }}
+            style={{ top: y, left: finalX }}
         >
             <ul>
                 {options.map((option, index) => {

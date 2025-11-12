@@ -6,14 +6,13 @@ interface PriceNumpadModalProps {
   supplierId: string; // Not used directly in modal, but useful for context
   isOpen: boolean;
   onClose: () => void;
-  onSave: (price: number, unit: Unit, isMaster: boolean) => void;
+  onSave: (price: number, unit: Unit) => void;
 }
 
 const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClose, onSave }) => {
   const [value, setValue] = useState('');
   const [selectedUnit, setSelectedUnit] = useState<Unit>(Unit.PC);
   const [isUnitPickerOpen, setIsUnitPickerOpen] = useState(false);
-  const [isMaster, setIsMaster] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
   const unitButtonRef = useRef<HTMLButtonElement>(null);
   const unitPickerRef = useRef<HTMLDivElement>(null);
@@ -22,7 +21,6 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
     if (isOpen) {
       setValue('');
       setSelectedUnit(item.unit || Unit.PC);
-      setIsMaster(true);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
   }, [isOpen, item]);
@@ -55,7 +53,7 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
     const numericValue = parseFloat(value);
     if (!isNaN(numericValue) && value) {
       const priceToSave = numericValue > 1000 ? numericValue / 4000 : numericValue;
-      onSave(priceToSave, selectedUnit, isMaster);
+      onSave(priceToSave, selectedUnit);
     }
   };
   
@@ -116,11 +114,6 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
           <button onClick={() => handleInput('0')} className="p-3 bg-gray-700 rounded-lg hover:bg-gray-600 col-span-2">0</button>
           <button onClick={() => handleInput('.')} className="p-3 bg-gray-700 rounded-lg hover:bg-gray-600 aspect-square flex items-center justify-center">.</button>
           <button onClick={handleSave} className="p-3 bg-green-600 rounded-lg hover:bg-green-500 aspect-square flex items-center justify-center">OK</button>
-        </div>
-        
-        <div className="flex items-center justify-center mt-3">
-            <input id="is-master-price-numpad" type="checkbox" checked={isMaster} onChange={(e) => setIsMaster(e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500" />
-            <label htmlFor="is-master-price-numpad" className="ml-2 block text-sm text-gray-300">Set as master price</label>
         </div>
       </div>
     </div>

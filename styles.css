@@ -61,3 +61,36 @@ body {
 .animate-slow-fade {
   animation: slow-fade 2s infinite ease-in-out;
 }
+
+/* New animations for header dots */
+@keyframes spin-coin {
+  from { transform: rotateY(0deg); }
+  to { transform: rotateY(1080deg); } /* 3 full rotations */
+}
+.animate-spin-coin {
+  animation: spin-coin 3s ease-out;
+}
+
+@keyframes bounce-twice {
+  0%, 40%, 80%, 100% { transform: translateY(0); animation-timing-function: ease-out; }
+  20% { transform: translateY(-60%); animation-timing-function: ease-in; }
+  60% { transform: translateY(-30%); animation-timing-function: ease-in; }
+}
+.animate-bounce-twice {
+  animation: bounce-twice 3s;
+}
+
+@keyframes pulse-pulsar {
+  0% {
+    box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.7); /* Corresponds to green-500 */
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(46, 204, 113, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(46, 204, 113, 0);
+  }
+}
+.animate-pulse-pulsar {
+  animation: pulse-pulsar 2s infinite;
+}
