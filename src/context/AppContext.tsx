@@ -445,23 +445,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notify(`Order for ${supplierToUse.name} created.`, 'success');
     },
     updateOrder: async (order) => {
-        const originalOrder = state.orders.find(o => o.id === order.id);
-        let orderToUpdate = { ...order }; 
-
-        if (originalOrder && (originalOrder.supplierId !== order.supplierId || originalOrder.store !== order.store)) {
-            const supplier = state.suppliers.find(s => s.id === order.supplierId);
-            if (supplier) {
-                const createdAt = new Date(originalOrder.createdAt);
-                const dateStr = `${createdAt.getDate().toString().padStart(2, '0')}${ (createdAt.getMonth() + 1).toString().padStart(2, '0')}`;
-                
-                const idParts = originalOrder.orderId.split('_');
-                const counterStr = idParts[idParts.length - 1]; 
-                
-                const newOrderId = `${dateStr}_${supplier.name}_${order.store}_${counterStr}`;
-                orderToUpdate.orderId = newOrderId;
-            }
-        }
-        const updatedOrder = await supabaseUpdateOrder({ order: orderToUpdate, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        const updatedOrder = await supabaseUpdateOrder({ order, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
     },
     deleteOrder: async (orderId) => {

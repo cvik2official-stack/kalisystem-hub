@@ -4,6 +4,8 @@ import App from './src/App';
 import { AppProvider } from './src/context/AppContext';
 import { ToastProvider } from './src/context/ToastContext';
 import { NotificationProvider } from './src/context/NotificationContext';
+// FIX: Import ErrorBoundary to wrap the application.
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -13,12 +15,14 @@ if (!rootElement) {
 const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
-    <ToastProvider>
-      <NotificationProvider>
-        <AppProvider>
-          <App />
-        </AppProvider>
-      </NotificationProvider>
-    </ToastProvider>
+    <ErrorBoundary>
+      <ToastProvider>
+        <NotificationProvider>
+          <AppProvider>
+            <App />
+          </AppProvider>
+        </NotificationProvider>
+      </ToastProvider>
+    </ErrorBoundary>
   </React.StrictMode>
 );

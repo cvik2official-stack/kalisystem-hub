@@ -115,13 +115,18 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, orders }) 
   };
 
   const handlePrint = () => {
-    const iframe = document.getElementById('receipt-iframe') as HTMLIFrameElement;
-    if (iframe) {
-      iframe.contentWindow?.focus();
-      // Add a small delay to ensure the srcDoc content is fully rendered before printing
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(htmlReceipt);
+      printWindow.document.close();
+      printWindow.focus();
+      // Use a timeout to ensure content is rendered before printing
       setTimeout(() => {
-        iframe.contentWindow?.print();
-      }, 100);
+        printWindow.print();
+        printWindow.close();
+      }, 250);
+    } else {
+      notify('Please allow pop-ups for this site to print the receipt.', 'error');
     }
   };
 

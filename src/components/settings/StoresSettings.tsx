@@ -1,6 +1,3 @@
-
-
-
 /*
   NOTE FOR DATABASE SETUP:
   This component manages store properties that require the 'stores' table.
@@ -21,10 +18,9 @@
   ON CONFLICT (name) DO NOTHING;
 
 */
-import React, { useContext, useMemo, useState } from 'react';
+import React, { useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Store } from '../../types';
-import ResizableTable from '../common/ResizableTable';
 
 const StoresSettings: React.FC = () => {
   const { state, actions } = useContext(AppContext);
@@ -39,11 +35,11 @@ const StoresSettings: React.FC = () => {
 
   const columns = useMemo(() => [
     { 
-      id: 'name', header: 'Store Name', initialWidth: 200,
+      id: 'name', header: 'Store Name',
       cell: (store: Store) => <span className="text-white whitespace-nowrap truncate max-w-xs">{store.name}</span>
     },
     {
-      id: 'chatId', header: 'Chat ID', initialWidth: 200,
+      id: 'chatId', header: 'Chat ID',
       cell: (store: Store) => (
         <input
           type="text"
@@ -54,7 +50,7 @@ const StoresSettings: React.FC = () => {
       )
     },
     {
-      id: 'locationUrl', header: 'Location URL', initialWidth: 400,
+      id: 'locationUrl', header: 'Location URL',
       cell: (store: Store) => (
         <div className="truncate">
             <input
@@ -71,11 +67,28 @@ const StoresSettings: React.FC = () => {
 
   return (
     <div className="flex flex-col flex-grow md:w-1/2">
-      <ResizableTable
-        columns={columns}
-        data={sortedStores}
-        tableKey="stores-settings"
-      />
+      <div className="overflow-x-auto hide-scrollbar">
+          <table className="min-w-full divide-y divide-gray-700">
+              <thead className="bg-gray-800">
+                  <tr>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[200px]">Store Name</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[200px]">Chat ID</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[400px]">Location URL</th>
+                  </tr>
+              </thead>
+              <tbody className="bg-gray-800 divide-y divide-gray-700">
+                  {sortedStores.map(store => (
+                      <tr key={store.id} className="hover:bg-gray-700/50">
+                          {columns.map(col => (
+                              <td key={col.id} className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                                  {col.cell(store)}
+                              </td>
+                          ))}
+                      </tr>
+                  ))}
+              </tbody>
+          </table>
+      </div>
     </div>
   );
 };

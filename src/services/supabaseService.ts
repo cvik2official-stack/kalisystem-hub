@@ -286,10 +286,10 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
     const headers = getHeaders(key);
     const now = new Date().toISOString();
 
+    // The payload now includes the 'items' array.
     const orderPayload = {
-        order_id: order.orderId,
         store: order.store,
-        supplier_id: order.supplierId, 
+        supplier_id: order.supplierId, // Allow supplier changes
         status: order.status,
         is_sent: order.isSent,
         is_received: order.isReceived,

@@ -1,100 +1,290 @@
-import React, { useState, useEffect } from 'react';
-import { Supplier, SupplierBotSettings } from '../../types';
+import React, { useState, useEffect, useContext } from 'react';
+import { Supplier, SupplierName, StoreName } from '../../types';
+import { AppContext } from '../../context/AppContext';
+import { sendCustomMessageToSupplier } from '../../services/telegramService';
+import { useNotifier } from '../../context/NotificationContext';
+import { escapeHtml, replacePlaceholders } from '../../utils/messageFormatter';
 
 interface EditTemplateModalProps {
   supplier: Supplier;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (supplier: Supplier) => Promise<void>;
+  onSave: (updatedSupplier: Supplier) => void;
 }
 
-const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
-  const [botSettings, setBotSettings] = useState<SupplierBotSettings>({});
-  const [isSaving, setIsSaving] = useState(false);
+const BotSettingCheckbox: React.FC<{
+  id: string;
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}> = ({ id, label, checked, onChange, disabled }) => (
+  <div className="flex items-center">
+    <input
+      id={id}
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      disabled={disabled}
+      className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500"
+    />
+    <label htmlFor={id} className="ml-2 block text-sm text-gray-300">
+      {label}
+    </label>
+  </div>
+);
 
-  useEffect(() => {
-    if (isOpen) {
-      setBotSettings(supplier.botSettings || {});
-    }
-  }, [isOpen, supplier]);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await onSave({ ...supplier, botSettings });
-      onClose();
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleSettingChange = (key: keyof SupplierBotSettings, value: any) => {
-    setBotSettings(prev => ({ ...prev, [key]: value }));
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
-      <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg border-t-4 border-indigo-500" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} disabled={isSaving} className="absolute top-4 right-4 text-gray-400 hover:text-white">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
-        <h2 className="text-xl font-bold text-white mb-4">Bot Settings for {supplier.name}</h2>
-        
-        <div className="space-y-4">
-          <div>
-            <label htmlFor="message-template" className="block text-sm font-medium text-gray-300 mb-1">Order Message Template</label>
-            <textarea
-              id="message-template"
-              rows={5}
-              value={botSettings.messageTemplate || ''}
-              onChange={(e) => handleSettingChange('messageTemplate', e.target.value)}
-              className="w-full bg-gray-900 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-              placeholder="e.g. <b>#️⃣ Order {{orderId}}</b> for <b>{{storeName}}</b>..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input type="checkbox" checked={!!botSettings.showOkButton} onChange={(e) => handleSettingChange('showOkButton', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500"/>
-              <span className="text-sm text-gray-300">Show "OK" Button</span>
-            </label>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input type="checkbox" checked={!!botSettings.includeLocation} onChange={(e) => handleSettingChange('includeLocation', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500"/>
-              <span className="text-sm text-gray-300">Include Location Link</span>
-            </label>
-          </div>
-
-          <div className="border-t border-gray-700 pt-4">
-             <label className="flex items-center space-x-2 cursor-pointer">
-                <input type="checkbox" checked={!!botSettings.enableReminderTimer} onChange={(e) => handleSettingChange('enableReminderTimer', e.target.checked)} className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500"/>
-                <span className="text-sm text-gray-300">Enable 45min Reminder</span>
-             </label>
-             {botSettings.enableReminderTimer && (
-                <div className="mt-2 pl-6">
-                    <label htmlFor="reminder-message-template" className="block text-sm font-medium text-gray-300 mb-1">Reminder Message Template</label>
-                    <input
-                      id="reminder-message-template"
-                      type="text"
-                      value={botSettings.reminderMessageTemplate || ''}
-                      onChange={(e) => handleSettingChange('reminderMessageTemplate', e.target.value)}
-                      className="w-full bg-gray-900 text-gray-200 rounded-md p-2 text-sm outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                      placeholder="e.g. 🔔 Reminder: Order {{orderId}}"
-                    />
+const Accordion: React.FC<{ title: string; children: React.ReactNode; isOpen: boolean; onToggle: () => void; }> = ({ title, children, isOpen, onToggle }) => {
+    return (
+        <div className="bg-gray-900 rounded-lg">
+            <button
+                onClick={onToggle}
+                className="flex justify-between items-center w-full p-3 text-left"
+            >
+                <h3 className="text-base font-semibold text-white">{title}</h3>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isOpen ? 'rotate-180' : 'rotate-0'}`} viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="px-3 pb-3">
+                    {children}
                 </div>
-             )}
-          </div>
+            </div>
         </div>
+    );
+};
 
-        <div className="mt-6 flex justify-end">
-          <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800">
-            {isSaving ? 'Saving...' : 'Save Settings'}
-          </button>
+
+const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
+    const { state } = useContext(AppContext);
+    const { notify } = useNotifier();
+    const [isSaving, setIsSaving] = useState(false);
+    const [isSending, setIsSending] = useState(false);
+    
+    // States for bot settings
+    const [showAttachInvoice, setShowAttachInvoice] = useState(false);
+    const [showMissingItems, setShowMissingItems] = useState(false);
+    const [showOkButton, setShowOkButton] = useState(false);
+    const [showDriverOnWayButton, setShowDriverOnWayButton] = useState(false);
+    const [includeLocation, setIncludeLocation] = useState(false);
+    
+    // States for templates
+    const [messageTemplate, setMessageTemplate] = useState('');
+    
+    // States for Custom Message feature
+    const [customMessage, setCustomMessage] = useState('');
+    const [selectedStore, setSelectedStore] = useState<StoreName | ''>('');
+    const [activeAccordions, setActiveAccordions] = useState<Set<string>>(new Set());
+    
+    // States for one-time custom message options
+    const [tempShowOk, setTempShowOk] = useState(false);
+    const [tempShowDriver, setTempShowDriver] = useState(false);
+    const [tempShowInvoice, setTempShowInvoice] = useState(false);
+    const [tempShowMissing, setTempShowMissing] = useState(false);
+    const [tempIncludeLocation, setTempIncludeLocation] = useState(false);
+
+    const templates = state.settings.messageTemplates || {};
+    let defaultTemplate = templates.defaultOrder || '';
+    switch (supplier.name) {
+        case SupplierName.KALI:
+            defaultTemplate = templates.kaliOrder || defaultTemplate;
+            break;
+        case SupplierName.OUDOM:
+            defaultTemplate = templates.oudomOrder || defaultTemplate;
+            break;
+    }
+
+    useEffect(() => {
+        if (isOpen) {
+            const settings = supplier.botSettings || {};
+            
+            // Initialize checkbox states
+            setShowAttachInvoice(!!settings.showAttachInvoice);
+            setShowMissingItems(!!settings.showMissingItems);
+            setShowOkButton(!!settings.showOkButton);
+            setShowDriverOnWayButton(!!settings.showDriverOnWayButton);
+            setIncludeLocation(!!settings.includeLocation);
+
+            // Initialize template states
+            const currentMessageTemplate = settings.messageTemplate || defaultTemplate;
+            setMessageTemplate(currentMessageTemplate);
+            setCustomMessage(currentMessageTemplate);
+            
+            // Reset custom message states
+            setSelectedStore(state.activeStore as StoreName);
+            setActiveAccordions(new Set());
+            setTempShowOk(false);
+            setTempShowDriver(false);
+            setTempShowInvoice(false);
+            setTempShowMissing(false);
+            setTempIncludeLocation(false);
+        }
+    }, [isOpen, supplier, defaultTemplate, state.activeStore]);
+    
+    const toggleAccordion = (id: string) => {
+        setActiveAccordions(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return newSet;
+        });
+    };
+
+    const handleSave = () => {
+        setIsSaving(true);
+        const updatedSupplier: Supplier = {
+            ...supplier,
+            botSettings: {
+                ...supplier.botSettings,
+                messageTemplate: (messageTemplate.trim() === defaultTemplate.trim() || messageTemplate.trim() === '') ? undefined : messageTemplate.trim(),
+                showAttachInvoice,
+                showMissingItems,
+                showOkButton,
+                showDriverOnWayButton,
+                includeLocation,
+            }
+        };
+        onSave(updatedSupplier);
+        setIsSaving(false);
+        onClose();
+    };
+
+    const handleSendMessage = async () => {
+        // FIX: 'stores' does not exist on type 'AppSettings'. It is a top-level property of 'state'.
+        const { telegramBotToken } = state.settings;
+        if (!telegramBotToken || !supplier.chatId) {
+            notify('Bot Token or Supplier Chat ID is not configured.', 'error'); return;
+        }
+
+        let messageToSend = customMessage.trim();
+        if (!messageToSend) { notify('Cannot send an empty message.', 'error'); return; }
+
+        const needsStore = messageToSend.includes('{{storeName}}');
+        if (needsStore && !selectedStore) { notify('Please select a store for this message.', 'error'); return; }
+        
+        const timeId = `${new Date().getHours()}${String(new Date().getMinutes()).padStart(2, '0')}${String(new Date().getSeconds()).padStart(2, '0')}`;
+
+        let finalStoreDisplay = selectedStore || '';
+        if (tempIncludeLocation && selectedStore) {
+            const store = state.stores.find(s => s.name === selectedStore);
+            if (store?.locationUrl) {
+                finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${escapeHtml(selectedStore)}</a>`;
+            }
+        } else {
+            finalStoreDisplay = escapeHtml(finalStoreDisplay);
+        }
+
+        const replacements = {
+            orderId: `MSG-${timeId}`,
+            storeName: finalStoreDisplay,
+            supplierName: escapeHtml(supplier.name),
+            items: '', // Custom messages don't have item lists
+        };
+        messageToSend = replacePlaceholders(messageToSend, replacements);
+        
+        const buttons: { text: string; callback_data: string }[] = [];
+        if (tempShowOk) buttons.push({ text: "✅ OK", callback_data: `custom_ok_${timeId}` });
+        if (tempShowDriver) buttons.push({ text: "🚚 Driver on Way", callback_data: `custom_driver_${timeId}` });
+        if (tempShowInvoice) buttons.push({ text: "📎 Attach Invoice", callback_data: `custom_invoice_${timeId}` });
+        if (tempShowMissing) buttons.push({ text: "❗️ Missing Item", callback_data: `custom_missing_${timeId}` });
+
+        let replyMarkup: { inline_keyboard: any[][] } | undefined = undefined;
+        if (buttons.length > 0) {
+            const keyboard: any[][] = [];
+            for (let i = 0; i < buttons.length; i += 2) {
+                keyboard.push(buttons.slice(i, i + 2));
+            }
+            replyMarkup = { inline_keyboard: keyboard };
+        }
+
+        setIsSending(true);
+        try {
+            await sendCustomMessageToSupplier(supplier, messageToSend, telegramBotToken, replyMarkup);
+            notify('Custom message sent!', 'success');
+            onClose();
+        } catch (e: any) {
+            notify(`Failed to send message: ${e.message}`, 'error');
+        } finally {
+            setIsSending(false);
+        }
+    };
+    
+    const isCustomMessageEdited = customMessage.trim() !== (supplier.botSettings?.messageTemplate || defaultTemplate).trim();
+    const needsStoreForMessage = customMessage.includes('{{storeName}}');
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-[60] p-4 pt-16 md:pt-4" onClick={onClose}>
+            <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+                <h2 className="text-xl font-bold text-white mb-2">Telegram Bot Options</h2>
+                <p className="text-sm text-gray-400 mb-4">for <span className="font-semibold text-gray-300">{supplier.name}</span></p>
+
+                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 -mr-2 hide-scrollbar">
+                    <div className="border-b border-gray-700 pb-4">
+                        <h3 className="text-base font-semibold text-white mb-2">Button Options</h3>
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                            <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving || isSending} />
+                        </div>
+                    </div>
+
+                    <div className="border-b border-gray-700 pb-4">
+                         <h3 className="text-base font-semibold text-white mb-2">Message Options</h3>
+                         <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving || isSending} />
+                    </div>
+                    
+                    <Accordion title="Message Template" isOpen={activeAccordions.has('template')} onToggle={() => toggleAccordion('template')}>
+                        <textarea value={messageTemplate} onChange={(e) => setMessageTemplate(e.target.value)} rows={5} className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500" />
+                    </Accordion>
+                    
+                     <Accordion title="Send Custom Message" isOpen={activeAccordions.has('custom')} onToggle={() => toggleAccordion('custom')}>
+                        <textarea value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} rows={5} className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500" />
+                         <div className="mt-2">
+                             <Accordion title="Add Message Options" isOpen={activeAccordions.has('customOptions')} onToggle={() => toggleAccordion('customOptions')}>
+                                 <div className="space-y-2">
+                                     <h4 className="text-sm font-semibold text-white">One-time Buttons</h4>
+                                     <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                                         <BotSettingCheckbox id="tempShowOk" label="✅ OK" checked={tempShowOk} onChange={setTempShowOk} />
+                                         <BotSettingCheckbox id="tempShowInvoice" label="📎 Attach Invoice" checked={tempShowInvoice} onChange={setTempShowInvoice} />
+                                         <BotSettingCheckbox id="tempShowDriver" label="🚚 Driver on Way" checked={tempShowDriver} onChange={setTempShowDriver} />
+                                         <BotSettingCheckbox id="tempShowMissing" label="❗️ Missing Item" checked={tempShowMissing} onChange={setTempShowMissing} />
+                                     </div>
+                                     <h4 className="text-sm font-semibold text-white pt-2">One-time Options</h4>
+                                     <BotSettingCheckbox id="tempIncludeLocation" label="Include store location link" checked={tempIncludeLocation} onChange={setTempIncludeLocation} />
+                                 </div>
+                             </Accordion>
+                         </div>
+                    </Accordion>
+                </div>
+
+                <div className="mt-6 flex justify-end items-center space-x-2">
+                    {activeAccordions.has('custom') && isCustomMessageEdited && (
+                        <>
+                           {needsStoreForMessage && (
+                             <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value as StoreName)} className="bg-gray-700 text-white rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="" disabled>Select Store...</option>
+                                {state.stores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                             </select>
+                           )}
+                           <button onClick={handleSendMessage} disabled={isSaving || isSending || (needsStoreForMessage && !selectedStore)} className="px-5 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600">
+                               {isSending ? 'Sending...' : 'Send Message'}
+                           </button>
+                        </>
+                    )}
+                    <button onClick={handleSave} disabled={isSaving || isSending} className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800">
+                        {isSaving ? '...' : 'Save'}
+                    </button>
+                </div>
+            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
 };
 
 export default EditTemplateModal;

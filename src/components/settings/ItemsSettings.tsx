@@ -1,9 +1,8 @@
-import React, { useContext, useState, useMemo, useEffect, useRef } from 'react';
+import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
 import { useNotifier } from '../../context/NotificationContext';
 import EditItemModal from '../modals/EditItemModal';
-import ResizableTable, { ResizableTableRef } from '../common/ResizableTable';
 import { getLatestItemPrice } from '../../utils/messageFormatter';
 
 interface ItemsSettingsProps {
@@ -20,8 +19,6 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
-
-  const tableRef = useRef<ResizableTableRef>(null);
 
   const handleItemUpdate = async (item: Item, field: keyof Item, value: any) => {
     if (item[field] === value) return; // No change
@@ -80,7 +77,6 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
     const options = [
         { label: 'Search', action: () => setIsSearchVisible(prev => !prev) },
         { label: 'Add New', action: handleAddNewItem },
-        { label: 'View Columns', action: (e: React.MouseEvent) => tableRef.current?.toggleColumnMenu(e) },
     ];
     setMenuOptions(options);
 
@@ -105,7 +101,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
 
   const columns = useMemo(() => [
     { 
-      id: 'name', header: 'Name', initialWidth: 300,
+      id: 'name', header: 'Name',
       cell: (item: Item) => (
         <div className="truncate max-w-xs">
             <input
@@ -118,24 +114,23 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
       )
     },
     {
-      id: 'supplier', header: 'Supplier', initialWidth: 150,
+      id: 'supplier', header: 'Supplier',
       cell: (item: Item) => item.supplierName
     },
     {
-      id: 'unit', header: 'Unit', initialWidth: 100,
+      id: 'unit', header: 'Unit',
       cell: (item: Item) => (
         <select
             defaultValue={item.unit}
             onChange={(e) => handleItemUpdate(item, 'unit', e.target.value as Unit)}
             className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
         >
-            {/* FIX: Cast enum values to an array of Unit to ensure proper type inference when creating select options. */}
             {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u}>{u}</option>)}
         </select>
       )
     },
     {
-      id: 'unitPrice', header: 'PRICE', initialWidth: 100,
+      id: 'unitPrice', header: 'PRICE',
       cell: (item: Item) => {
         const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
         return (
@@ -151,7 +146,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
       }
     },
     {
-      id: 'actions', header: 'Actions', initialWidth: 80,
+      id: 'actions', header: 'Actions',
       cell: (item: Item) => (
         <div className="flex items-center justify-end space-x-2">
             <button onClick={() => handleEditClick(item)} className="p-1 rounded-full text-indigo-400 hover:bg-indigo-600 hover:text-white" aria-label="Edit Item">
@@ -168,27 +163,43 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
 
   return (
     <div className="flex flex-col flex-grow md:w-1/2">
-      <ResizableTable
-        ref={tableRef}
-        columns={columns}
-        data={filteredItems}
-        tableKey="items-settings"
-        toolbar={
-          isSearchVisible ? (
+        {isSearchVisible && (
             <div className="mb-4">
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                autoFocus
-                onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
-                className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
-                placeholder="Search items..."
-              />
+                <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    autoFocus
+                    onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
+                    className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    placeholder="Search items..."
+                />
             </div>
-          ) : undefined
-        }
-      />
+        )}
+      <div className="overflow-x-auto hide-scrollbar">
+          <table className="min-w-full divide-y divide-gray-700">
+              <thead className="bg-gray-800">
+                  <tr>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[300px]">Name</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[150px]">Supplier</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px]">Unit</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px]">Price</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Actions</th>
+                  </tr>
+              </thead>
+              <tbody className="bg-gray-800 divide-y divide-gray-700">
+                  {filteredItems.map(item => (
+                      <tr key={item.id} className="hover:bg-gray-700/50">
+                          {columns.map(col => (
+                              <td key={col.id} className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                                  {col.cell(item)}
+                              </td>
+                          ))}
+                      </tr>
+                  ))}
+              </tbody>
+          </table>
+      </div>
 
       {selectedItemForModal && isEditModalOpen && (
         <EditItemModal

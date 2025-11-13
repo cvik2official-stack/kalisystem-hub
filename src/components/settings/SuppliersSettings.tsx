@@ -1,8 +1,7 @@
-import React, { useContext, useState, useMemo, useEffect, useRef } from 'react';
+import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Supplier, SupplierName, PaymentMethod, SupplierBotSettings } from '../../types';
+import { Supplier, SupplierName, PaymentMethod } from '../../types';
 import EditTemplateModal from '../modals/EditTemplateModal';
-import ResizableTable, { ResizableTableRef } from '../common/ResizableTable';
 
 const PaymentMethodBadge: React.FC<{ method?: PaymentMethod }> = ({ method }) => {
     if (!method) return <span className="text-gray-500">-</span>;
@@ -36,8 +35,6 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Supplier>>({});
   
-  const tableRef = useRef<ResizableTableRef>(null);
-
   const handleAddNew = async () => {
     const newSupplier = await actions.addSupplier({ name: 'New Supplier' as SupplierName });
     setEditingSupplierId(newSupplier.id);
@@ -48,7 +45,6 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
     const options = [
         { label: 'Search', action: () => setIsSearchVisible(prev => !prev) },
         { label: 'Add New', action: handleAddNew },
-        { label: 'View Columns', action: (e: React.MouseEvent) => tableRef.current?.toggleColumnMenu(e) },
     ];
     setMenuOptions(options);
 
@@ -61,10 +57,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
   };
   
   const handleCancelEdit = () => {
-    // FIX: Cast supplier name to string for comparison as 'New Supplier' is not in the enum.
     if (String(editFormData?.name) === 'New Supplier') {
-        // If it was a new supplier that wasn't properly named, delete it.
-        // @ts-ignore - deleteSupplier is added to actions
         actions.deleteSupplier(editingSupplierId!); 
     }
     setEditingSupplierId(null);
@@ -97,7 +90,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
 
   const columns = useMemo(() => [
     { 
-      id: 'name', header: 'Name', initialWidth: 150,
+      id: 'name', header: 'Name',
       cell: (supplier: Supplier) => (
         <div className="truncate max-w-xs">
           {editingSupplierId === supplier.id ? (
@@ -113,7 +106,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
       )
     },
     { 
-      id: 'paymentMethod', header: 'Payment Method', initialWidth: 120,
+      id: 'paymentMethod', header: 'Payment Method',
       cell: (supplier: Supplier) => editingSupplierId === supplier.id ? (
         <select
             value={editFormData.paymentMethod || ''}
@@ -128,7 +121,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
       ) : <PaymentMethodBadge method={supplier.paymentMethod} />
     },
     {
-      id: 'chatId', header: 'Chat ID', initialWidth: 120,
+      id: 'chatId', header: 'Chat ID',
       cell: (supplier: Supplier) => editingSupplierId === supplier.id ? (
         <input
             type="text"
@@ -139,7 +132,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
       ) : supplier.chatId || '-'
     },
     {
-      id: 'contact', header: 'Contact', initialWidth: 120,
+      id: 'contact', header: 'Contact',
       cell: (supplier: Supplier) => editingSupplierId === supplier.id ? (
         <input
             type="text"
@@ -150,7 +143,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
       ) : supplier.contact || '-'
     },
     {
-      id: 'actions', header: 'Actions', initialWidth: 80,
+      id: 'actions', header: 'Actions',
       cell: (supplier: Supplier) => editingSupplierId === supplier.id ? (
         <div className="flex items-center justify-end space-x-2">
             <button onClick={handleSaveEdit} className="p-1 rounded-full text-green-400 hover:bg-green-600 hover:text-white" title="Save"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg></button>
@@ -187,13 +180,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
 
   return (
     <div className="flex flex-col flex-grow md:w-1/2">
-      <ResizableTable
-        ref={tableRef}
-        columns={columns}
-        data={filteredSuppliers}
-        tableKey="suppliers-settings"
-        toolbar={
-          isSearchVisible ? (
+        {isSearchVisible && (
             <div className="mb-4">
               <input
                 type="text"
@@ -205,9 +192,31 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
                 placeholder="Search suppliers..."
               />
             </div>
-          ) : undefined
-        }
-      />
+        )}
+      <div className="overflow-x-auto hide-scrollbar">
+          <table className="min-w-full divide-y divide-gray-700">
+              <thead className="bg-gray-800">
+                  <tr>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[150px]">Name</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Payment Method</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Chat ID</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Contact</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Actions</th>
+                  </tr>
+              </thead>
+              <tbody className="bg-gray-800 divide-y divide-gray-700">
+                  {filteredSuppliers.map(supplier => (
+                      <tr key={supplier.id} className="hover:bg-gray-700/50">
+                          {columns.map(col => (
+                              <td key={col.id} className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                                  {col.cell(supplier)}
+                              </td>
+                          ))}
+                      </tr>
+                  ))}
+              </tbody>
+          </table>
+      </div>
       
       {selectedSupplierForTemplate && isTemplateModalOpen && (
         <EditTemplateModal
