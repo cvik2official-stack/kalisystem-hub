@@ -265,11 +265,26 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         }
     };
     
+    const handleLongPressAction = async () => {
+        // First, move the order
+        await handleMoveToOnTheWayWithoutSending();
+        
+        // Then, copy the message to the clipboard
+        const plainTextMessage = generateOrderMessage(order, 'plain', supplier, state.stores, state.settings);
+        try {
+            await navigator.clipboard.writeText(plainTextMessage);
+            notify('Order message copied!', 'success');
+        } catch (err) {
+            console.error("Failed to copy message:", err);
+            notify('Failed to copy message.', 'error');
+        }
+    };
+    
     const handleTelegramPressStart = () => {
         isLongPress.current = false;
         longPressTimer.current = window.setTimeout(() => {
             isLongPress.current = true;
-            handleMoveToOnTheWayWithoutSending();
+            handleLongPressAction();
         }, 500);
     };
 
@@ -378,7 +393,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                     disabled={!supplier?.chatId || isProcessing}
                                     className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors duration-200 ${(order.isSent || !supplier?.chatId) ? 'bg-gray-600' : 'bg-blue-500'}`}
                                     aria-label="Send to Telegram"
-                                    title="Click to send & move, long-press to move only"
+                                    title="Click to send & move, long-press to move & copy"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path>

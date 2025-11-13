@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { Supplier, SupplierName } from '../../types';
 import { AppContext } from '../../context/AppContext';
+import { sendCustomMessageToSupplier } from '../../services/telegramService';
+import { useNotifier } from '../../context/NotificationContext';
 
 interface EditTemplateModalProps {
   supplier: Supplier;
@@ -56,7 +58,9 @@ const Accordion: React.FC<{ title: string; children: React.ReactNode }> = ({ tit
 
 const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
     const { state } = useContext(AppContext);
+    const { notify } = useNotifier();
     const [isSaving, setIsSaving] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     
     // States for bot settings
     const [showAttachInvoice, setShowAttachInvoice] = useState(false);
@@ -64,11 +68,10 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     const [showOkButton, setShowOkButton] = useState(false);
     const [showDriverOnWayButton, setShowDriverOnWayButton] = useState(false);
     const [includeLocation, setIncludeLocation] = useState(false);
-    const [enableReminderTimer, setEnableReminderTimer] = useState(false);
     
     // States for templates
     const [messageTemplate, setMessageTemplate] = useState('');
-    const [reminderTemplate, setReminderTemplate] = useState('');
+    const [customMessage, setCustomMessage] = useState('');
 
     const templates = state.settings.messageTemplates || {};
     let defaultTemplate = templates.defaultOrder || '';
@@ -91,12 +94,11 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             setShowOkButton(!!settings.showOkButton);
             setShowDriverOnWayButton(!!settings.showDriverOnWayButton);
             setIncludeLocation(!!settings.includeLocation);
-            setEnableReminderTimer(!!settings.enableReminderTimer);
 
             // Initialize template states
-            setMessageTemplate(settings.messageTemplate || defaultTemplate);
-            setReminderTemplate(settings.reminderMessageTemplate || `⚠️ Reminder for order {{orderId}} to {{storeName}}. Please acknowledge.`);
-
+            const currentMessageTemplate = settings.messageTemplate || defaultTemplate;
+            setMessageTemplate(currentMessageTemplate);
+            setCustomMessage(currentMessageTemplate);
         }
     }, [isOpen, supplier, defaultTemplate]);
 
@@ -107,18 +109,43 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             botSettings: {
                 ...supplier.botSettings,
                 messageTemplate: (messageTemplate.trim() === defaultTemplate.trim() || messageTemplate.trim() === '') ? undefined : messageTemplate.trim(),
-                reminderMessageTemplate: reminderTemplate.trim(),
                 showAttachInvoice,
                 showMissingItems,
                 showOkButton,
                 showDriverOnWayButton,
                 includeLocation,
-                enableReminderTimer,
             }
         };
         onSave(updatedSupplier);
         setIsSaving(false);
         onClose();
+    };
+
+    const handleSendMessage = async () => {
+        if (!customMessage.trim()) {
+            notify('Cannot send an empty message.', 'error');
+            return;
+        }
+        const { telegramBotToken } = state.settings;
+        if (!telegramBotToken) {
+            notify('Telegram Bot Token is not set.', 'error');
+            return;
+        }
+        if (!supplier.chatId) {
+            notify('Supplier Chat ID is not configured.', 'error');
+            return;
+        }
+
+        setIsSending(true);
+        try {
+            await sendCustomMessageToSupplier(supplier, customMessage, telegramBotToken);
+            notify('Custom message sent!', 'success');
+            onClose();
+        } catch (e: any) {
+            notify(`Failed to send message: ${e.message}`, 'error');
+        } finally {
+            setIsSending(false);
+        }
     };
 
     if (!isOpen) return null;
@@ -138,21 +165,16 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
                     <div className="border-b border-gray-700 pb-4">
                         <h3 className="text-base font-semibold text-white mb-2">Button Options</h3>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-                            <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving} />
-                            <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving} />
-                            <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving} />
-                            <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving} />
+                            <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving || isSending} />
                         </div>
                     </div>
 
                     <div className="border-b border-gray-700 pb-4">
                          <h3 className="text-base font-semibold text-white mb-2">Message Options</h3>
-                         <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving} />
-                    </div>
-                    
-                    <div className="border-b border-gray-700 pb-4">
-                         <h3 className="text-base font-semibold text-white mb-2">Automations</h3>
-                         <BotSettingCheckbox id="enableReminderTimer" label="Enable 45min reminder timer" checked={enableReminderTimer} onChange={setEnableReminderTimer} disabled={isSaving} />
+                         <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving || isSending} />
                     </div>
                     
                     <Accordion title="Message Template">
@@ -164,21 +186,21 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
                         />
                     </Accordion>
                     
-                     <Accordion title="Reminder Message Template">
+                     <Accordion title="Send Custom Message">
                         <textarea
-                            value={reminderTemplate}
-                            onChange={(e) => setReminderTemplate(e.target.value)}
-                            rows={4}
+                            value={customMessage}
+                            onChange={(e) => setCustomMessage(e.target.value)}
+                            rows={8}
                             className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500"
                         />
-                         <div className="text-xs text-gray-500 mt-2">
-                            Placeholders: <code>{'{{storeName}}'}</code>, <code>{'{{orderId}}'}</code>, <code>{'{{supplierName}}'}</code>.
-                        </div>
                     </Accordion>
                 </div>
 
-                <div className="mt-6 flex justify-end">
-                    <button onClick={handleSave} disabled={isSaving} className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white">
+                <div className="mt-6 flex justify-end space-x-2">
+                    <button onClick={handleSendMessage} disabled={isSaving || isSending} className="px-5 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-blue-800">
+                        {isSending ? 'Sending...' : 'Send Message'}
+                    </button>
+                    <button onClick={handleSave} disabled={isSaving || isSending} className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800">
                         {isSaving ? '...' : 'Save'}
                     </button>
                 </div>

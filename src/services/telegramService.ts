@@ -139,6 +139,24 @@ export const sendReminderToSupplier = async (
 };
 
 /**
+ * Sends a custom message to a supplier's chat.
+ * @param supplier The supplier object containing the chat ID.
+ * @param message The message text to send, assumed to be HTML formatted.
+ * @param token The Telegram Bot Token.
+ */
+export const sendCustomMessageToSupplier = async (
+  supplier: Supplier,
+  message: string,
+  token: string
+): Promise<void> => {
+    if (!supplier.chatId) {
+        throw new Error("Supplier Chat ID is missing.");
+    }
+    // Simple message with no buttons
+    await sendMessage(token, supplier.chatId, message);
+};
+
+/**
  * Sends a formatted text receipt to a supplier's chat.
  * @param order The completed order object.
  * @param supplier The supplier object containing the chat ID.
