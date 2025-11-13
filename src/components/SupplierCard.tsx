@@ -249,21 +249,27 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         try {
             await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html', supplier, state.stores, settings), settings.telegramBotToken);
             notify(`Order sent to ${order.supplierName}.`, 'success');
-            await actions.updateOrder({ ...order, isSent: true });
+            await actions.updateOrder({ ...order, isSent: true, status: OrderStatus.ON_THE_WAY });
         } catch (error: any) {
             notify(error.message || `Failed to send.`, 'error');
         } finally { setIsProcessing(false); }
     };
-    
-    const handleCopyOrderMessage = () => {
-        navigator.clipboard.writeText(generateOrderMessage(order, 'plain', supplier, state.stores, state.settings)).then(() => notify('Order copied!', 'success'));
+
+    const handleMoveToOnTheWayWithoutSending = async () => {
+        setIsProcessing(true);
+        try {
+            await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
+            notify(`Order for ${order.supplierName} moved to 'On the Way'.`, 'success');
+        } finally {
+            setIsProcessing(false);
+        }
     };
     
     const handleTelegramPressStart = () => {
         isLongPress.current = false;
         longPressTimer.current = window.setTimeout(() => {
             isLongPress.current = true;
-            handleCopyOrderMessage();
+            handleMoveToOnTheWayWithoutSending();
         }, 500);
     };
 
@@ -280,6 +286,16 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         }
     };
 
+    const handleToggleToPriceNumpad = () => {
+        setNumpadOpen(false);
+        setIsPriceNumpadOpen(true);
+    };
+    
+    const handleToggleToQuantityNumpad = () => {
+        setIsPriceNumpadOpen(false);
+        setNumpadOpen(true);
+    };
+
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
         [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
@@ -287,6 +303,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
         [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
     };
+
+    const paymentMethodAmountBadgeColors: Record<string, string> = {
+        [PaymentMethod.ABA]: 'bg-blue-600/50 text-blue-200',
+        [PaymentMethod.CASH]: 'bg-green-600/50 text-green-200',
+        [PaymentMethod.KALI]: 'bg-purple-600/50 text-purple-200',
+        [PaymentMethod.STOCK]: 'bg-gray-600/50 text-gray-200',
+        [PaymentMethod.MISHA]: 'bg-orange-600/50 text-orange-200',
+    };
+
     const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
 
     const statusBorderColor = useMemo(() => {
@@ -312,7 +337,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                 
                 <div className="px-1 py-2 flex justify-between items-center">
                     <div className="flex items-center gap-0.5 flex-grow min-w-0" onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)} >
-                        {!isManuallyCollapsed && (
+                        {!isEffectivelyCollapsed && (
                             <button onClick={handleHeaderActionsClick} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Order Actions">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                             </button>
@@ -328,19 +353,19 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                 {order.supplierName}
                             </h3>
                             {displayPaymentMethod && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setPaymentMethodModalOpen(true); }}
-                                    className={`px-2 py-0.5 rounded-full text-xs font-semibold cursor-pointer ${paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-600'}`}
-                                >
-                                    {displayPaymentMethod!.toUpperCase()}
-                                </button>
-                            )}
-                            {cardTotal > 0 && displayPaymentMethod && (
-                                <span
-                                    className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-600'}`}
-                                >
-                                    {cardTotal.toFixed(2)}
-                                </span>
+                                <div className="flex items-stretch overflow-hidden rounded-full">
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setPaymentMethodModalOpen(true); }}
+                                        className={`px-2 py-0.5 text-xs font-semibold cursor-pointer ${paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-600'}`}
+                                    >
+                                        {displayPaymentMethod.toUpperCase()}
+                                    </button>
+                                    {(order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) && cardTotal > 0 && (
+                                        <span className={`px-2 py-0.5 text-xs font-semibold ${paymentMethodAmountBadgeColors[displayPaymentMethod] || 'bg-gray-700'}`}>
+                                            {cardTotal.toFixed(2)}
+                                        </span>
+                                    )}
+                                </div>
                             )}
                              {order.status === OrderStatus.DISPATCHING && (
                                 <button
@@ -353,17 +378,31 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                     disabled={!supplier?.chatId || isProcessing}
                                     className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors duration-200 ${(order.isSent || !supplier?.chatId) ? 'bg-gray-600' : 'bg-blue-500'}`}
                                     aria-label="Send to Telegram"
-                                    title="Click to send, long-press to copy"
+                                    title="Click to send & move, long-press to move only"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path>
                                     </svg>
                                 </button>
                             )}
+                            {order.status === OrderStatus.ON_THE_WAY && supplier?.contact && (
+                                <a
+                                    href={`https://t.me/${supplier.contact.replace('@', '')}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-600 hover:bg-gray-500 transition-colors"
+                                    title="Open Telegram Chat"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path>
+                                    </svg>
+                                </a>
+                            )}
                         </div>
                     </div>
                     <div className="flex-shrink-0 flex items-center">
-                         {order.status === OrderStatus.DISPATCHING && (
+                         {!isEffectivelyCollapsed && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || (order.status === OrderStatus.COMPLETED && isEditModeEnabled)) && (
                             <button onClick={() => setAddItemModalOpen(true)} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label="Add item">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                             </button>
@@ -427,10 +466,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
             {contextMenu && <ContextMenu {...contextMenu} onClose={() => setContextMenu(null)} />}
             <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
             <PaymentMethodModal isOpen={isPaymentMethodModalOpen} onClose={() => setPaymentMethodModalOpen(false)} onSelect={handlePaymentMethodChange} order={order} />
-            {isNumpadOpen && selectedItem && <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={handleSaveItemQuantity} onDelete={() => handleDeleteItem(selectedItem)} />}
+            {isNumpadOpen && selectedItem && <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={handleSaveItemQuantity} onDelete={() => handleDeleteItem(selectedItem)} onToggle={handleToggleToPriceNumpad} />}
             {isAddItemModalOpen && <AddItemModal order={order} isOpen={isAddItemModalOpen} onClose={() => setAddItemModalOpen(false)} onItemSelect={handleAddItemSelect} />}
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setIsEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
-            {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} />}
+            {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} onToggle={handleToggleToQuantityNumpad} />}
         </>
     );
 };

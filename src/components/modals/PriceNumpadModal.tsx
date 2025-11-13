@@ -7,9 +7,10 @@ interface PriceNumpadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (price: number, unit: Unit) => void;
+  onToggle?: () => void;
 }
 
-const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClose, onSave }) => {
+const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClose, onSave, onToggle }) => {
   const [value, setValue] = useState('');
   const [selectedUnit, setSelectedUnit] = useState<Unit>(Unit.PC);
   const [isUnitPickerOpen, setIsUnitPickerOpen] = useState(false);
@@ -41,7 +42,13 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
   }, [isUnitPickerOpen]);
 
   const handleInput = (char: string) => {
-    if (char === '.' && value.includes('.')) return;
+    if (char === '.') {
+      if (value === '' && onToggle) {
+        onToggle();
+        return;
+      }
+      if (value.includes('.')) return;
+    }
     if (value === '0' && char !== '.') setValue(char);
     else setValue(prev => prev + char);
   };

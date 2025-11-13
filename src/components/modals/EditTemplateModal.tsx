@@ -31,10 +31,31 @@ const BotSettingCheckbox: React.FC<{
   </div>
 );
 
+const Accordion: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    return (
+        <div className="bg-gray-900 rounded-lg">
+            <button
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex justify-between items-center w-full p-3 text-left"
+            >
+                <h3 className="text-base font-semibold text-white">{title}</h3>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isOpen ? 'rotate-180' : 'rotate-0'}`} viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+            </button>
+            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="px-3 pb-3">
+                    {children}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen, onClose, onSave }) => {
     const { state } = useContext(AppContext);
-    const [template, setTemplate] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     
     // States for bot settings
@@ -44,6 +65,10 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     const [showDriverOnWayButton, setShowDriverOnWayButton] = useState(false);
     const [includeLocation, setIncludeLocation] = useState(false);
     const [enableReminderTimer, setEnableReminderTimer] = useState(false);
+    
+    // States for templates
+    const [messageTemplate, setMessageTemplate] = useState('');
+    const [reminderTemplate, setReminderTemplate] = useState('');
 
     const templates = state.settings.messageTemplates || {};
     let defaultTemplate = templates.defaultOrder || '';
@@ -59,8 +84,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     useEffect(() => {
         if (isOpen) {
             const settings = supplier.botSettings || {};
-            setTemplate(settings.messageTemplate || defaultTemplate);
-
+            
             // Initialize checkbox states
             setShowAttachInvoice(!!settings.showAttachInvoice);
             setShowMissingItems(!!settings.showMissingItems);
@@ -68,6 +92,11 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             setShowDriverOnWayButton(!!settings.showDriverOnWayButton);
             setIncludeLocation(!!settings.includeLocation);
             setEnableReminderTimer(!!settings.enableReminderTimer);
+
+            // Initialize template states
+            setMessageTemplate(settings.messageTemplate || defaultTemplate);
+            setReminderTemplate(settings.reminderMessageTemplate || `⚠️ Reminder for order {{orderId}} to {{storeName}}. Please acknowledge.`);
+
         }
     }, [isOpen, supplier, defaultTemplate]);
 
@@ -77,7 +106,8 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             ...supplier,
             botSettings: {
                 ...supplier.botSettings,
-                messageTemplate: (template.trim() === defaultTemplate.trim() || template.trim() === '') ? undefined : template.trim(),
+                messageTemplate: (messageTemplate.trim() === defaultTemplate.trim() || messageTemplate.trim() === '') ? undefined : messageTemplate.trim(),
+                reminderMessageTemplate: reminderTemplate.trim(),
                 showAttachInvoice,
                 showMissingItems,
                 showOkButton,
@@ -104,37 +134,47 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
                 <h2 className="text-xl font-bold text-white mb-2">Telegram Bot Options</h2>
                 <p className="text-sm text-gray-400 mb-4">for <span className="font-semibold text-gray-300">{supplier.name}</span></p>
 
-                <div className="mb-4 border-b border-gray-700 pb-4">
-                    <h3 className="text-base font-semibold text-white mb-2">Button Options</h3>
-                    <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-                        <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving} />
-                        <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving} />
-                        <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving} />
-                        <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving} />
+                <div className="space-y-4">
+                    <div className="border-b border-gray-700 pb-4">
+                        <h3 className="text-base font-semibold text-white mb-2">Button Options</h3>
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                            <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving} />
+                            <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving} />
+                            <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving} />
+                            <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving} />
+                        </div>
                     </div>
-                </div>
 
-                <div className="mb-4 border-b border-gray-700 pb-4">
-                     <h3 className="text-base font-semibold text-white mb-2">Message Options</h3>
-                     <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving} />
-                </div>
-                
-                <div className="mb-4 border-b border-gray-700 pb-4">
-                     <h3 className="text-base font-semibold text-white mb-2">Automations</h3>
-                     <BotSettingCheckbox id="enableReminderTimer" label="Enable 45min reminder timer" checked={enableReminderTimer} onChange={setEnableReminderTimer} disabled={isSaving} />
-                </div>
-
-                <div>
-                    <h3 className="text-base font-semibold text-white mb-2">Message Template</h3>
-                    <textarea
-                        value={template}
-                        onChange={(e) => setTemplate(e.target.value)}
-                        rows={8}
-                        className="w-full bg-gray-900 text-gray-200 rounded-md p-3 font-mono text-xs outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                    />
-                    <div className="text-xs text-gray-500 mt-2">
-                        Placeholders: <code>{'{{storeName}}'}</code>, <code>{'{{orderId}}'}</code>, <code>{'{{items}}'}</code>.
+                    <div className="border-b border-gray-700 pb-4">
+                         <h3 className="text-base font-semibold text-white mb-2">Message Options</h3>
+                         <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving} />
                     </div>
+                    
+                    <div className="border-b border-gray-700 pb-4">
+                         <h3 className="text-base font-semibold text-white mb-2">Automations</h3>
+                         <BotSettingCheckbox id="enableReminderTimer" label="Enable 45min reminder timer" checked={enableReminderTimer} onChange={setEnableReminderTimer} disabled={isSaving} />
+                    </div>
+                    
+                    <Accordion title="Message Template">
+                        <textarea
+                            value={messageTemplate}
+                            onChange={(e) => setMessageTemplate(e.target.value)}
+                            rows={8}
+                            className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </Accordion>
+                    
+                     <Accordion title="Reminder Message Template">
+                        <textarea
+                            value={reminderTemplate}
+                            onChange={(e) => setReminderTemplate(e.target.value)}
+                            rows={4}
+                            className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500"
+                        />
+                         <div className="text-xs text-gray-500 mt-2">
+                            Placeholders: <code>{'{{storeName}}'}</code>, <code>{'{{orderId}}'}</code>, <code>{'{{supplierName}}'}</code>.
+                        </div>
+                    </Accordion>
                 </div>
 
                 <div className="mt-6 flex justify-end">

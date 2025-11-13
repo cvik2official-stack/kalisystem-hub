@@ -1,5 +1,5 @@
 import { Order, OrderItem, Supplier } from '../types';
-import { generateOrderMessage, escapeHtml } from '../utils/messageFormatter';
+import { generateOrderMessage, escapeHtml, replacePlaceholders } from '../utils/messageFormatter';
 
 interface ReplyMarkup {
   inline_keyboard: { text: string; callback_data: string; }[][];
@@ -113,7 +113,20 @@ export const sendReminderToSupplier = async (
     throw new Error("Supplier Chat ID is missing for reminder.");
   }
 
-  const message = `⚠️ Dear manager, it seems you didn't see the order sent 45mn ago for ${escapeHtml(order.store)}. Press cancel if out of stock, press ok if you process with the order, thank you b.`;
+  const template = supplier.botSettings?.reminderMessageTemplate;
+  let message: string;
+
+  if (template) {
+      const replacements = {
+          orderId: escapeHtml(order.orderId),
+          storeName: escapeHtml(order.store),
+          supplierName: escapeHtml(supplier.name),
+      };
+      message = replacePlaceholders(template, replacements);
+  } else {
+      message = `⚠️ Dear manager, it seems you didn't see the order sent 45mn ago for ${escapeHtml(order.store)}. Press cancel if out of stock, press ok if you process with the order, thank you b.`;
+  }
+
 
   const replyMarkup: ReplyMarkup = {
     inline_keyboard: [[

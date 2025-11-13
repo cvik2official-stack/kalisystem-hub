@@ -11,7 +11,7 @@ export const getLatestItemPrice = (itemId: string, supplierId: string, itemPrice
         .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())[0];
 };
 
-const replacePlaceholders = (template: string, replacements: Record<string, string>): string => {
+export const replacePlaceholders = (template: string, replacements: Record<string, string>): string => {
     let result = template;
     for (const key in replacements) {
         result = result.replace(new RegExp(`{{${key}}}`, 'g'), replacements[key]);
@@ -177,22 +177,31 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html', sup
         }
 
         let finalStoreDisplay = isHtml ? escapeHtml(storeDisplayName) : storeDisplayName;
-        if (isHtml && supplier?.botSettings?.includeLocation) {
-            const store = stores?.find(s => s.name === order.store);
-            if (store?.locationUrl) {
+        if (isHtml && supplier?.botSettings?.includeLocation && stores) {
+            const store = stores.find(s => s.name === order.store);
+            if (store && store.locationUrl) {
                 finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${finalStoreDisplay}</a>`;
             }
         }
 
         if (order.supplierName === SupplierName.KALI) {
-            const header = isHtml ? `<b>${finalStoreDisplay}</b>` : storeDisplayName;
+            let header = isHtml ? `<b>${finalStoreDisplay}</b>` : storeDisplayName;
+            if (supplier?.contact) {
+                header += `\n📱 ${isHtml ? escapeHtml(supplier.contact) : supplier.contact}`;
+            }
             const itemsList = order.items.map(item => `${isHtml ? escapeHtml(item.name) : item.name} x${item.quantity}${item.unit || ''}`).join('\n');
             return `${header}\n${itemsList}`;
         }
 
-        const header = isHtml
-            ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${finalStoreDisplay}</b>\n\n`
-            : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${storeDisplayName}\n\n`;
+        let header = isHtml
+            ? `<b>#️⃣ Order ${escapeHtml(order.orderId)}</b>\n🚚 Delivery order\n📌 <b>${finalStoreDisplay}</b>`
+            : `#️⃣ Order ${order.orderId}\n🚚 Delivery order\n📌 ${storeDisplayName}`;
+        
+        if (supplier?.contact) {
+            header += `\n📱 ${isHtml ? escapeHtml(supplier.contact) : supplier.contact}`;
+        }
+
+        header += `\n\n`; // Add the separator
         
         const itemsList = order.items.map(item => `${isHtml ? escapeHtml(item.name) : item.name} x${item.quantity}${item.unit ? ` ${item.unit}` : ''}`).join('\n');
 
@@ -215,9 +224,9 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html', sup
     }
 
     let finalStoreDisplay = isHtml ? escapeHtml(storeDisplayName) : storeDisplayName;
-    if (isHtml && supplier?.botSettings?.includeLocation) {
-        const store = stores?.find(s => s.name === order.store);
-        if (store?.locationUrl) {
+    if (isHtml && supplier?.botSettings?.includeLocation && stores) {
+        const store = stores.find(s => s.name === order.store);
+        if (store && store.locationUrl) {
             finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${finalStoreDisplay}</a>`;
         }
     }
@@ -234,7 +243,15 @@ export const generateOrderMessage = (order: Order, format: 'plain' | 'html', sup
         items: itemsList
     };
 
-    let message = replacePlaceholders(template, replacements);
+    let finalTemplate = template;
+    if (supplier?.contact) {
+        const contactLine = `\n📱 ${isHtml ? escapeHtml(supplier.contact) : supplier.contact}`;
+        // Insert the contact line just before the items placeholder.
+        // This regex looks for one or two newlines before {{items}} to handle different template structures.
+        finalTemplate = finalTemplate.replace(/(\n\n?{{items}})/, `${contactLine}$1`);
+    }
+
+    let message = replacePlaceholders(finalTemplate, replacements);
     if (!isHtml) {
         // Strip HTML tags for plain text format
         message = message.replace(/<[^>]*>?/gm, '');

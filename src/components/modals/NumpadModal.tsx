@@ -7,9 +7,10 @@ interface NumpadModalProps {
   onClose: () => void;
   onSave: (quantity: number, unit?: Unit) => void;
   onDelete: () => void;
+  onToggle?: () => void;
 }
 
-const NumpadModal: React.FC<NumpadModalProps> = ({ item, isOpen, onClose, onSave, onDelete }) => {
+const NumpadModal: React.FC<NumpadModalProps> = ({ item, isOpen, onClose, onSave, onDelete, onToggle }) => {
   const [value, setValue] = useState('');
   const [selectedUnit, setSelectedUnit] = useState<Unit | undefined>(undefined);
   const [isUnitPickerOpen, setIsUnitPickerOpen] = useState(false);
@@ -47,7 +48,13 @@ const NumpadModal: React.FC<NumpadModalProps> = ({ item, isOpen, onClose, onSave
   }, [isUnitPickerOpen]);
 
   const handleInput = (char: string) => {
-    if (char === '.' && value.includes('.')) return;
+    if (char === '.') {
+      if (value === '' && onToggle) {
+        onToggle();
+        return;
+      }
+      if (value.includes('.')) return;
+    }
     if (value === '0' && char !== '.') {
       setValue(char);
     } else {

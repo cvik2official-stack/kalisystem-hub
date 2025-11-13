@@ -70,7 +70,7 @@ const StoresSettings: React.FC = () => {
 
 
   return (
-    <div className="flex flex-col flex-grow">
+    <div className="flex flex-col flex-grow md:w-1/2">
       <ResizableTable
         columns={columns}
         data={sortedStores}

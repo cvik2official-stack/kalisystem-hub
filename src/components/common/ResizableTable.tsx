@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useImperativeHandle } from 'react';
 import ContextMenu from '../ContextMenu';
 
 interface ColumnDef<T> {
@@ -17,11 +17,19 @@ interface ResizableTableProps<T> {
   rightAlignedActions?: (toggleColumnMenu: (e: React.MouseEvent) => void) => React.ReactNode;
 }
 
-const ResizableTable = <T extends { id: string }>({ columns, data, tableKey, toolbar, rightAlignedActions }: ResizableTableProps<T>) => {
+export interface ResizableTableRef {
+  toggleColumnMenu: (e: React.MouseEvent) => void;
+}
+
+const ResizableTable = <T extends { id: string }>({ columns, data, tableKey, toolbar, rightAlignedActions }: ResizableTableProps<T>, ref: React.Ref<ResizableTableRef>) => {
   const [widths, setWidths] = useState<Record<string, number>>({});
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [isReady, setIsReady] = useState(false);
   const [menu, setMenu] = useState<{ x: number, y: number } | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    toggleColumnMenu: handleToggleColumnMenu
+  }));
 
   useEffect(() => {
     const savedSettings = localStorage.getItem(tableKey);
@@ -74,12 +82,14 @@ const ResizableTable = <T extends { id: string }>({ columns, data, tableKey, too
 
   return (
     <div className="overflow-hidden flex-grow flex flex-col w-full">
-      <div className="pt-4 flex justify-between items-center">
-        {toolbar || <div />}
-        <div className="flex items-center space-x-2">
-            {rightAlignedActions && rightAlignedActions(handleToggleColumnMenu)}
+      {(toolbar || rightAlignedActions) && (
+        <div className="pt-4 flex justify-between items-center">
+          {toolbar || <div />}
+          <div className="flex items-center space-x-2">
+              {rightAlignedActions && rightAlignedActions(handleToggleColumnMenu)}
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex-grow overflow-auto hide-scrollbar">
         <table className="min-w-full divide-y divide-gray-700 border-separate" style={{ borderSpacing: 0, tableLayout: 'auto' }}>
           <thead className="bg-gray-800 sticky top-0 z-10">
@@ -123,4 +133,4 @@ const ResizableTable = <T extends { id: string }>({ columns, data, tableKey, too
   );
 };
 
-export default ResizableTable;
+export default React.forwardRef(ResizableTable) as <T extends { id: string }>(props: ResizableTableProps<T> & { ref?: React.Ref<ResizableTableRef> }) => React.ReactElement;

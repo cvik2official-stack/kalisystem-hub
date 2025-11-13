@@ -34,6 +34,9 @@
   -- Add a text column to stores for a location URL
   ALTER TABLE public.stores ADD COLUMN IF NOT EXISTS location_url TEXT;
 
+  -- Add a text column for supplier contact info
+  ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS contact TEXT;
+
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -50,6 +53,7 @@ interface SupplierFromDb {
   chat_id?: string;
   payment_method?: PaymentMethod;
   bot_settings?: SupplierBotSettings;
+  contact?: string;
 }
 
 interface ItemFromDb {
@@ -143,6 +147,7 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         paymentMethod: s.payment_method,
         modifiedAt: s.modified_at,
         botSettings: s.bot_settings,
+        contact: s.contact,
     }]));
     
     const items: Item[] = itemsData.reduce((acc: Item[], i) => {
@@ -371,6 +376,7 @@ export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Su
         chat_id: supplier.chatId,
         payment_method: supplier.paymentMethod,
         bot_settings: supplier.botSettings,
+        contact: supplier.contact,
     };
     // Using on_conflict with merge-duplicates will either create a new supplier or return the existing one if the name matches.
     const response = await fetch(`${url}/rest/v1/suppliers?select=*&on_conflict=name`, {
@@ -388,6 +394,7 @@ export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Su
         chatId: newSupplierFromDb.chat_id,
         paymentMethod: newSupplierFromDb.payment_method,
         botSettings: newSupplierFromDb.bot_settings,
+        contact: newSupplierFromDb.contact,
     };
 };
 
@@ -397,6 +404,7 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
         chat_id: supplier.chatId,
         payment_method: supplier.paymentMethod,
         bot_settings: supplier.botSettings,
+        contact: supplier.contact,
     };
     const response = await fetch(`${url}/rest/v1/suppliers?id=eq.${supplier.id}&select=*`, {
         method: 'PATCH',
@@ -413,6 +421,7 @@ export const updateSupplier = async ({ supplier, url, key }: { supplier: Supplie
         paymentMethod: updated.payment_method,
         modifiedAt: updated.modified_at,
         botSettings: updated.bot_settings,
+        contact: updated.contact,
     };
 };
 

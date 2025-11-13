@@ -255,7 +255,7 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      geminiApiKey: 'AIzaSyDN0Z_WM4PvhMhJ0nTPF9lM06lepFrZ-qM',
+      geminiApiKey: 'AIzaSyCZXZ8HC5gyqEPDhI13eaN6X1QxOJn0bwE',
       telegramBotToken: '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og',
       aiParsingRules: {
         global: {
@@ -263,6 +263,15 @@ const getInitialState = (): AppState => {
           "Beef": "Beef (rump)",
           "Mushroom can": "Mushroom",
           "Cabbage": "Cabbage (white)",
+          "chocolate syrup": "chocolate topping",
+          "pizza flour": "flour (25kg)",
+          "mushroom": "Mushroom fresh",
+          "mushrooms": "Mushroom fresh",
+          "mushrooms white": "Mushroom fresh",
+          "french fries": "French fries (crinkle cut - GUD)",
+        },
+        [StoreName.SHANTI]: {
+            "french fries": "french fries (straight cut - NOWACO)"
         }
       },
       receiptTemplates: {},

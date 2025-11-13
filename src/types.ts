@@ -52,6 +52,7 @@ export interface SupplierBotSettings {
   includeLocation?: boolean;
   messageTemplate?: string;
   enableReminderTimer?: boolean;
+  reminderMessageTemplate?: string;
 }
 
 export interface Supplier {
@@ -61,6 +62,7 @@ export interface Supplier {
   paymentMethod?: PaymentMethod; // For persisting payment choice
   modifiedAt?: string;
   botSettings?: SupplierBotSettings;
+  contact?: string;
 }
 
 export interface OrderItem {

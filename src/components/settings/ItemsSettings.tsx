@@ -3,10 +3,14 @@ import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
 import { useNotifier } from '../../context/NotificationContext';
 import EditItemModal from '../modals/EditItemModal';
-import ResizableTable from '../common/ResizableTable';
+import ResizableTable, { ResizableTableRef } from '../common/ResizableTable';
 import { getLatestItemPrice } from '../../utils/messageFormatter';
 
-const ItemsSettings: React.FC = () => {
+interface ItemsSettingsProps {
+    setMenuOptions: (options: any[]) => void;
+}
+
+const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   const { state, actions } = useContext(AppContext);
   const { notify } = useNotifier();
   
@@ -16,7 +20,9 @@ const ItemsSettings: React.FC = () => {
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
-  
+
+  const tableRef = useRef<ResizableTableRef>(null);
+
   const handleItemUpdate = async (item: Item, field: keyof Item, value: any) => {
     if (item[field] === value) return; // No change
     await actions.updateItem({ ...item, [field]: value });
@@ -70,6 +76,18 @@ const ItemsSettings: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
+  useEffect(() => {
+    const options = [
+        { label: 'Search', action: () => setIsSearchVisible(prev => !prev) },
+        { label: 'Add New', action: handleAddNewItem },
+        { label: 'View Columns', action: (e: React.MouseEvent) => tableRef.current?.toggleColumnMenu(e) },
+    ];
+    setMenuOptions(options);
+
+    return () => setMenuOptions([]);
+  }, [handleAddNewItem, setMenuOptions]);
+
+
   const filteredItems = useMemo(() => {
     const sortedItems = [...state.items].sort((a, b) => {
         if (a.name === 'New Item' && b.name !== 'New Item') return -1;
@@ -111,7 +129,8 @@ const ItemsSettings: React.FC = () => {
             onChange={(e) => handleItemUpdate(item, 'unit', e.target.value as Unit)}
             className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
         >
-            {Object.values(Unit).map(u => <option key={u} value={u}>{u}</option>)}
+            {/* FIX: Cast enum values to an array of Unit to ensure proper type inference when creating select options. */}
+            {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u}>{u}</option>)}
         </select>
       )
     },
@@ -148,8 +167,9 @@ const ItemsSettings: React.FC = () => {
   ], [state.itemPrices, state.items]);
 
   return (
-    <div className="flex flex-col flex-grow w-full">
+    <div className="flex flex-col flex-grow md:w-1/2">
       <ResizableTable
+        ref={tableRef}
         columns={columns}
         data={filteredItems}
         tableKey="items-settings"
@@ -166,44 +186,7 @@ const ItemsSettings: React.FC = () => {
                 placeholder="Search items..."
               />
             </div>
-          ) : <div className="mb-4 h-[42px]"></div>
-        }
-        rightAlignedActions={
-          (toggleColumnMenu) => (
-            <div className="flex items-center space-x-1 bg-gray-700 p-1 rounded-full shadow-lg">
-                <button
-                    onClick={() => setIsSearchVisible(prev => !prev)}
-                    className={`text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600 ${isSearchVisible ? 'bg-gray-600 text-indigo-400' : ''}`}
-                    aria-label="Search items"
-                    title="Search items"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg>
-                </button>
-                <button 
-                    onClick={handleAddNewItem}
-                    disabled={isCreating}
-                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-600 disabled:cursor-wait"
-                    aria-label="Add New Item"
-                    title="Add New Item"
-                >
-                    {isCreating 
-                        ? <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-                    }
-                </button>
-                <button
-                    onClick={(e) => toggleColumnMenu(e)}
-                    className="text-gray-400 hover:text-white p-2 rounded-full hover:bg-gray-700"
-                    aria-label="Toggle column visibility"
-                    title="Show/hide columns"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.022 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                    </svg>
-                </button>
-            </div>
-          )
+          ) : undefined
         }
       />
 
