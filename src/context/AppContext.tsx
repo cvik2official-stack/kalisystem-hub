@@ -1,607 +1,314 @@
-import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier } from '../services/supabaseService';
+import React, { createContext, useReducer, useEffect, ReactNode, useContext, useCallback, useMemo } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { AppState, StoreName, OrderStatus, SettingsTab, Store, Supplier, Item, ItemPrice, Order, SyncStatus, AppSettings, OrderItem, PaymentMethod, SupplierName } from '../types';
+import * as db from '../services/supabaseService';
 import { useNotifier } from './NotificationContext';
-import { sendReminderToSupplier } from '../services/telegramService';
 
-export interface AppState {
-  stores: Store[];
-  activeStore: StoreName | 'Settings';
-  suppliers: Supplier[];
-  items: Item[];
-  itemPrices: ItemPrice[];
-  orders: Order[];
-  activeStatus: OrderStatus;
-  activeSettingsTab: SettingsTab;
-  orderIdCounters: Record<string, number>;
-  settings: AppSettings;
-  isLoading: boolean;
-  isInitialized: boolean;
-  syncStatus: SyncStatus;
-  isManagerView: boolean;
-  managerStoreFilter: StoreName | null;
-  isEditModeEnabled: boolean;
-  isDualPaneMode: boolean;
-  cardWidth: number | null;
-  draggedOrderId: string | null;
-  draggedItem: { item: OrderItem; sourceOrderId: string } | null;
-  columnCount: 1 | 2 | 3;
-}
+const LOCAL_STORAGE_KEY = 'KALI_SYSTEM_STATE_V2';
 
-export type Action =
+type AppAction =
+  | { type: 'INITIALIZE'; payload: Partial<AppState> }
+  | { type: 'SET_ALL_DATA'; payload: { stores: Store[]; suppliers: Supplier[]; items: Item[]; itemPrices: ItemPrice[]; orders: Order[] } }
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'SET_SYNC_STATUS'; payload: SyncStatus }
   | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' }
   | { type: 'SET_ACTIVE_STATUS'; payload: OrderStatus }
   | { type: 'SET_ACTIVE_SETTINGS_TAB'; payload: SettingsTab }
   | { type: 'NAVIGATE_TO_SETTINGS'; payload: SettingsTab }
-  | { type: '_ADD_ITEM'; payload: Item }
-  | { type: '_UPDATE_ITEM'; payload: Item }
-  | { type: '_DELETE_ITEM'; payload: string }
-  | { type: '_ADD_SUPPLIER'; payload: Supplier }
-  | { type: '_UPDATE_SUPPLIER'; payload: Supplier }
-  | { type: '_DELETE_SUPPLIER'; payload: string }
-  | { type: '_UPDATE_STORE'; payload: Store }
-  | { type: 'ADD_ORDERS'; payload: Order[] }
-  | { type: 'UPDATE_ORDER'; payload: Order }
-  | { type: 'DELETE_ORDER'; payload: string }
-  | { type: 'SAVE_SETTINGS'; payload: Partial<AppState['settings']> }
-  | { type: 'REPLACE_ITEM_DATABASE'; payload: { items: Item[], suppliers: Supplier[], rawCsv: string } }
-  | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
-  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[] } }
-  | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
-  | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
   | { type: 'SET_EDIT_MODE'; payload: boolean }
-  | { type: 'TOGGLE_DUAL_PANE_MODE' }
   | { type: 'CYCLE_COLUMN_COUNT' }
-  | { type: 'SET_COLUMN_COUNT'; payload: 1 | 2 | 3 }
   | { type: 'SET_DRAGGED_ORDER_ID'; payload: string | null }
   | { type: 'SET_DRAGGED_ITEM'; payload: { item: OrderItem; sourceOrderId: string } | null }
-  | { type: 'SET_CARD_WIDTH'; payload: number | null };
+  | { type: 'UPSERT_ORDER'; payload: Order }
+  | { type: 'DELETE_ORDER'; payload: string }
+  | { type: 'UPSERT_ITEM'; payload: Item }
+  | { type: 'DELETE_ITEM'; payload: string }
+  | { type: 'UPSERT_SUPPLIER'; payload: Supplier }
+  | { type: 'DELETE_SUPPLIER'; payload: string }
+  | { type: 'UPSERT_STORE'; payload: Store }
+  | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
+  | { type: 'SAVE_SETTINGS'; payload: Partial<AppSettings> }
+  | { type: 'INCREMENT_ORDER_COUNTER'; payload: StoreName };
 
-export interface AppContextActions {
-    addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
-    updateItem: (item: Item) => Promise<void>;
-    deleteItem: (itemId: string) => Promise<void>;
-    addSupplier: (supplier: Omit<Supplier, 'id' | 'modifiedAt'>) => Promise<Supplier>;
-    updateSupplier: (supplier: Supplier) => Promise<void>;
-    deleteSupplier: (supplierId: string) => Promise<void>;
-    updateStore: (store: Store) => Promise<void>;
-    addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[], status?: OrderStatus) => Promise<void>;
-    updateOrder: (order: Order) => Promise<void>;
-    deleteOrder: (orderId: string) => Promise<void>;
-    syncWithSupabase: (options?: { isInitialSync?: boolean }) => Promise<void>;
-    addItemToDispatch: (item: Item) => Promise<void>;
-    mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
-    upsertItemPrice: (itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>) => Promise<void>;
-}
+const initialState: AppState = {
+  stores: [],
+  activeStore: StoreName.CV2,
+  suppliers: [],
+  items: [],
+  itemPrices: [],
+  orders: [],
+  activeStatus: OrderStatus.DISPATCHING,
+  activeSettingsTab: 'items',
+  orderIdCounters: {},
+  settings: {
+    supabaseUrl: '',
+    supabaseKey: '',
+  },
+  isLoading: true,
+  isInitialized: false,
+  syncStatus: 'idle',
+  isManagerView: false,
+  managerStoreFilter: null,
+  isEditModeEnabled: false,
+  isDualPaneMode: false,
+  cardWidth: null,
+  draggedOrderId: null,
+  draggedItem: null,
+  columnCount: 3,
+};
 
-
-const appReducer = (state: AppState, action: Action): AppState => {
+const appReducer = (state: AppState, action: AppAction): AppState => {
   switch (action.type) {
+    case 'INITIALIZE':
+      return { ...state, ...action.payload, isInitialized: true, isLoading: false };
+    case 'SET_ALL_DATA':
+      return { ...state, ...action.payload };
+    case 'SET_LOADING':
+      return { ...state, isLoading: action.payload };
+    case 'SET_SYNC_STATUS':
+      return { ...state, syncStatus: action.payload };
     case 'SET_ACTIVE_STORE':
-      return { ...state, activeStore: action.payload, isEditModeEnabled: false }; // Disable edit mode on store change
+      return { ...state, activeStore: action.payload };
     case 'SET_ACTIVE_STATUS':
-      return { ...state, activeStatus: action.payload, isEditModeEnabled: false }; // Disable edit mode on status change
+      return { ...state, activeStatus: action.payload };
     case 'SET_ACTIVE_SETTINGS_TAB':
         return { ...state, activeSettingsTab: action.payload };
     case 'NAVIGATE_TO_SETTINGS':
         return { ...state, activeStore: 'Settings', activeSettingsTab: action.payload };
+    case 'SET_MANAGER_VIEW':
+      return { ...state, isManagerView: action.payload.isManager, managerStoreFilter: action.payload.store };
     case 'SET_EDIT_MODE':
-        return { ...state, isEditModeEnabled: action.payload };
-    case 'TOGGLE_DUAL_PANE_MODE':
-        return { ...state, isDualPaneMode: !state.isDualPaneMode };
-    case 'SET_CARD_WIDTH':
-        return { ...state, cardWidth: action.payload };
+      return { ...state, isEditModeEnabled: action.payload };
     case 'CYCLE_COLUMN_COUNT':
-        return {
-            ...state,
-            columnCount: (state.columnCount === 1 ? 2 : state.columnCount === 2 ? 3 : 1) as 1 | 2 | 3,
-        };
-    case 'SET_COLUMN_COUNT':
-        if (state.columnCount === action.payload) return state;
-        return { ...state, columnCount: action.payload };
+      const newCount = state.columnCount === 3 ? 1 : state.columnCount + 1;
+      return { ...state, columnCount: (newCount > 3 ? 1 : newCount) as 1 | 2 | 3 };
     case 'SET_DRAGGED_ORDER_ID':
-        return { ...state, draggedOrderId: action.payload };
+      return { ...state, draggedOrderId: action.payload };
     case 'SET_DRAGGED_ITEM':
         return { ...state, draggedItem: action.payload };
-    case '_ADD_ITEM':
-        return { ...state, items: [...state.items, action.payload] };
-    case '_UPDATE_ITEM': {
-        const updatedItem = action.payload;
-        return { 
-            ...state,
-            items: state.items.map(i => i.id === updatedItem.id ? updatedItem : i),
-            orders: state.orders.map(o => ({
-                ...o,
-                items: o.items.map(oi => oi.itemId === updatedItem.id ? { ...oi, name: updatedItem.name, unit: updatedItem.unit } : oi)
-            }))
-        };
-    }
-    case '_DELETE_ITEM':
-        return { ...state, items: state.items.filter(i => i.id !== action.payload) };
-    case '_ADD_SUPPLIER':
-        if (state.suppliers.some(s => s.id === action.payload.id)) {
-            return state;
-        }
-        return { ...state, suppliers: [...state.suppliers, action.payload] };
-    case '_UPDATE_SUPPLIER':
-        return { ...state, suppliers: state.suppliers.map(s => s.id === action.payload.id ? action.payload : s) };
-    case '_DELETE_SUPPLIER':
-        return { ...state, suppliers: state.suppliers.filter(s => s.id !== action.payload) };
-    case '_UPDATE_STORE':
-        return { ...state, stores: state.stores.map(s => s.id === action.payload.id ? action.payload : s) };
-    case 'ADD_ORDERS': {
-        const newOrders = action.payload.filter(
-            newOrder => !state.orders.some(existingOrder => existingOrder.id === newOrder.id)
-        );
-        return { ...state, orders: [...state.orders, ...newOrders] };
-    }
-    case 'UPDATE_ORDER': {
-        const updatedOrder = action.payload;
-        return { ...state, orders: state.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o) };
-    }
-    case 'DELETE_ORDER': {
+    case 'UPSERT_ORDER':
+        const orderExists = state.orders.some(o => o.id === action.payload.id);
+        return { ...state, orders: orderExists ? state.orders.map(o => o.id === action.payload.id ? action.payload : o) : [...state.orders, action.payload] };
+    case 'DELETE_ORDER':
         return { ...state, orders: state.orders.filter(o => o.id !== action.payload) };
-    }
-    case 'SAVE_SETTINGS': {
-        return { ...state, settings: { ...state.settings, ...action.payload } };
-    }
-    case 'REPLACE_ITEM_DATABASE': {
-      const { items, suppliers, rawCsv } = action.payload;
-      return {
-        ...state,
-        items,
-        suppliers,
-        settings: {
-          ...state.settings,
-          lastSyncedCsvContent: rawCsv,
-        },
-      };
-    }
-    case '_SET_SYNC_STATUS':
-      return { ...state, syncStatus: action.payload, isLoading: action.payload === 'syncing' };
-    case '_MERGE_DATABASE': {
-        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores, itemPrices: remoteItemPrices } = action.payload;
-        
-        const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
-        state.items.forEach(localItem => !mergedItemsMap.has(localItem.id) && mergedItemsMap.set(localItem.id, localItem));
-
-        const mergedSuppliersMap = new Map(remoteSuppliers.map(s => [s.id, s]));
-        state.suppliers.forEach(localSupplier => !mergedSuppliersMap.has(localSupplier.id) && mergedSuppliersMap.set(localSupplier.id, localSupplier));
-
-        const mergedStoresMap = new Map(remoteStores.map(s => [s.id, s]));
-        state.stores.forEach(localStore => !mergedStoresMap.has(localStore.id) && mergedStoresMap.set(localStore.id, localStore));
-
-        const localOrdersMap = new Map(state.orders.map(o => [o.id, o]));
-        const mergedOrders: Order[] = [];
-        for (const remoteOrder of remoteOrders) {
-            const localOrder = localOrdersMap.get(remoteOrder.id);
-            if (localOrder) {
-                mergedOrders.push(new Date(remoteOrder.modifiedAt) > new Date(localOrder.modifiedAt) ? remoteOrder : localOrder);
-                localOrdersMap.delete(remoteOrder.id);
-            } else {
-                mergedOrders.push(remoteOrder);
-            }
-        }
-        localOrdersMap.forEach(localOrder => mergedOrders.push(localOrder));
-
-        const mergedItemPricesMap = new Map(remoteItemPrices.map(p => [p.id, p]));
-        state.itemPrices.forEach(localPrice => !mergedItemPricesMap.has(localPrice.id) && mergedItemPricesMap.set(localPrice.id, localPrice));
-
-        return { 
-            ...state, 
-            items: Array.from(mergedItemsMap.values()), 
-            suppliers: Array.from(mergedSuppliersMap.values()), 
-            stores: Array.from(mergedStoresMap.values()),
-            orders: mergedOrders,
-            itemPrices: Array.from(mergedItemPricesMap.values()),
-        };
-    }
-    case 'INITIALIZATION_COMPLETE':
-      return { ...state, isInitialized: true };
-    case 'SET_MANAGER_VIEW':
-        return {
-            ...state,
-            isManagerView: action.payload.isManager,
-            managerStoreFilter: action.payload.store,
-        };
-    case 'UPSERT_ITEM_PRICE': {
-        const newPrice = action.payload;
-        const priceExists = state.itemPrices.some(p => p.id === newPrice.id);
-        let newItemPrices;
-        if (priceExists) {
-            newItemPrices = state.itemPrices.map(p => p.id === newPrice.id ? newPrice : p);
-        } else {
-            newItemPrices = [...state.itemPrices, newPrice];
-        }
-        return { ...state, itemPrices: newItemPrices };
-    }
+    case 'UPSERT_ITEM':
+        const itemExists = state.items.some(i => i.id === action.payload.id);
+        return { ...state, items: itemExists ? state.items.map(i => i.id === action.payload.id ? action.payload : i) : [...state.items, action.payload] };
+    case 'DELETE_ITEM':
+        return { ...state, items: state.items.filter(i => i.id !== action.payload) };
+    case 'UPSERT_SUPPLIER':
+        const supplierExists = state.suppliers.some(s => s.id === action.payload.id);
+        return { ...state, suppliers: supplierExists ? state.suppliers.map(s => s.id === action.payload.id ? action.payload : s) : [...state.suppliers, action.payload] };
+    case 'DELETE_SUPPLIER':
+        return { ...state, suppliers: state.suppliers.filter(s => s.id !== action.payload) };
+    case 'UPSERT_STORE':
+        const storeExists = state.stores.some(s => s.id === action.payload.id);
+        return { ...state, stores: storeExists ? state.stores.map(s => s.id === action.payload.id ? action.payload : s) : [...state.stores, action.payload] };
+    case 'UPSERT_ITEM_PRICE':
+        const priceExists = state.itemPrices.some(p => p.id === action.payload.id);
+        return { ...state, itemPrices: priceExists ? state.itemPrices.map(p => p.id === action.payload.id ? action.payload : p) : [...state.itemPrices, action.payload] };
+    case 'SAVE_SETTINGS':
+        const newSettings = { ...state.settings, ...action.payload };
+        return { ...state, settings: newSettings };
+    case 'INCREMENT_ORDER_COUNTER':
+      const today = new Date().toISOString().split('T')[0];
+      const counterKey = `${action.payload}-${today}`;
+      const newCounters = { ...state.orderIdCounters, [counterKey]: (state.orderIdCounters[counterKey] || 0) + 1 };
+      return { ...state, orderIdCounters: newCounters };
     default:
       return state;
   }
 };
 
-const APP_STATE_KEY = 'supplyChainCommanderState_v3';
-
-const getInitialColumnCount = (): 1 | 2 | 3 => {
-    const width = window.innerWidth;
-    // Phone portrait (< 640px) -> 1 column
-    if (width < 768) return 1;
-    // Phone landscape & Tablet portrait (768-1023) -> 2 columns
-    if (width < 1024) return 2;
-    // Tablet landscape & Larger screens -> 3 columns
-    return 3;
-};
-
-
-const getInitialState = (): AppState => {
-  let loadedState: Partial<AppState> = {};
-  try {
-    const serializedState = localStorage.getItem(APP_STATE_KEY);
-    if (serializedState) loadedState = JSON.parse(serializedState);
-  } catch (err) { console.warn("Could not load state from localStorage", err); }
-
-  const initialState: AppState = {
-    stores: [],
-    activeStore: StoreName.CV2,
-    suppliers: [],
-    items: [],
-    itemPrices: [],
-    orders: [],
-    activeStatus: OrderStatus.DISPATCHING,
-    activeSettingsTab: 'items',
-    orderIdCounters: {},
-    settings: {
-      supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
-      supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
-      isAiEnabled: true,
-      geminiApiKey: 'AIzaSyCZXZ8HC5gyqEPDhI13eaN6X1QxOJn0bwE',
-      telegramBotToken: '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og',
-      aiParsingRules: {
-        global: {
-          "Chicken": "Chicken breast",
-          "Beef": "Beef (rump)",
-          "Mushroom can": "Mushroom",
-          "Cabbage": "Cabbage (white)",
-          "chocolate syrup": "chocolate topping",
-          "pizza flour": "flour (25kg)",
-          "mushroom": "Mushroom fresh",
-          "mushrooms": "Mushroom fresh",
-          "mushrooms white": "Mushroom fresh",
-          "french fries": "French fries (crinkle cut - GUD)",
-        },
-        [StoreName.SHANTI]: {
-            "french fries": "french fries (straight cut - NOWACO)"
-        }
-      },
-      receiptTemplates: {},
-      messageTemplates: {
-        defaultOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}',
-        kaliOrder: '<b>{{storeName}}</b>\n{{items}}',
-        oudomOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}\n\nPlease approve and mark as done from the app:\n<a href="https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM">OUDOM TASKS</a>',
-        telegramReceipt: '🧾 <b>Receipt for Order <code>{{orderId}}</code></b>\n<b>Store:</b> {{store}}\n<b>Supplier:</b> {{supplierName}}\n<b>Date:</b> {{date}}\n\n{{items}}\n---------------------\n<b>Grand Total: {{grandTotal}}</b>'
-      },
-    },
-    isLoading: false,
-    isInitialized: false,
-    syncStatus: 'idle',
-    isManagerView: false,
-    managerStoreFilter: null,
-    isEditModeEnabled: false,
-    isDualPaneMode: false,
-    draggedOrderId: null,
-    draggedItem: null,
-    cardWidth: null,
-    columnCount: 3,
-  };
-
-  const finalState = { ...initialState, ...loadedState };
-  finalState.settings = { ...initialState.settings, ...loadedState.settings };
-  finalState.orders = (loadedState.orders || []).map((o: Partial<Order>) => ({
-      ...o,
-      createdAt: o.createdAt || new Date(0).toISOString(),
-      modifiedAt: o.modifiedAt || new Date().toISOString(),
-  })) as Order[];
-  finalState.isLoading = false;
-  finalState.isInitialized = false;
-  finalState.isEditModeEnabled = false; // Always start with edit mode off
-  finalState.cardWidth = loadedState.cardWidth ?? null;
-  finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
-
-  return finalState;
-};
-
-export const AppContext = createContext<{
+interface AppContextType {
   state: AppState;
-  dispatch: Dispatch<Action>;
-  actions: AppContextActions;
-}>({
-  state: getInitialState(),
+  dispatch: React.Dispatch<AppAction>;
+  actions: Record<string, (...args: any[]) => Promise<any>>;
+}
+
+export const AppContext = createContext<AppContextType>({
+  state: initialState,
   dispatch: () => null,
-  actions: {
-      addItem: async () => { throw new Error('addItem not implemented'); },
-      updateItem: async () => {}, deleteItem: async () => {},
-      addSupplier: async () => { throw new Error('addSupplier not implemented'); },
-      updateSupplier: async () => {}, deleteSupplier: async () => {}, updateStore: async () => {}, addOrder: async () => {},
-      updateOrder: async () => {}, deleteOrder: async () => {},
-      syncWithSupabase: async () => {},
-      addItemToDispatch: async () => {},
-      mergeOrders: async () => {},
-      upsertItemPrice: async () => {},
-  }
+  actions: {},
 });
 
+const generateOrderId = (store: StoreName, counter: number) => {
+    const prefix = store.substring(0, 2).toUpperCase();
+    const date = new Date();
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${prefix}${day}${month}-${String(counter).padStart(2, '0')}`;
+};
+
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(appReducer, getInitialState());
+  const [state, dispatch] = useReducer(appReducer, initialState);
   const { notify } = useNotifier();
-  
+
   useEffect(() => {
-    try {
-        const stateToSave = { ...state, isLoading: false, isInitialized: true };
-        localStorage.setItem(APP_STATE_KEY, JSON.stringify(stateToSave));
-    } catch(err) { console.error("Could not save state to localStorage", err); }
+    const savedStateJSON = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedStateJSON) {
+      try {
+        const savedState = JSON.parse(savedStateJSON);
+        dispatch({ type: 'INITIALIZE', payload: savedState });
+        db.initializeSupabase(savedState.settings);
+      } catch (error) {
+        console.error("Failed to parse state from localStorage", error);
+        dispatch({ type: 'INITIALIZE', payload: {} });
+      }
+    } else {
+      dispatch({ type: 'INITIALIZE', payload: {} });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (state.isInitialized) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+    }
   }, [state]);
 
-  useEffect(() => {
-    const handleResize = () => {
-        dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
-    };
-    window.addEventListener('resize', handleResize);
-    // Set initial count on mount
-    handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  }, [dispatch]);
-
-  const syncWithSupabase = useCallback(async (options?: { isInitialSync?: boolean }) => {
-    dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
+  const withErrorHandling = useCallback((action: Function) => async (...args: any[]) => {
     try {
-        if (!navigator.onLine) {
-            if (!options?.isInitialSync) notify('Offline. Using cached data.', 'info');
-            return dispatch({ type: '_SET_SYNC_STATUS', payload: 'offline' });
-        }
-        const { supabaseUrl, supabaseKey } = state.settings;
-        if (!options?.isInitialSync) notify('Syncing with database...', 'info');
-
-        const { items, suppliers, stores, itemPrices } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
-        const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
-        
-        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices } }); 
-        
-        if (!options?.isInitialSync) notify('Sync complete.', 'success');
-        dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
-    } catch (e: any) {
-        if (!options?.isInitialSync) notify(`Sync failed: ${e.message}. Using cache.`, 'error');
-        dispatch({ type: '_SET_SYNC_STATUS', payload: 'error' });
+      return await action(...args);
+    } catch (error: any) {
+      console.error(error);
+      notify(error.message || 'An unexpected error occurred.', 'error');
+      throw error;
     }
-  }, [state.settings, notify, dispatch]);
-
-  useEffect(() => {
-    if (!state.isInitialized) {
-      dispatch({ type: 'INITIALIZATION_COMPLETE' });
-      syncWithSupabase({ isInitialSync: true });
-    }
-  }, [state.isInitialized, syncWithSupabase]);
-
-  const actions: AppContextActions = {
-    addItem: async (item) => {
-        const newItem = await supabaseAddItem({ item, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_ADD_ITEM', payload: newItem });
-        notify(`Item "${newItem.name}" created.`, 'success');
-        return newItem;
-    },
-    updateItem: async (item) => {
-        const updatedItem = await supabaseUpdateItem({ item, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_UPDATE_ITEM', payload: updatedItem });
-        notify(`Item "${updatedItem.name}" updated.`, 'success');
-    },
-    deleteItem: async (itemId) => {
-        await supabaseDeleteItem({ itemId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_DELETE_ITEM', payload: itemId });
-        notify('Item deleted.', 'success');
-    },
-    addSupplier: async (supplier) => {
-        const newSupplier = await supabaseAddSupplier({ supplier: supplier as Partial<Supplier> & { name: SupplierName }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_ADD_SUPPLIER', payload: newSupplier });
-        notify(`Supplier "${newSupplier.name}" created.`, 'success');
-        return newSupplier;
-    },
-    updateSupplier: async (supplier) => {
-        const updatedSupplier = await supabaseUpdateSupplier({ supplier, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_UPDATE_SUPPLIER', payload: updatedSupplier });
-        notify(`Supplier "${updatedSupplier.name}" updated.`, 'success');
-    },
-    deleteSupplier: async (supplierId) => {
-        await supabaseDeleteSupplier({ supplierId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_DELETE_SUPPLIER', payload: supplierId });
-    },
-    updateStore: async (store) => {
-        const updatedStore = await supabaseUpdateStore({ store, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: '_UPDATE_STORE', payload: updatedStore });
-        notify(`Store "${updatedStore.name}" updated.`, 'success');
-    },
-    addOrder: async (supplier, store, items = [], status = OrderStatus.DISPATCHING) => {
-        let supplierToUse = supplier;
-        if (supplier.id.startsWith('new_')) {
-            notify(`Verifying supplier: ${supplier.name}...`, 'info');
-            const newSupplierFromDb = await supabaseAddSupplier({ supplier: { name: supplier.name }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-            dispatch({ type: '_ADD_SUPPLIER', payload: newSupplierFromDb });
-            supplierToUse = newSupplierFromDb;
+  }, [notify]);
+  
+  const actions = useMemo(() => {
+    const syncWithSupabase = withErrorHandling(async () => {
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+        try {
+            const [stores, suppliers, items, itemPrices, orders] = await Promise.all([
+                db.fetchStores(),
+                db.fetchSuppliers(),
+                db.fetchItems(),
+                db.fetchItemPrices(),
+                db.fetchOrders(),
+            ]);
+            dispatch({ type: 'SET_ALL_DATA', payload: { stores, suppliers, items, itemPrices, orders } });
+            notify('Sync complete!', 'success');
+        } finally {
+            dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
         }
-        const now = new Date();
-        const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
-        const counterKey = `${dateStr}_${supplierToUse.name}_${store}`;
-        const newCounter = (state.orderIdCounters[counterKey] || 0) + 1;
-        const newOrderId = `${dateStr}_${supplierToUse.name}_${store}_${String(newCounter).padStart(3,'0')}`;
-        const newOrder: Order = {
-            id: `placeholder_${Date.now()}`, orderId: newOrderId, store, supplierId: supplierToUse.id, supplierName: supplierToUse.name, items, status,
-            isSent: status !== OrderStatus.DISPATCHING, 
-            isReceived: status === OrderStatus.COMPLETED, 
-            createdAt: now.toISOString(), modifiedAt: now.toISOString(), 
-            completedAt: status === OrderStatus.COMPLETED ? now.toISOString() : undefined,
-            paymentMethod: supplierToUse.paymentMethod,
-        };
-        const savedOrder = await supabaseAddOrder({ order: newOrder, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: 'ADD_ORDERS', payload: [savedOrder] });
-        notify(`Order for ${supplierToUse.name} created.`, 'success');
-    },
-    updateOrder: async (order) => {
-        const updatedOrder = await supabaseUpdateOrder({ order, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
-    },
-    deleteOrder: async (orderId) => {
-        await supabaseDeleteOrder({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: 'DELETE_ORDER', payload: orderId });
-        notify(`Order deleted.`, 'success');
-    },
-    addItemToDispatch: async (item) => {
-        const { activeStore, orders, suppliers, itemPrices } = state;
-        if (activeStore === 'Settings') {
-            notify('Cannot add items to dispatch from this view.', 'info');
-            return;
-        }
-        
-        const existingOrder = orders.find(o => 
-            o.store === activeStore && 
-            o.supplierId === item.supplierId && 
-            o.status === OrderStatus.DISPATCHING
-        );
-    
-        if (existingOrder) {
-            const itemInOrderIndex = existingOrder.items.findIndex(i => i.itemId === item.id);
-            if (itemInOrderIndex > -1) {
-                // Item exists, increment quantity
-                const updatedItems = [...existingOrder.items];
-                updatedItems[itemInOrderIndex] = {
-                    ...updatedItems[itemInOrderIndex],
-                    quantity: updatedItems[itemInOrderIndex].quantity + 1 // Assume adding 1
-                };
-                await actions.updateOrder({ ...existingOrder, items: updatedItems });
-                notify(`Incremented "${item.name}" in existing order.`, 'success');
-                return;
-            }
-            
-            // Item does not exist in the order, so add it
-            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
-            const updatedItems = [...existingOrder.items, newItem];
-            await actions.updateOrder({ ...existingOrder, items: updatedItems });
-            notify(`Added "${item.name}" to existing order.`, 'success');
-        } else {
-            // No existing order for this supplier, so create a new one
-            const supplier = suppliers.find(s => s.id === item.supplierId);
-            if (!supplier) {
-                notify(`Supplier for "${item.name}" not found.`, 'error');
-                return;
-            }
-            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
-            await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
-        }
-    },
-    mergeOrders: async (sourceOrderId: string, destinationOrderId: string) => {
-        const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
-        const destinationOrder = state.orders.find(o => o.id === destinationOrderId);
+    });
 
-        if (!sourceOrder || !destinationOrder) {
-            notify("Could not find orders to merge.", "error");
-            return;
-        }
+    const addOrder = withErrorHandling(async (supplier: Supplier, storeName: StoreName, items: OrderItem[], status: OrderStatus = OrderStatus.DISPATCHING) => {
+      const today = new Date().toISOString().split('T')[0];
+      const counterKey = `${storeName}-${today}`;
+      const newCounter = (state.orderIdCounters[counterKey] || 0) + 1;
+      const orderId = generateOrderId(storeName, newCounter);
 
-        const mergedItems = [...destinationOrder.items];
-        sourceOrder.items.forEach(itemToMerge => {
-            const existingItemIndex = mergedItems.findIndex(i => i.itemId === itemToMerge.itemId);
-            if (existingItemIndex > -1) {
-                mergedItems[existingItemIndex].quantity += itemToMerge.quantity;
-            } else {
-                mergedItems.push(itemToMerge);
-            }
-        });
-
-        await actions.updateOrder({ ...destinationOrder, items: mergedItems });
-        await actions.deleteOrder(sourceOrderId);
-        notify(`Merged order into ${destinationOrder.supplierName}.`, "success");
-    },
-    upsertItemPrice: async (itemPrice) => {
-        const savedPrice = await supabaseUpsertItemPrice({ itemPrice, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-        dispatch({ type: 'UPSERT_ITEM_PRICE', payload: savedPrice });
-    },
-    syncWithSupabase,
-  };
-
-    // Background polling for acknowledgements and reminders
-    useEffect(() => {
-        const intervalId = setInterval(async () => {
-            if (!navigator.onLine || !state.isInitialized) return;
-
-            // --- Acknowledgement Polling ---
-            try {
-                const unacknowledgedOnTheWay = state.orders
-                    .filter(o => o.status === OrderStatus.ON_THE_WAY && !o.isAcknowledged)
-                    .map(o => o.id);
-
-                if (unacknowledgedOnTheWay.length > 0) {
-                    const acknowledgedUpdates = await getAcknowledgedOrderUpdates({
-                        orderIds: unacknowledgedOnTheWay,
-                        url: state.settings.supabaseUrl,
-                        key: state.settings.supabaseKey,
-                    });
-
-                    for (const ackUpdate of acknowledgedUpdates) {
-                        const localOrder = state.orders.find(o => o.id === ackUpdate.id);
-                        if (localOrder && !localOrder.isAcknowledged) {
-                            notify(`Order ${ackUpdate.order_id} was acknowledged.`, 'success');
-                            dispatch({ type: 'UPDATE_ORDER', payload: { ...localOrder, isAcknowledged: true, modifiedAt: new Date().toISOString() } });
-                        }
-                    }
-                }
-            } catch (e) { console.warn('Background sync for acknowledgements failed:', e); }
-
-            // --- Reminder Polling ---
-            try {
-                const FORTY_FIVE_MINUTES = 45 * 60 * 1000;
-                const ordersToRemind = state.orders.filter(o => {
-                    if (o.status !== OrderStatus.ON_THE_WAY || o.isAcknowledged || o.reminderSentAt) return false;
-                    const supplier = state.suppliers.find(s => s.id === o.supplierId);
-                    if (!supplier?.botSettings?.showOkButton || !supplier.botSettings.enableReminderTimer) return false;
-                    const timeDiff = new Date().getTime() - new Date(o.modifiedAt).getTime();
-                    return timeDiff > FORTY_FIVE_MINUTES;
-                });
-                
-                if (ordersToRemind.length > 0 && state.settings.telegramBotToken) {
-                    for (const order of ordersToRemind) {
-                        const supplier = state.suppliers.find(s => s.id === order.supplierId)!;
-                        await sendReminderToSupplier(order, supplier, state.settings.telegramBotToken);
-                        // Silently update order without a user-facing notification
-                        const updatedOrder = await supabaseUpdateOrder({ order: { ...order, reminderSentAt: new Date().toISOString() }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
-                        dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
-                    }
-                }
-            } catch (e) { console.warn('Background check for reminders failed:', e); }
-
-        }, 30000); // Poll every 30 seconds
-
-        return () => clearInterval(intervalId);
-    }, [state.isInitialized, state.settings, state.orders, state.suppliers, dispatch, notify]);
-
-
-  for (const actionName in actions) {
-      const originalAction = (actions as any)[actionName];
-      (actions as any)[actionName] = async (...args: any[]) => {
-          try {
-              if (actionName === 'addItemToDispatch') {
-                 // The 'addItemToDispatch' action calls other wrapped actions, so we call it directly
-                 // to avoid double error handling.
-                 return await originalAction(...args);
-              }
-              return await originalAction(...args);
-          } catch (e: any) {
-              notify(`Error: ${e.message}`, 'error');
-              throw e;
-          }
+      const newOrder: Omit<Order, 'id' | 'createdAt' | 'modifiedAt'> & {id?: string} = {
+        orderId,
+        store: storeName,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        items,
+        status,
+        isSent: false,
+        isReceived: false,
+        paymentMethod: supplier.paymentMethod
       };
-  }
+      
+      const savedOrder = await db.upsertOrder(newOrder);
+      dispatch({ type: 'UPSERT_ORDER', payload: savedOrder });
+      dispatch({ type: 'INCREMENT_ORDER_COUNTER', payload: storeName });
+      return savedOrder;
+    });
 
-  return (
-    <AppContext.Provider value={{ state, dispatch, actions }}>
-      {children}
-    </AppContext.Provider>
-  );
+    const updateOrder = withErrorHandling(async (order: Partial<Order> & { id: string }) => {
+      const savedOrder = await db.upsertOrder({ ...order, modifiedAt: new Date().toISOString() });
+      dispatch({ type: 'UPSERT_ORDER', payload: savedOrder });
+      return savedOrder;
+    });
+
+    const deleteOrder = withErrorHandling(async (id: string) => {
+        await db.deleteOrder(id);
+        dispatch({ type: 'DELETE_ORDER', payload: id });
+    });
+    
+    const mergeOrders = withErrorHandling(async (sourceOrderId: string, destinationOrderId: string) => {
+      const sourceOrder = state.orders.find(o => o.id === sourceOrderId);
+      const destinationOrder = state.orders.find(o => o.id === destinationOrderId);
+      if(!sourceOrder || !destinationOrder) throw new Error("Could not find orders to merge.");
+
+      const newItems = [...destinationOrder.items];
+      sourceOrder.items.forEach(sourceItem => {
+        const existingItemIndex = newItems.findIndex(i => i.itemId === sourceItem.itemId && i.isSpoiled === sourceItem.isSpoiled);
+        if (existingItemIndex > -1) {
+          newItems[existingItemIndex].quantity += sourceItem.quantity;
+        } else {
+          newItems.push(sourceItem);
+        }
+      });
+      await updateOrder({ ...destinationOrder, items: newItems });
+      await deleteOrder(sourceOrderId);
+      notify('Orders merged', 'success');
+    });
+
+    const addItem = withErrorHandling(async (item: Omit<Item, 'id' | 'supplierName' | 'createdAt' | 'modifiedAt'> & {supplierName: SupplierName}) => {
+        const savedItem = await db.upsertItem(item);
+        dispatch({ type: 'UPSERT_ITEM', payload: savedItem });
+        return savedItem;
+    });
+
+    const updateItem = withErrorHandling(async (item: Item) => {
+        const savedItem = await db.upsertItem(item);
+        dispatch({ type: 'UPSERT_ITEM', payload: savedItem });
+        return savedItem;
+    });
+
+    const deleteItem = withErrorHandling(async (id: string) => {
+        await db.deleteItem(id);
+        dispatch({ type: 'DELETE_ITEM', payload: id });
+    });
+    
+    const upsertItemPrice = withErrorHandling(async (itemPrice: Partial<ItemPrice>) => {
+        const savedPrice = await db.upsertItemPrice(itemPrice);
+        dispatch({ type: 'UPSERT_ITEM_PRICE', payload: savedPrice });
+        return savedPrice;
+    });
+
+    const addSupplier = withErrorHandling(async (supplier: Omit<Supplier, 'id' | 'modifiedAt'>) => {
+        const savedSupplier = await db.upsertSupplier(supplier);
+        dispatch({ type: 'UPSERT_SUPPLIER', payload: savedSupplier });
+        return savedSupplier;
+    });
+
+    const updateSupplier = withErrorHandling(async (supplier: Supplier) => {
+        const savedSupplier = await db.upsertSupplier(supplier);
+        dispatch({ type: 'UPSERT_SUPPLIER', payload: savedSupplier });
+        return savedSupplier;
+    });
+    
+    const deleteSupplier = withErrorHandling(async (id: string) => {
+        await db.deleteSupplier(id);
+        dispatch({ type: 'DELETE_SUPPLIER', payload: id });
+    });
+
+    const updateStore = withErrorHandling(async (store: Store) => {
+        const savedStore = await db.upsertStore(store);
+        dispatch({ type: 'UPSERT_STORE', payload: savedStore });
+        return savedStore;
+    });
+
+    return { syncWithSupabase, addOrder, updateOrder, deleteOrder, mergeOrders, addItem, updateItem, deleteItem, upsertItemPrice, addSupplier, updateSupplier, deleteSupplier, updateStore };
+
+  }, [state.orders, state.orderIdCounters, withErrorHandling]);
+
+  const contextValue = { state, dispatch, actions };
+
+  return <AppContext.Provider value={contextValue}>{children}</AppContext.Provider>;
 };
+
+export const useAppContext = () => {
+    const context = useContext(AppContext);
+    if (context === undefined) {
+        throw new Error('useAppContext must be used within an AppProvider');
+    }
+    return context;
+}

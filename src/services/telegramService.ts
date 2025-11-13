@@ -1,349 +1,99 @@
-import { Order, OrderItem, Supplier } from '../types';
-import { generateOrderMessage, escapeHtml, replacePlaceholders } from '../utils/messageFormatter';
+import { Order, Supplier } from '../types';
 
-interface ReplyMarkup {
-  inline_keyboard: { text: string; callback_data: string; }[][];
-}
+const TELEGRAM_API_BASE = 'https://api.telegram.org/bot';
 
-/**
- * A helper function to send a message via the Telegram Bot API.
- * @param token The Telegram Bot Token.
- * @param chatId The chat ID to send the message to.
- * @param message The message text, formatted with HTML.
- * @param replyMarkup Optional inline keyboard markup.
- */
-async function sendMessage(token: string, chatId: string, message: string, replyMarkup?: ReplyMarkup): Promise<void> {
-    const TELEGRAM_API_URL = `https://api.telegram.org/bot${token}`;
-    
-    const body: { [key: string]: any } = {
-        chat_id: chatId,
-        text: message,
-        parse_mode: 'HTML',
-    };
-
-    if (replyMarkup) {
-        body.reply_markup = replyMarkup;
-    }
-
-    const response = await fetch(`${TELEGRAM_API_URL}/sendMessage`, {
+const callTelegramApi = async (token: string, methodName: string, payload: any) => {
+    const response = await fetch(`${TELEGRAM_API_BASE}${token}/${methodName}`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(payload),
     });
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        try {
-            const errorData = JSON.parse(errorText);
-            console.error('Telegram API error:', errorData);
-            const description = (typeof errorData.description === 'string') ? errorData.description : JSON.stringify(errorData);
-            throw new Error(description || 'Failed to send message via Telegram.');
-        } catch (jsonError) {
-            throw new Error(`Telegram API returned non-JSON error: ${errorText}`);
-        }
+    const data = await response.json();
+    if (!data.ok) {
+        throw new Error(`Telegram API Error: ${data.description}`);
     }
-}
-
-/**
- * Sends a formatted order message to a specific supplier's chat with interactive buttons.
- * @param order The order object.
- * @param supplier The supplier object, containing the chat ID and bot settings.
- * @param message The pre-formatted order message (HTML).
- * @param token The Telegram Bot Token.
- */
-export const sendOrderToSupplierOnTelegram = async (
-  order: Order,
-  supplier: Supplier,
-  message: string,
-  token: string
-): Promise<void> => {
-    const { id: orderId } = order;
-    if (!orderId) {
-        console.error("sendOrderToSupplierOnTelegram was called with an order that has no ID.", order);
-        throw new Error("Cannot send order to Telegram: Order is missing its ID.");
-    }
-    if (!supplier.chatId) {
-        throw new Error("Supplier Chat ID is missing.");
-    }
-
-    const buttons: { text: string; callback_data: string }[] = [];
-    const botSettings = supplier.botSettings;
-
-    if (botSettings?.showAttachInvoice) {
-        buttons.push({ text: "📎 Attach Invoice", callback_data: `invoice_attach_${orderId}` });
-    }
-    if (botSettings?.showMissingItems) {
-        buttons.push({ text: "❗️ Missing Item", callback_data: `missing_item_${orderId}` });
-    }
-    if (botSettings?.showOkButton) {
-        buttons.push({ text: "✅ OK", callback_data: `approve_order_${orderId}` });
-    }
-    if (botSettings?.showDriverOnWayButton) {
-        buttons.push({ text: "🚚 Driver on the way", callback_data: `driver_onway_${orderId}` });
-    }
-
-    let replyMarkup: ReplyMarkup | undefined = undefined;
-
-    if (buttons.length > 0) {
-        // Arrange buttons in rows of max 2
-        const keyboard: { text: string; callback_data: string; }[][] = [];
-        for (let i = 0; i < buttons.length; i += 2) {
-            keyboard.push(buttons.slice(i, i + 2));
-        }
-        replyMarkup = { inline_keyboard: keyboard };
-    }
-    
-    await sendMessage(token, supplier.chatId, message, replyMarkup);
+    return data.result;
 };
 
-/**
- * Sends an automated reminder message to a supplier for an unacknowledged order.
- * @param order The pending order.
- * @param supplier The supplier to remind.
- * @param token The Telegram bot token.
- */
-export const sendReminderToSupplier = async (
-  order: Order,
-  supplier: Supplier,
-  token: string
-): Promise<void> => {
-  if (!supplier.chatId) {
-    throw new Error("Supplier Chat ID is missing for reminder.");
-  }
-
-  const template = supplier.botSettings?.reminderMessageTemplate;
-  let message: string;
-
-  if (template) {
-      const replacements = {
-          orderId: escapeHtml(order.orderId),
-          storeName: escapeHtml(order.store),
-          supplierName: escapeHtml(supplier.name),
-      };
-      message = replacePlaceholders(template, replacements);
-  } else {
-      message = `⚠️ Dear manager, it seems you didn't see the order sent 45mn ago for ${escapeHtml(order.store)}. Press cancel if out of stock, press ok if you process with the order, thank you b.`;
-  }
-
-
-  const replyMarkup: ReplyMarkup = {
-    inline_keyboard: [[
-      { text: "cancel order", callback_data: `cancel_order_${order.id}` },
-      { text: "ok noted", callback_data: `ok_noted_${order.id}` }
-    ]]
-  };
-
-  await sendMessage(token, supplier.chatId, message, replyMarkup);
-};
-
-/**
- * Sends a custom message to a supplier's chat.
- * @param supplier The supplier object containing the chat ID.
- * @param message The message text to send, assumed to be HTML formatted.
- * @param token The Telegram Bot Token.
- */
-export const sendCustomMessageToSupplier = async (
-  supplier: Supplier,
-  message: string,
-  token: string
-): Promise<void> => {
+export const sendOrderToSupplierOnTelegram = async (order: Order, supplier: Supplier, message: string, token: string): Promise<void> => {
     if (!supplier.chatId) {
-        throw new Error("Supplier Chat ID is missing.");
-    }
-    // Simple message with no buttons
-    await sendMessage(token, supplier.chatId, message);
-};
-
-/**
- * Sends a formatted text receipt to a supplier's chat.
- * @param order The completed order object.
- * @param supplier The supplier object containing the chat ID.
- * @param message The pre-formatted receipt message (HTML).
- * @param token The Telegram Bot Token.
- */
-export const sendReceiptOnTelegram = async (
-    order: Order,
-    supplier: Supplier,
-    message: string,
-    token: string
-): Promise<void> => {
-    if (!supplier.chatId) {
-        throw new Error("Supplier Chat ID is missing.");
-    }
-    // Simple message with no buttons
-    await sendMessage(token, supplier.chatId, message);
-};
-
-/**
- * Sends a message to a supplier with items that were added to an existing order.
- * This message will only contain a "Missing Item" button, if enabled for the supplier.
- * @param order The order that was updated.
- * @param newItems The list of newly added items.
- * @param supplier The supplier object.
- * @param token The Telegram Bot Token.
- */
-export const sendOrderUpdateToSupplierOnTelegram = async (
-    order: Order,
-    newItems: OrderItem[],
-    supplier: Supplier,
-    token: string
-  ): Promise<void> => {
-    const { id: orderId } = order;
-    if (!orderId) {
-        console.error("sendOrderUpdateToSupplierOnTelegram was called with an order that has no ID.", order);
-        throw new Error("Cannot send order update to Telegram: Order is missing its ID.");
-    }
-    if (!supplier.chatId) {
-        throw new Error("Supplier Chat ID is missing.");
+        throw new Error('Supplier does not have a Chat ID configured.');
     }
 
-    const itemsList = newItems
-      .map(item => `  - ${escapeHtml(item.name)} x${item.quantity}${item.unit ? ` ${escapeHtml(item.unit)}` : ''}`)
-      .join('\n');
-  
-    const message = `
-➕ <b>Additional Items for Order <code>${escapeHtml(order.orderId)}</code></b>
-Please add the following items to the order:
-${itemsList}
-    `.trim();
+    const payload: any = {
+        chat_id: supplier.chatId,
+        text: message,
+        parse_mode: 'HTML',
+    };
 
-    let replyMarkup: ReplyMarkup | undefined = undefined;
-    if (supplier.botSettings?.showMissingItems) {
-        replyMarkup = {
+    if (supplier.botSettings?.showOkButton) {
+        payload.reply_markup = {
             inline_keyboard: [
-                [{ text: "❗️ Missing Item", callback_data: `missing_item_${orderId}` }]
+                [{ text: 'OK 👍', callback_data: `ack_order_${order.id}` }]
             ]
         };
     }
-  
-    await sendMessage(token, supplier.chatId, message, replyMarkup);
+
+    await callTelegramApi(token, 'sendMessage', payload);
 };
 
+export const sendReminderToSupplier = async (order: Order, supplier: Supplier, token: string): Promise<void> => {
+    if (!supplier.chatId) return;
 
-/**
- * Sends a notification message to a store's chat when an order is on the way.
- * This function is not currently used in the UI but is available.
- * @param order The order that is on the way.
- * @param storeChatId The store's Telegram chat ID.
- * @param token The Telegram Bot Token.
- */
-export const sendOrderToStoreOnTelegram = async (
-  order: Order,
-  storeChatId: string,
-  token: string
-): Promise<void> => {
-    const APP_BASE_URL = window.location.origin;
-    const managerUrl = `${APP_BASE_URL}/#/?view=manager&store=${order.store}`;
-    const message = `
-📦 <b>New Delivery</b>
-A new order for <b>${order.supplierName}</b> is on its way to <b>${order.store}</b>.
+    const reminderMessage = supplier.botSettings?.reminderMessageTemplate
+        ? supplier.botSettings.reminderMessageTemplate.replace('{{orderId}}', order.orderId)
+        : `🔔 Reminder: Please acknowledge order #${order.orderId}.`;
 
-Order ID: <code>${order.orderId}</code>
-Items: ${order.items.length}
-
-Please mark items as received or spoiled upon arrival.
-
-<a href="${managerUrl}">View Order Details</a>
-    `.trim();
-
-    await sendMessage(token, storeChatId, message);
-};
-
-/**
- * Sends the consolidated Kali Unify Report to a specific Telegram channel.
- * @param message The pre-formatted report message.
- * @param token The Telegram Bot Token.
- */
-export const sendKaliUnifyReport = async (
-    message: string,
-    token: string
-): Promise<void> => {
-    const KALI_UNIFY_CHAT_ID = "-1003065576801";
-
-    // The unify report uses plain text, so we send it as HTML without any tags.
-    // Buttons have been removed as per user request.
-    await sendMessage(token, KALI_UNIFY_CHAT_ID, message);
-};
-
-/**
- * Sends the consolidated Kali "On the Way" report to a specific Telegram chat.
- * @param message The pre-formatted report message (HTML).
- * @param token The Telegram Bot Token.
- */
-export const sendKaliZapReport = async (
-    message: string,
-    token: string
-): Promise<void> => {
-    const KALI_ZAP_CHAT_ID = "5186573916";
-    // Send a simple HTML message with no buttons
-    await sendMessage(token, KALI_ZAP_CHAT_ID, message);
-};
-
-/**
- * Sends a formatted text receipt to a store's chat.
- * @param storeChatId The store's Telegram chat ID.
- * @param message The pre-formatted receipt message (HTML).
- * @param token The Telegram Bot Token.
- */
-export const sendReceiptToStoreOnTelegram = async (
-    storeChatId: string,
-    message: string,
-    token: string
-): Promise<void> => {
-    // Simple message with no buttons
-    await sendMessage(token, storeChatId, message);
-};
-
-/**
- * Sends the daily Due Report to a specific Telegram channel.
- * @param message The pre-formatted report message (HTML).
- * @param token The Telegram Bot Token.
- */
-export const sendDueReport = async (
-    message: string,
-    token: string
-): Promise<void> => {
-    // Re-using the same channel as the other main financial report.
-    const DUE_REPORT_CHAT_ID = "-1003065576801";
-    await sendMessage(token, DUE_REPORT_CHAT_ID, message);
-};
-
-/**
- * Sends the consolidated receipt to a store's Telegram chat.
- * @param storeChatId The store's Telegram chat ID.
- * @param message The pre-formatted receipt message.
- * @param token The Telegram Bot Token.
- */
-export const sendConsolidatedReceiptToStore = async (
-    storeChatId: string,
-    message: string,
-    token: string
-): Promise<void> => {
-    // Plain text message, send without <pre> tags for consistent formatting.
-    await sendMessage(token, storeChatId, message);
-};
-
-
-/**
- * Sets the webhook for the Telegram bot.
- * @param webhookUrl The URL of the Supabase Edge Function.
- * @param token The Telegram Bot Token.
- */
-export const setWebhook = async (webhookUrl: string, token: string): Promise<void> => {
-    const TELEGRAM_API_URL = `https://api.telegram.org/bot${token}`;
-    const response = await fetch(`${TELEGRAM_API_URL}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        try {
-            const errorData = JSON.parse(errorText);
-            console.error('Telegram API error:', errorData);
-            const description = (typeof errorData.description === 'string') ? errorData.description : JSON.stringify(errorData);
-            throw new Error(description || 'Failed to set webhook.');
-        } catch (jsonError) {
-            throw new Error(`Telegram API returned non-JSON error: ${errorText}`);
+    const payload = {
+        chat_id: supplier.chatId,
+        text: reminderMessage,
+        parse_mode: 'HTML',
+        reply_markup: {
+            inline_keyboard: [
+                [{ text: 'OK 👍', callback_data: `ack_order_${order.id}` }]
+            ]
         }
-    }
+    };
+    await callTelegramApi(token, 'sendMessage', payload);
+};
+
+export const setWebhook = async (url: string, token: string): Promise<void> => {
+    const payload = { url };
+    await callTelegramApi(token, 'setWebhook', payload);
+};
+
+const KALI_CHAT_ID = '-4233405342';
+const KALI_ZAP_CHAT_ID = '-1002242171549';
+const DISPATCH_CHAT_ID = '-4233405342';
+
+export const sendKaliUnifyReport = async (message: string, token: string): Promise<void> => {
+    await callTelegramApi(token, 'sendMessage', {
+        chat_id: KALI_CHAT_ID,
+        text: message,
+    });
+};
+
+export const sendKaliZapReport = async (message: string, token: string): Promise<void> => {
+    await callTelegramApi(token, 'sendMessage', {
+        chat_id: KALI_ZAP_CHAT_ID,
+        text: message,
+        parse_mode: 'HTML',
+    });
+};
+
+export const sendDueReport = async (message: string, token: string): Promise<void> => {
+    await callTelegramApi(token, 'sendMessage', {
+        chat_id: DISPATCH_CHAT_ID,
+        text: message,
+    });
+};
+
+export const sendConsolidatedReceiptToStore = async (chatId: string, message: string, token: string): Promise<void> => {
+    await callTelegramApi(token, 'sendMessage', {
+        chat_id: chatId,
+        text: message,
+    });
 };

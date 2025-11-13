@@ -12,11 +12,9 @@ interface OrderMessageModalProps {
 
 const OrderMessageModal: React.FC<OrderMessageModalProps> = ({ order, isOpen, onClose }) => {
     const { addToast } = useToasts();
-    // FIX: Access app state to get data required by generateOrderMessage.
     const { state } = useContext(AppContext);
-    const supplier = state.suppliers.find(s => s.id === order.supplierId);
     
-    const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain', supplier, state.stores, state.settings), [order, supplier, state.stores, state.settings]);
+    const plainTextMessage = useMemo(() => generateOrderMessage(order, 'plain', state.suppliers, state.stores, state.settings), [order, state.suppliers, state.stores, state.settings]);
 
     const handleCopyToClipboard = () => {
         navigator.clipboard.writeText(plainTextMessage).then(() => {

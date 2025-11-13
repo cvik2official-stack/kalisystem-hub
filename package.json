@@ -12,7 +12,9 @@
     "@google/genai": "^1.27.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "deno.ns": "^0.8.0"
+    "deno.ns": "^0.8.0",
+    "uuid": "^13.0.0",
+    "@supabase/supabase-js": "^2.81.1"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

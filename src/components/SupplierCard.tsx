@@ -1,4 +1,4 @@
-import React, { useContext, useState, useMemo, useRef } from 'react';
+import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice } from '../types';
 import ContextMenu from './ContextMenu';
@@ -34,6 +34,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     const longPressTimer = useRef<number | null>(null);
     const isLongPress = useRef(false);
     const [activeItemId, setActiveItemId] = useState<string | null>(null);
+    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    const itemsContainerRef = useRef<HTMLDivElement>(null);
+
 
     // State for item modals
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
@@ -42,6 +45,20 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (activeItemId && itemsContainerRef.current && !itemsContainerRef.current.contains(event.target as Node)) {
+                setActiveItemId(null);
+                setEditingItemId(null);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, [activeItemId]);
 
     // --- RE-IMPLEMENTED DRAG AND DROP LOGIC ---
 
@@ -240,37 +257,29 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     };
 
     const handleSendToTelegram = async () => {
-        const { settings } = state;
-        if (!supplier || !supplier.chatId || !settings.telegramBotToken) {
+        const { settings, suppliers } = state;
+        const currentSupplier = suppliers.find(s => s.id === order.supplierId);
+        if (!currentSupplier || !currentSupplier.chatId || !settings.telegramBotToken) {
             notify('Supplier Chat ID or Bot Token is not configured.', 'error');
             return;
         }
         setIsProcessing(true);
         try {
-            await sendOrderToSupplierOnTelegram(order, supplier, generateOrderMessage(order, 'html', supplier, state.stores, settings), settings.telegramBotToken);
+            await sendOrderToSupplierOnTelegram(order, currentSupplier, generateOrderMessage(order, 'html', suppliers, state.stores, settings), settings.telegramBotToken);
             notify(`Order sent to ${order.supplierName}.`, 'success');
             await actions.updateOrder({ ...order, isSent: true, status: OrderStatus.ON_THE_WAY });
         } catch (error: any) {
             notify(error.message || `Failed to send.`, 'error');
         } finally { setIsProcessing(false); }
     };
-
-    const handleMoveToOnTheWayWithoutSending = async () => {
-        setIsProcessing(true);
-        try {
-            await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
-            notify(`Order for ${order.supplierName} moved to 'On the Way'.`, 'success');
-        } finally {
-            setIsProcessing(false);
-        }
-    };
     
     const handleLongPressAction = async () => {
-        // First, move the order
-        await handleMoveToOnTheWayWithoutSending();
+        // Move the order
+        await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
+        notify(`Order for ${order.supplierName} moved to 'On the Way'.`, 'success');
         
         // Then, copy the message to the clipboard
-        const plainTextMessage = generateOrderMessage(order, 'plain', supplier, state.stores, state.settings);
+        const plainTextMessage = generateOrderMessage(order, 'plain', state.suppliers, state.stores, state.settings);
         try {
             await navigator.clipboard.writeText(plainTextMessage);
             notify('Order message copied!', 'success');
@@ -310,6 +319,34 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         setIsPriceNumpadOpen(false);
         setNumpadOpen(true);
     };
+
+    const handleItemNameClick = (uniqueItemId: string) => {
+        if (activeItemId === uniqueItemId) {
+            setEditingItemId(uniqueItemId);
+        } else {
+            setActiveItemId(uniqueItemId);
+            setEditingItemId(null);
+        }
+    };
+    
+    const handleItemNameSave = async (itemToUpdate: OrderItem, newName: string) => {
+        const trimmedName = newName.trim();
+        if (itemToUpdate.name === trimmedName || trimmedName === '') {
+            setEditingItemId(null);
+            return;
+        }
+    
+        const updatedItems = order.items.map(i =>
+            (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled)
+                ? { ...i, name: trimmedName }
+                : i
+        );
+        
+        await actions.updateOrder({ ...order, items: updatedItems });
+    
+        setEditingItemId(null);
+    };
+
 
     const paymentMethodBadgeColors: Record<string, string> = {
         [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
@@ -393,7 +430,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                     disabled={!supplier?.chatId || isProcessing}
                                     className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors duration-200 ${(order.isSent || !supplier?.chatId) ? 'bg-gray-600' : 'bg-blue-500'}`}
                                     aria-label="Send to Telegram"
-                                    title="Click to send & move, long-press to move & copy"
+                                    title="Click: Send & Move | Long-press: Move & Copy"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor">
                                         <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path>
@@ -428,11 +465,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                     </div>
                 </div>
 
-                <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) setActiveItemId(null); }}>
-                    <div className="pt-1 pb-1 px-1 space-y-1">
+                <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) { setActiveItemId(null); setEditingItemId(null); } }}>
+                    <div ref={itemsContainerRef} className="pt-1 pb-1 px-1 space-y-1">
                         {order.items.map(item => {
                             const uniqueItemId = `${item.itemId}-${item.isSpoiled ? 'spoiled' : 'clean'}`;
                             const isActive = activeItemId === uniqueItemId;
+                            const isEditing = editingItemId === uniqueItemId;
                             const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, state.itemPrices);
                             const price = item.price ?? latestPriceInfo?.price ?? null;
                             const priceUnit = latestPriceInfo?.unit;
@@ -447,10 +485,25 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
                                     </div>
-                                    <span onClick={() => setActiveItemId(isActive ? null : uniqueItemId)} className="flex-1 text-gray-300 truncate cursor-pointer">
-                                        {item.name}
-                                        {priceUnit && priceUnit !== item.unit && <span className="text-gray-500 text-xs ml-1">({priceUnit})</span>}
-                                    </span>
+                                    {isEditing ? (
+                                        <input
+                                            type="text"
+                                            defaultValue={item.name}
+                                            autoFocus
+                                            onBlur={(e) => handleItemNameSave(item, e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') e.currentTarget.blur();
+                                                if (e.key === 'Escape') setEditingItemId(null);
+                                            }}
+                                            className="flex-1 bg-gray-700 text-gray-200 rounded px-1 py-0.5 outline-none ring-1 ring-indigo-500"
+                                            onClick={(e) => e.stopPropagation()}
+                                        />
+                                    ) : (
+                                        <span onClick={() => handleItemNameClick(uniqueItemId)} className="flex-1 text-gray-300 truncate cursor-pointer">
+                                            {item.name}
+                                            {priceUnit && priceUnit !== item.unit && <span className="text-gray-500 text-xs ml-1">({priceUnit})</span>}
+                                        </span>
+                                    )}
                                     <div className="flex items-center space-x-2 ml-2">
                                         {order.status !== OrderStatus.DISPATCHING && (
                                             price !== null ? (
