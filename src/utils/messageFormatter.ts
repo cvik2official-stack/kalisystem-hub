@@ -84,12 +84,12 @@ const _generateAggregatedItemsReport = (
             const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
             const unitDisplay = item.unit || '';
             
-            // New format based on user's text: (total item price) (item name) (item unit price) (item quantity)
-            const totalPart = item.totalValue.toFixed(2).padEnd(8);
+            // New columnar format for better alignment
             const namePart = item.name.padEnd(20, ' ').substring(0, 20);
-            const pricePart = `@ ${avgPrice.toFixed(2)}`.padEnd(10);
-            const qtyPart = `${item.quantity}${unitDisplay}`;
-            block += `${totalPart} ${namePart} ${pricePart} ${qtyPart}\n`;
+            const qtyPart = `${item.quantity}${unitDisplay}`.padStart(7);
+            const pricePart = `@ ${avgPrice.toFixed(2)}`.padStart(8);
+            const totalPart = item.totalValue.toFixed(2).padStart(8);
+            block += `${namePart} ${qtyPart} ${pricePart} ${totalPart}\n`;
         }
         groupBlocks.push(block);
     }
@@ -469,12 +469,12 @@ export const generateStoreReport = (orders: Order[]): string => {
         grandTotal += item.totalValue;
         const avgPrice = item.priceEntries.length > 0 ? item.priceEntries.reduce((a, b) => a + b, 0) / item.priceEntries.length : 0;
         
-        const total = item.totalValue.toFixed(2).padEnd(10);
-        const name = item.name.padEnd(22, ' ');
-        const price = `@ ${avgPrice.toFixed(2)}`.padEnd(10);
-        const quantity = `${item.totalQuantity}${item.unit || ''}`;
+        const name = item.name.padEnd(20, ' ');
+        const quantity = `${item.totalQuantity}${item.unit || ''}`.padStart(8, ' ');
+        const price = `@ ${avgPrice.toFixed(2)}`.padStart(10, ' ');
+        const total = `${item.totalValue.toFixed(2)}`.padStart(12, ' ');
 
-        report += `${total}${name}${price}${quantity}\n`;
+        report += `${name}${quantity}${price}${total}\n`;
     }
 
     report += "\n========================================\n";
@@ -595,11 +595,11 @@ export const generateConsolidatedReceipt = (
                 if (isHtml) {
                     result += `<tr><td style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;">${h(item.name)}</td><td style="text-align: right;">${item.quantity}${unit}</td><td style="text-align: right;">@ ${avgPrice.toFixed(2)}</td><td style="text-align: right;"><b>${item.totalValue.toFixed(2)}</b></td></tr>`;
                 } else {
-                    const totalPart = item.totalValue.toFixed(2).padEnd(8);
                     const namePart = item.name.padEnd(18, ' ').substring(0, 18);
-                    const pricePart = `@${avgPrice.toFixed(2)}`.padEnd(9);
-                    const qtyPart = `${item.quantity}${unit}`;
-                    result += `${totalPart} ${namePart} ${pricePart} ${qtyPart}\n`;
+                    const qtyPart = `${item.quantity}${unit}`.padStart(6);
+                    const pricePart = `@${avgPrice.toFixed(2)}`.padStart(7);
+                    const totalPart = item.totalValue.toFixed(2).padStart(8);
+                    result += `${namePart} ${qtyPart} ${pricePart} ${totalPart}\n`;
                 }
             } else {
                 if (isHtml) {
