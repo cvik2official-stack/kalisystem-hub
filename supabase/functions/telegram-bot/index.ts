@@ -1,6 +1,8 @@
 // @formatter:off
 // FIX: Use a more reliable CDN for Deno types to fix resolution errors.
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
+// FIX: Pinning the version of the type definitions to improve resolution reliability and fix 'Cannot find name Deno' errors.
+// FIX: Pinned the Supabase functions-js version to a specific, working version to resolve Deno type definition errors.
+/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
