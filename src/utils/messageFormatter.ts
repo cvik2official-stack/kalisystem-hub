@@ -47,7 +47,8 @@ export const generateOrderMessage = (order: Order, format: 'html' | 'plain', sup
         return format === 'html' ? `  - ${escapeHtml(line)}` : `  - ${line}`;
     }).join('\n');
     
-    let storeNameDisplay = order.store;
+    // FIX: Explicitly type storeNameDisplay as a string to allow assigning HTML content.
+    let storeNameDisplay: string = order.store;
     if (format === 'html' && (supplier?.botSettings?.includeLocation || supplier?.botSettings?.includeLocation === undefined && store?.locationUrl) && store?.locationUrl) {
         storeNameDisplay = `<a href="${escapeHtml(store.locationUrl)}">${escapeHtml(order.store)}</a>`;
     } else if(format === 'html') {

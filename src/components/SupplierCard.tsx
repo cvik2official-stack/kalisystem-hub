@@ -45,6 +45,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false);
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
+    const [editingPriceUniqueId, setEditingPriceUniqueId] = useState<string | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -195,9 +196,37 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         if (order.status === OrderStatus.DISPATCHING) {
             setSelectedItem(item);
             setNumpadOpen(true);
-        } else if (order.status === OrderStatus.ON_THE_WAY || (order.status === OrderStatus.COMPLETED && isEditModeEnabled)) {
-            setSelectedItem(item);
-            setIsPriceNumpadOpen(true);
+        }
+    };
+    
+    const handleSaveInlinePrice = async (itemToUpdate: OrderItem, totalPriceStr: string) => {
+        setEditingPriceUniqueId(null); 
+
+        const newTotalPrice = totalPriceStr.trim() === '' ? null : parseFloat(totalPriceStr);
+
+        if (newTotalPrice === null) {
+            const { price, ...itemWithoutPrice } = itemToUpdate;
+            if (itemToUpdate.price !== undefined) {
+                 await actions.updateOrder({ ...order, items: order.items.map(i => i.itemId === itemToUpdate.itemId ? itemWithoutPrice : i) });
+            }
+            return;
+        }
+    
+        if (itemToUpdate.quantity === 0) {
+            notify('Cannot set price for item with quantity 0.', 'error');
+            return;
+        }
+        
+        if (!isNaN(newTotalPrice) && newTotalPrice >= 0) {
+            const newUnitPrice = newTotalPrice / itemToUpdate.quantity;
+            const updatedItems = order.items.map(i =>
+                (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled)
+                    ? { ...i, price: newUnitPrice }
+                    : i
+            );
+            await actions.updateOrder({ ...order, items: updatedItems });
+        } else {
+            notify('Invalid price.', 'error');
         }
     };
 
@@ -472,8 +501,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                             const isActive = activeItemId === uniqueItemId;
                             const isEditing = editingItemId === uniqueItemId;
                             const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, state.itemPrices);
-                            const price = item.price ?? latestPriceInfo?.price ?? null;
+                            const unitPrice = item.price ?? latestPriceInfo?.price ?? null;
                             const priceUnit = latestPriceInfo?.unit;
+                            const isEditingPrice = editingPriceUniqueId === uniqueItemId;
+                            const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || (order.status === OrderStatus.COMPLETED && isEditModeEnabled));
 
                             return (
                                 <div key={uniqueItemId} className="flex items-center group">
@@ -506,15 +537,30 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                     )}
                                     <div className="flex items-center space-x-2 ml-2">
                                         {order.status !== OrderStatus.DISPATCHING && (
-                                            price !== null ? (
-                                                <span className="font-mono text-cyan-300 w-20 text-right">
-                                                    {(price * item.quantity).toFixed(2)}
-                                                </span>
+                                            isEditingPrice && canEditPrice ? (
+                                                <input
+                                                    type="text"
+                                                    inputMode="decimal"
+                                                    defaultValue={unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : ''}
+                                                    autoFocus
+                                                    onBlur={(e) => handleSaveInlinePrice(item, e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') e.currentTarget.blur();
+                                                        if (e.key === 'Escape') setEditingPriceUniqueId(null);
+                                                    }}
+                                                    className="bg-gray-700 text-cyan-300 font-mono rounded px-1 py-0.5 w-20 text-right outline-none ring-1 ring-indigo-500"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
                                             ) : (
-                                                <span className="w-20" /> // Placeholder for alignment
+                                                <div 
+                                                    onClick={() => { if(canEditPrice) setEditingPriceUniqueId(uniqueItemId); }} 
+                                                    className={`font-mono text-cyan-300 w-20 text-right p-1 -m-1 rounded-md ${canEditPrice ? 'hover:bg-gray-700 cursor-pointer' : ''}`}
+                                                >
+                                                    {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
+                                                </div>
                                             )
                                         )}
-                                        <div onClick={() => handleQuantityOrPriceClick(item)} className="text-white text-right w-16 p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer">
+                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${order.status === OrderStatus.DISPATCHING ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {item.quantity}{item.unit}
                                         </div>
                                         <button 

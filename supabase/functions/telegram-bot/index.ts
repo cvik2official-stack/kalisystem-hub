@@ -1,6 +1,6 @@
 // @formatter:off
-// FIX: Pin the version for the Deno types reference to ensure stability and resolve 'Cannot find name Deno' errors.
-/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
+// FIX: Use a more reliable CDN for Deno types to fix resolution errors.
+/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
