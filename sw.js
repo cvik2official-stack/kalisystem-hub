@@ -1,10 +1,16 @@
-const CACHE_NAME = 'kalisystem-dispatcher-v1';
+const CACHE_NAME = 'kalisystem-dispatcher-v2';
 const urlsToCache = [
   '/',
   'index.html',
   'styles.css',
   'index.tsx',
-  'manifest.json'
+  'manifest.json',
+  '/favicon.ico',
+  '/icons/apple-touch-icon.png',
+  '/icons/favicon-32x32.png',
+  '/icons/favicon-16x16.png',
+  '/icons/android-chrome-192x192.png',
+  '/icons/android-chrome-512x512.png'
 ];
 
 self.addEventListener('install', event => {
@@ -20,46 +26,37 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return response
-        if (response) {
-          return response;
-        }
+  // We only want to cache GET requests.
+  if (event.request.method !== 'GET') {
+    return;
+  }
 
-        // IMPORTANT: Clone the request. A request is a stream and
-        // can only be consumed once. Since we are consuming this
-        // once by cache and once by the browser for fetch, we need
-        // to clone the response.
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then(
-          response => {
-            // Check if we received a valid response
-            if (!response || response.status !== 200) {
-              return response;
-            }
-
-            // IMPORTANT: Clone the response. A response is a stream
-            // and because we want the browser to consume the response
-            // as well as the cache consuming the response, we need
-            // to clone it so we have two streams.
-            const responseToCache = response.clone();
-
-            caches.open(CACHE_NAME)
-              .then(cache => {
-                cache.put(event.request, responseToCache);
-              });
-
-            return response;
-          }
-        ).catch(() => {
-          // If the network fails and there's no cache, you could return a fallback page here.
-          // For this app, failing silently is acceptable as the core shell is cached.
-        });
-      })
-  );
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    
+    // Try to get the response from the cache.
+    const cachedResponse = await cache.match(event.request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // If it's not in the cache, fetch it from the network.
+    try {
+      const networkResponse = await fetch(event.request);
+      
+      // If the fetch was successful, clone it and store it in the cache.
+      if (networkResponse && networkResponse.ok) {
+        const responseToCache = networkResponse.clone();
+        await cache.put(event.request, responseToCache);
+      }
+      
+      return networkResponse;
+    } catch (error) {
+      // The network request failed. This happens when the user is offline.
+      console.error('Service Worker: Fetch failed.', error);
+      // You could return a fallback offline page here if you had one cached.
+    }
+  })());
 });
 
 self.addEventListener('activate', event => {

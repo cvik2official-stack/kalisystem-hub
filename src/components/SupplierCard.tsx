@@ -193,7 +193,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     };
 
     const handleQuantityOrPriceClick = (item: OrderItem) => {
-        if (order.status === OrderStatus.DISPATCHING) {
+        if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
             setSelectedItem(item);
             setNumpadOpen(true);
         }
@@ -560,7 +560,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                                 </div>
                                             )
                                         )}
-                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${order.status === OrderStatus.DISPATCHING ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
+                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {item.quantity}{item.unit}
                                         </div>
                                         <button 

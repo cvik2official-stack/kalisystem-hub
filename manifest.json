@@ -4,17 +4,19 @@
   "description": "A private application to create, dispatch, and manage supply orders for different stores from various suppliers, featuring a streamlined single-page interface and intelligent item parsing.",
   "icons": [
     {
-      "src": "icons/logo192.png",
+      "src": "/icons/android-chrome-192x192.png",
       "type": "image/png",
       "sizes": "192x192"
     },
     {
-      "src": "icons/logo512.png",
+      "src": "/icons/android-chrome-512x512.png",
       "type": "image/png",
       "sizes": "512x512"
     }
   ],
-  "start_url": ".",
+  "start_url": "/index.html",
+  "scope": "/",
+  "id": "/?source=pwa",
   "display": "standalone",
   "theme_color": "#171923",
   "background_color": "#171923"
