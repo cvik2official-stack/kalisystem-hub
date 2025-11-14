@@ -1,13 +1,13 @@
-const CACHE_NAME = 'kalisystem-dispatcher-v6';
+const CACHE_NAME = 'kalisystem-dispatcher-v5';
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json',
   '/icons/apple-touch-icon.png',
-  '/icons/favicon.ico',
-  '/icons/favicon-96x96.png',
-  '/icons/web-app-manifest-192x192.png',
-  '/icons/web-app-manifest-512x512.png'
+  '/icons/favicon-32x32.png',
+  '/icons/favicon-16x16.png',
+  '/icons/android-chrome-192x192.png',
+  '/icons/android-chrome-512x512.png'
 ];
 
 self.addEventListener('install', event => {
