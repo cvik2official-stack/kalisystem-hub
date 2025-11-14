@@ -47,9 +47,8 @@ export const generateOrderMessage = (order: Order, format: 'html' | 'plain', sup
         return format === 'html' ? `${escapeHtml(line)}` : `${line}`;
     }).join('\n');
     
-    // FIX: Explicitly type storeNameDisplay as a string to allow assigning HTML content.
     let storeNameDisplay: string = order.store;
-    if (format === 'html' && (supplier?.botSettings?.includeLocation || supplier?.botSettings?.includeLocation === undefined && store?.locationUrl) && store?.locationUrl) {
+    if (format === 'html' && supplier?.botSettings?.includeLocation === true && store?.locationUrl) {
         storeNameDisplay = `<a href="${escapeHtml(store.locationUrl)}">${escapeHtml(order.store)}</a>`;
     } else if(format === 'html') {
         storeNameDisplay = escapeHtml(order.store);
@@ -119,6 +118,30 @@ export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]
         const storeTotal = storeOrders.reduce((sum, order) => sum + calculateOrderTotal(order, itemPrices), 0);
         grandTotal += storeTotal;
         report += `${storeName.padEnd(8, ' ')} ${formatPrice(storeTotal)}\n`;
+
+        const itemMap = new Map<string, { name: string; quantity: number; totalValue: number; unit?: Unit }>();
+        for (const order of storeOrders) {
+            for (const item of order.items) {
+                if (item.isSpoiled) continue;
+                const itemKey = `${item.itemId}-${item.unit || 'none'}`;
+                const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, itemPrices);
+                const price = item.price ?? latestPriceInfo?.price ?? 0;
+                const itemTotal = price * item.quantity;
+                const existing = itemMap.get(itemKey);
+                if (existing) {
+                    existing.quantity += item.quantity;
+                    existing.totalValue += itemTotal;
+                } else {
+                    itemMap.set(itemKey, { name: item.name, quantity: item.quantity, totalValue: itemTotal, unit: item.unit });
+                }
+            }
+        }
+        const sortedItems = Array.from(itemMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+        for (const item of sortedItems) {
+            const unitPrice = item.quantity > 0 ? item.totalValue / item.quantity : 0;
+            report += `  ${formatPrice(item.totalValue)} ${item.name} ${formatPrice(unitPrice)} x${item.quantity}${item.unit || ''}\n`;
+        }
+        report += '\n';
     }
 
     const totalDue = previousDue + grandTotal - topUp;
@@ -134,21 +157,72 @@ export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]
 
 // Generate Kali Zap Report
 export const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]): string => {
-    let message = '<b>KALI ZAP REPORT</b>\n\n';
-    let grandTotal = 0;
+    const today = new Date();
+    const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
 
-    for (const order of orders) {
-        const orderTotal = calculateOrderTotal(order, itemPrices);
-        grandTotal += orderTotal;
-        message += `<b>${escapeHtml(order.store)}</b> - ${formatPrice(orderTotal)}\n`;
-        order.items.forEach(item => {
-            message += `  - ${escapeHtml(item.name)} x${item.quantity}${item.unit || ''}\n`;
-        });
-        message += '\n';
+    const ordersByStore = orders.reduce((acc, order) => {
+        if (!acc[order.store]) acc[order.store] = [];
+        acc[order.store].push(order);
+        return acc;
+    }, {} as Record<string, Order[]>);
+
+    let grandTotal = orders.reduce((sum, order) => sum + calculateOrderTotal(order, itemPrices), 0);
+    // Ensure grandTotal is never negative, as it's an estimate
+    grandTotal = Math.max(0, grandTotal);
+
+
+    let report = `<pre>Date ${dateStr}\n`;
+    report += `EST. report sum ${formatPrice(grandTotal)}\n`;
+    report += `_________________\n\n`;
+
+    for (const storeName of Object.keys(ordersByStore).sort()) {
+        const storeOrders = ordersByStore[storeName];
+        let storeTotal = storeOrders.reduce((sum, order) => sum + calculateOrderTotal(order, itemPrices), 0);
+        storeTotal = Math.max(0, storeTotal); // Ensure store total isn't negative
+        report += `${escapeHtml(storeName)} ${formatPrice(storeTotal)}\n`;
+
+        const itemMap = new Map<string, { name: string; quantity: number; totalValue: number; unit?: Unit }>();
+
+        for (const order of storeOrders) {
+            for (const item of order.items) {
+                if (item.isSpoiled) continue;
+
+                const itemKey = `${item.itemId}-${item.unit || 'none'}`;
+                const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, itemPrices);
+                const price = item.price ?? latestPriceInfo?.price ?? 0;
+                const itemTotal = price * item.quantity;
+
+                const existing = itemMap.get(itemKey);
+                if (existing) {
+                    existing.quantity += item.quantity;
+                    existing.totalValue += itemTotal;
+                } else {
+                    itemMap.set(itemKey, {
+                        name: item.name,
+                        quantity: item.quantity,
+                        totalValue: itemTotal,
+                        unit: item.unit,
+                    });
+                }
+            }
+        }
+
+        const sortedItems = Array.from(itemMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+        for (const item of sortedItems) {
+            const unitPrice = item.quantity > 0 ? item.totalValue / item.quantity : 0;
+            const totalStr = item.totalValue > 0 ? formatPrice(item.totalValue) : '-';
+            const priceStr = unitPrice > 0 ? formatPrice(unitPrice) : '-';
+            const qtyStr = `${item.quantity}${item.unit || ''}`;
+            
+            report += `${totalStr}, ${escapeHtml(item.name)}, ${priceStr}, ${qtyStr}\n`;
+        }
+        report += `\n`;
     }
+    
+    report += `</pre>`;
 
-    message += `---------------------\n<b>TOTAL: ${formatPrice(grandTotal)}</b>`;
-    return message;
+    return report;
 };
 
 // Generate Due Report
@@ -160,7 +234,8 @@ export const generateDueReportMessage = (
     topUp: number = 0
 ): string => {
     const today = new Date().toLocaleDateString('en-GB');
-    let report = `<b>Daily Due Report ${today}</b>\n\n`;
+    const separator = '_____________________________';
+    let report = `Daily Due Report ${today}\n${separator}\n`;
     const groups: Record<string, { total: number, orders: Order[] }> = {};
 
     for (const order of orders) {
@@ -174,9 +249,8 @@ export const generateDueReportMessage = (
     for (const key of Object.keys(groups).sort()) {
         const group = groups[key];
         grandTotal += group.total;
-        report += `<b>${escapeHtml(key)}</b>: ${formatPrice(group.total)}\n`;
+        report += `${key}: ${formatPrice(group.total)}\n`;
 
-        // If sorting by store, aggregate and list the items.
         if (sortBy === 'store') {
             const itemMap = new Map<string, { name: string; quantity: number; totalValue: number; unit?: Unit }>();
 
@@ -208,19 +282,18 @@ export const generateDueReportMessage = (
 
             for (const item of sortedItems) {
                 const unitPrice = item.quantity > 0 ? item.totalValue / item.quantity : 0;
-                // Format: (total) (name) (price) x(qty)
-                report += `  - ${formatPrice(item.totalValue)} ${escapeHtml(item.name)} ${formatPrice(unitPrice)} x${item.quantity}${item.unit || ''}\n`;
+                report += `${formatPrice(item.totalValue)} ${item.name} ${formatPrice(unitPrice)} x${item.quantity}${item.unit || ''}\n`;
             }
         }
+        report += `${separator}\n`;
     }
     
     const totalDue = previousDue + grandTotal - topUp;
 
-    report += `\n---------------------\n`;
-    report += `Previous Due: ${formatPrice(previousDue)}\n`;
-    report += `Today's Total: ${formatPrice(grandTotal)}\n`;
+    report += `\nPrevious Due: ${formatPrice(previousDue)}\n`;
     report += `Top Up: ${formatPrice(topUp)}\n`;
-    report += `<b>TOTAL DUE: ${formatPrice(totalDue)}</b>`;
+    report += `Today's Total: ${formatPrice(grandTotal)}\n`;
+    report += `TOTAL DUE: ${formatPrice(totalDue)}`;
 
     return report;
 };

@@ -1,8 +1,8 @@
-const CACHE_NAME = 'kalisystem-dispatcher-v6';
+const CACHE_NAME = 'kalisystem-dispatcher-v7';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/manifest.json',
+  '/manifest.json?v=2',
   '/icons/apple-touch-icon.png',
   '/icons/favicon.ico',
   '/icons/favicon-96x96.png',
