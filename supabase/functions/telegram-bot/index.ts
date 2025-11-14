@@ -1,7 +1,6 @@
 // @formatter:off
-// FIX: Switched to esm.sh for Deno type definitions to resolve issues with unpkg.com and define the 'Deno' global.
-// FIX: Updated the types reference to a version-less URL to improve stability and resolve issues with finding the type definition file.
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
+// FIX: Updated the Deno types reference to a more stable URL to resolve type definition issues.
+/// <reference types="https://esm.sh/@supabase/functions-js@2" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

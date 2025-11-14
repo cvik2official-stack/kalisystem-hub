@@ -39,16 +39,9 @@ const App: React.FC = () => {
   const [isKaliReportModalOpen, setIsKaliReportModalOpen] = useState(false);
   const [isTelegramWebhookModalOpen, setIsTelegramWebhookModalOpen] = useState(false);
 
-  const todaysKaliOrders = React.useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
+  const completedKaliOrders = React.useMemo(() => {
     return orders.filter(order => {
-        if (order.status !== OrderStatus.COMPLETED || !order.completedAt) return false;
-
-        const completedDate = new Date(order.completedAt);
-        completedDate.setHours(0, 0, 0, 0);
-        if (completedDate.getTime() !== today.getTime()) return false;
+        if (order.status !== OrderStatus.COMPLETED) return false;
 
         const supplier = suppliers.find(s => s.id === order.supplierId);
         const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
@@ -112,11 +105,6 @@ const App: React.FC = () => {
   const handleSendKaliUnifyReport = async (message: string) => {
     setIsSendingReport(true);
     try {
-        if (todaysKaliOrders.length === 0) {
-            notify('No completed KALI orders found for today.', 'info');
-            return;
-        }
-
         if (!settings.telegramBotToken) {
             notify('Telegram Bot Token is not set in Options.', 'error');
             return;
@@ -317,7 +305,7 @@ const App: React.FC = () => {
         onClose={() => setIsKaliReportModalOpen(false)}
         onGenerate={handleSendKaliUnifyReport}
         isSending={isSendingReport}
-        orders={todaysKaliOrders}
+        orders={completedKaliOrders}
         itemPrices={itemPrices}
       />
       <TelegramWebhookModal
