@@ -1,6 +1,6 @@
 // @formatter:off
 // FIX: Updated the Deno types reference to a more stable URL to resolve type definition issues.
-/// <reference types="https://esm.sh/@supabase/functions-js@2" />
+/// <reference types="https://esm.sh/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
