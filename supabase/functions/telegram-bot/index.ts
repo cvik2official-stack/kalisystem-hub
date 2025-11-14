@@ -1,6 +1,6 @@
 // @formatter:off
-// FIX: Corrected the path to the Deno type definitions file to use `src` instead of `dist` to resolve type errors, as per Supabase documentation.
-/// <reference types="https://esm.sh/@supabase/functions-js/src/edge-runtime.d.ts" />
+// FIX: Use a version-pinned URL for Deno type definitions to ensure stability and resolve type errors.
+/// <reference types="https://esm.sh/v135/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

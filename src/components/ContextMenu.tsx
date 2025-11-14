@@ -17,6 +17,7 @@ interface ContextMenuProps {
 const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => {
     const menuRef = useRef<HTMLDivElement>(null);
     const [finalX, setFinalX] = useState(x);
+    const [finalY, setFinalY] = useState(y);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -41,14 +42,16 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
     useEffect(() => {
         if (menuRef.current) {
             const menuWidth = menuRef.current.offsetWidth;
+            const menuHeight = menuRef.current.offsetHeight;
             const windowWidth = window.innerWidth;
+            const windowHeight = window.innerHeight;
             const buffer = 8; // 8px padding from the edge
 
             let newX = x;
+            let newY = y;
 
             // Check if the menu would overflow the right edge
             if (x + menuWidth > windowWidth - buffer) {
-                // Reposition menu to be fully visible, aligning its right edge.
                 newX = windowWidth - menuWidth - buffer;
             }
 
@@ -56,8 +59,20 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
             if (newX < buffer) {
                 newX = buffer;
             }
+            
+            // Check if the menu would overflow the bottom edge
+            if (y + menuHeight > windowHeight - buffer) {
+                // Reposition menu to open upwards.
+                newY = y - menuHeight;
+                // Safety check to ensure it doesn't go off the top of the screen.
+                if (newY < buffer) {
+                    newY = buffer;
+                }
+            }
+
 
             setFinalX(newX);
+            setFinalY(newY);
         }
     }, [x, y]); // Re-run when initial position changes
 
@@ -65,7 +80,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
         <div
             ref={menuRef}
             className="fixed bg-gray-700 rounded-md shadow-2xl py-1 z-[100] min-w-[150px]"
-            style={{ top: y, left: finalX }}
+            style={{ top: finalY, left: finalX }}
         >
             <ul>
                 {options.map((option, index) => {

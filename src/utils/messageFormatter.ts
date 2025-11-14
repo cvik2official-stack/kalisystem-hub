@@ -175,6 +175,43 @@ export const generateDueReportMessage = (
         const group = groups[key];
         grandTotal += group.total;
         report += `<b>${escapeHtml(key)}</b>: ${formatPrice(group.total)}\n`;
+
+        // If sorting by store, aggregate and list the items.
+        if (sortBy === 'store') {
+            const itemMap = new Map<string, { name: string; quantity: number; totalValue: number; unit?: Unit }>();
+
+            for (const order of group.orders) {
+                for (const item of order.items) {
+                    if (item.isSpoiled) continue;
+
+                    const itemKey = `${item.itemId}-${item.unit || 'none'}`;
+                    const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, itemPrices);
+                    const price = item.price ?? latestPriceInfo?.price ?? 0;
+                    const itemTotal = price * item.quantity;
+
+                    const existing = itemMap.get(itemKey);
+                    if (existing) {
+                        existing.quantity += item.quantity;
+                        existing.totalValue += itemTotal;
+                    } else {
+                        itemMap.set(itemKey, {
+                            name: item.name,
+                            quantity: item.quantity,
+                            totalValue: itemTotal,
+                            unit: item.unit,
+                        });
+                    }
+                }
+            }
+
+            const sortedItems = Array.from(itemMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+            for (const item of sortedItems) {
+                const unitPrice = item.quantity > 0 ? item.totalValue / item.quantity : 0;
+                // Format: (total) (name) (price) x(qty)
+                report += `  - ${formatPrice(item.totalValue)} ${escapeHtml(item.name)} ${formatPrice(unitPrice)} x${item.quantity}${item.unit || ''}\n`;
+            }
+        }
     }
     
     const totalDue = previousDue + grandTotal - topUp;
