@@ -37,6 +37,9 @@
   -- Add a text column for supplier contact info
   ALTER TABLE public.suppliers ADD COLUMN IF NOT EXISTS contact TEXT;
 
+  -- Add a numeric column for stock quantity on items
+  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC;
+
 */
 import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
 
@@ -63,6 +66,7 @@ interface ItemFromDb {
   supplier_id: string;
   created_at: string;
   modified_at: string;
+  stock_quantity?: number;
 }
 
 interface StoreFromDb {
@@ -161,6 +165,7 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
                 supplierName: supplier.name,
                 createdAt: i.created_at,
                 modifiedAt: i.modified_at,
+                stockQuantity: i.stock_quantity,
             });
         }
         return acc;
@@ -328,6 +333,7 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         name: item.name,
         unit: item.unit,
         supplier_id: item.supplierId,
+        stock_quantity: item.stockQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?select=*`, {
         method: 'POST',
@@ -342,6 +348,7 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         id: newItem.id,
         createdAt: newItem.created_at,
         modifiedAt: newItem.modified_at,
+        stockQuantity: newItem.stock_quantity,
     };
 };
 
@@ -350,6 +357,7 @@ export const updateItem = async ({ item, url, key }: { item: Item, url: string, 
         name: item.name,
         unit: item.unit,
         supplier_id: item.supplierId,
+        stock_quantity: item.stockQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
         method: 'PATCH',

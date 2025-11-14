@@ -56,7 +56,8 @@ export type Action =
   | { type: 'SET_COLUMN_COUNT'; payload: 1 | 2 | 3 }
   | { type: 'SET_DRAGGED_ORDER_ID'; payload: string | null }
   | { type: 'SET_DRAGGED_ITEM'; payload: { item: OrderItem; sourceOrderId: string } | null }
-  | { type: 'SET_CARD_WIDTH'; payload: number | null };
+  | { type: 'SET_CARD_WIDTH'; payload: number | null }
+  | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] };
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
@@ -215,6 +216,17 @@ const appReducer = (state: AppState, action: Action): AppState => {
             newItemPrices = [...state.itemPrices, newPrice];
         }
         return { ...state, itemPrices: newItemPrices };
+    }
+    case '_BATCH_UPDATE_ITEMS_STOCK': {
+        const updates = new Map(action.payload.map(u => [u.itemId, u.stockQuantity]));
+        return {
+            ...state,
+            items: state.items.map(item => 
+                updates.has(item.id) 
+                ? { ...item, stockQuantity: updates.get(item.id) } 
+                : item
+            )
+        };
     }
     default:
       return state;
@@ -445,8 +457,48 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notify(`Order for ${supplierToUse.name} created.`, 'success');
     },
     updateOrder: async (order) => {
+        const previousOrder = state.orders.find(o => o.id === order.id);
+
         const updatedOrder = await supabaseUpdateOrder({ order, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
+        
+        // Stock management logic
+        if (previousOrder && previousOrder.status !== OrderStatus.COMPLETED && order.status === OrderStatus.COMPLETED) {
+            const isStockMovement = order.supplierName === SupplierName.STOCK || order.paymentMethod === PaymentMethod.STOCK;
+            
+            if (isStockMovement) {
+                // 'STOCK' supplier is for outgoing stock (-1), and takes precedence.
+                // 'STOCK' payment on any other supplier is for incoming stock (+1).
+                const direction = order.supplierName === SupplierName.STOCK ? -1 : 1;
+                const itemDbUpdatePromises: Promise<any>[] = [];
+                const stockUpdatesForState: { itemId: string; stockQuantity: number }[] = [];
+
+                for (const orderItem of order.items) {
+                    const masterItem = state.items.find(i => i.id === orderItem.itemId);
+                    if (masterItem) {
+                        // The stock quantity can be null/undefined, so default to 0.
+                        const newStockQuantity = (masterItem.stockQuantity || 0) + (orderItem.quantity * direction);
+                        
+                        itemDbUpdatePromises.push(supabaseUpdateItem({
+                            item: { ...masterItem, stockQuantity: newStockQuantity },
+                            url: state.settings.supabaseUrl,
+                            key: state.settings.supabaseKey
+                        }));
+                        
+                        stockUpdatesForState.push({ itemId: masterItem.id, stockQuantity: newStockQuantity });
+                    }
+                }
+
+                if (itemDbUpdatePromises.length > 0) {
+                    // Wait for all database updates to complete
+                    await Promise.all(itemDbUpdatePromises);
+                    // Then, dispatch a single action to update local state
+                    dispatch({ type: '_BATCH_UPDATE_ITEMS_STOCK', payload: stockUpdatesForState });
+                    const directionText = direction === 1 ? 'added to' : 'deducted from';
+                    notify(`Stock quantity for ${itemDbUpdatePromises.length} item(s) ${directionText} stock.`, 'success');
+                }
+            }
+        }
     },
     deleteOrder: async (orderId) => {
         await supabaseDeleteOrder({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });

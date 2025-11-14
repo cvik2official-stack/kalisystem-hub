@@ -41,6 +41,7 @@ export interface Item {
   supplierName: SupplierName; 
   createdAt?: string;
   modifiedAt?: string;
+  stockQuantity?: number;
 }
 
 export interface SupplierBotSettings {

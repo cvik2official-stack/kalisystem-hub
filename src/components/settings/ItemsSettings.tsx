@@ -25,6 +25,18 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
     await actions.updateItem({ ...item, [field]: value });
   };
 
+  const handleStockQuantityUpdate = async (item: Item, qtyStr: string) => {
+    const newQty = qtyStr.trim() === '' ? undefined : parseFloat(qtyStr);
+    
+    if (item.stockQuantity === newQty) return;
+    
+    if (newQty === undefined || !isNaN(newQty)) {
+        await actions.updateItem({ ...item, stockQuantity: newQty });
+    } else {
+        notify('Invalid stock quantity.', 'error');
+    }
+  };
+
   const handlePriceUpdate = async (item: Item, priceStr: string) => {
     const newPrice = priceStr.trim() === '' ? 0 : parseFloat(priceStr);
     const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
@@ -130,6 +142,21 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
       )
     },
     {
+      id: 'stockQuantity', header: 'STOCK QTY',
+      cell: (item: Item) => {
+        return (
+            <input
+                type="text"
+                inputMode="decimal"
+                defaultValue={item.stockQuantity != null ? item.stockQuantity : ''}
+                onBlur={(e) => handleStockQuantityUpdate(item, e.target.value)}
+                placeholder="-"
+                className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-right"
+            />
+        );
+      }
+    },
+    {
       id: 'unitPrice', header: 'PRICE',
       cell: (item: Item) => {
         const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
@@ -183,6 +210,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                       <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[300px]">Name</th>
                       <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[150px]">Supplier</th>
                       <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px]">Unit</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px]">Stock Qty</th>
                       <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[100px]">Price</th>
                       <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Actions</th>
                   </tr>

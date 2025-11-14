@@ -1,6 +1,6 @@
 import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice } from '../types';
+import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName } from '../types';
 import ContextMenu from './ContextMenu';
 import AddSupplierModal from './modals/AddSupplierModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
@@ -394,6 +394,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     };
 
     const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
+    let badgeColorClass = paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-600';
+    let amountBadgeColorClass = paymentMethodAmountBadgeColors[displayPaymentMethod] || 'bg-gray-700';
+    if (displayPaymentMethod === PaymentMethod.STOCK && supplier?.paymentMethod && supplier.paymentMethod !== PaymentMethod.STOCK) {
+        badgeColorClass = paymentMethodBadgeColors[supplier.paymentMethod] || 'bg-gray-600';
+        amountBadgeColorClass = paymentMethodAmountBadgeColors[supplier.paymentMethod] || 'bg-gray-700';
+    }
+
 
     const statusBorderColor = useMemo(() => {
         switch (order.status) {
@@ -437,12 +444,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                 <div className="flex items-stretch overflow-hidden rounded-full">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setPaymentMethodModalOpen(true); }}
-                                        className={`px-2 py-0.5 text-xs font-semibold cursor-pointer ${paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-600'}`}
+                                        className={`px-2 py-0.5 text-xs font-semibold cursor-pointer ${badgeColorClass}`}
                                     >
                                         {displayPaymentMethod.toUpperCase()}
                                     </button>
                                     {(order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) && cardTotal > 0 && (
-                                        <span className={`px-2 py-0.5 text-xs font-semibold ${paymentMethodAmountBadgeColors[displayPaymentMethod] || 'bg-gray-700'}`}>
+                                        <span className={`px-2 py-0.5 text-xs font-semibold ${amountBadgeColorClass}`}>
                                             {cardTotal.toFixed(2)}
                                         </span>
                                     )}
@@ -505,6 +512,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                             const priceUnit = latestPriceInfo?.unit;
                             const isEditingPrice = editingPriceUniqueId === uniqueItemId;
                             const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || (order.status === OrderStatus.COMPLETED && isEditModeEnabled));
+                            
+                            const masterItem = state.items.find(i => i.id === item.itemId);
+                            const isStockIn = order.paymentMethod === PaymentMethod.STOCK;
+                            const isStockOut = order.supplierName === SupplierName.STOCK;
+                            const isStockMovement = isStockIn || isStockOut;
+                            const isLowStock = masterItem && (masterItem.stockQuantity ?? 0) < 1;
+
 
                             return (
                                 <div key={uniqueItemId} className="flex items-center group">
@@ -536,7 +550,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                         </span>
                                     )}
                                     <div className="flex items-center space-x-2 ml-2">
-                                        {order.status !== OrderStatus.DISPATCHING && (
+                                        {order.status === OrderStatus.DISPATCHING && isStockMovement ? (
+                                            <div className="font-mono w-20 text-right p-1 -m-1 rounded-md">
+                                                {isStockOut ? (
+                                                    <span className={`font-semibold ${isLowStock ? 'text-red-500' : 'text-yellow-400'}`}>out</span>
+                                                ) : (
+                                                    <span className="font-semibold text-green-400">in</span>
+                                                )}
+                                            </div>
+                                        ) : order.status !== OrderStatus.DISPATCHING && (
                                             isEditingPrice && canEditPrice ? (
                                                 <input
                                                     type="text"
