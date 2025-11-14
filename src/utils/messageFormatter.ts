@@ -44,7 +44,7 @@ export const generateOrderMessage = (order: Order, format: 'html' | 'plain', sup
 
     const itemsList = order.items.map(item => {
         const line = `${item.name} x${item.quantity}${item.unit ? ` ${item.unit}` : ''}`;
-        return format === 'html' ? `  - ${escapeHtml(line)}` : `  - ${line}`;
+        return format === 'html' ? `${escapeHtml(line)}` : `${line}`;
     }).join('\n');
     
     // FIX: Explicitly type storeNameDisplay as a string to allow assigning HTML content.
