@@ -70,6 +70,7 @@ export interface AppContextActions {
     addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[], status?: OrderStatus) => Promise<void>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
+    deleteItemFromOrder: (item: OrderItem, sourceOrderId: string) => Promise<void>;
     syncWithSupabase: (options?: { isInitialSync?: boolean }) => Promise<void>;
     addItemToDispatch: (item: Item) => Promise<void>;
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
@@ -336,6 +337,7 @@ export const AppContext = createContext<{
       addSupplier: async () => { throw new Error('addSupplier not implemented'); },
       updateSupplier: async () => {}, deleteSupplier: async () => {}, updateStore: async () => {}, addOrder: async () => {},
       updateOrder: async () => {}, deleteOrder: async () => {},
+      deleteItemFromOrder: async () => {},
       syncWithSupabase: async () => {},
       addItemToDispatch: async () => {},
       mergeOrders: async () => {},
@@ -504,6 +506,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         await supabaseDeleteOrder({ orderId, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'DELETE_ORDER', payload: orderId });
         notify(`Order deleted.`, 'success');
+    },
+    deleteItemFromOrder: async (itemToDelete, sourceOrderId) => {
+        const order = state.orders.find(o => o.id === sourceOrderId);
+        if (!order) {
+            notify(`Could not find order to delete item from.`, 'error');
+            return;
+        }
+
+        // Create a new item list without the deleted item
+        const newItems = order.items.filter(i => 
+            !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled && i.name === itemToDelete.name)
+        );
+
+        if (newItems.length > 0) {
+            // If items remain, update the order
+            await actions.updateOrder({ ...order, items: newItems });
+            notify('Item removed.', 'success');
+        } else {
+            // If the order is now empty, delete it
+            await actions.deleteOrder(order.id);
+            // deleteOrder action provides its own notification
+        }
     },
     addItemToDispatch: async (item) => {
         const { activeStore, orders, suppliers, itemPrices } = state;

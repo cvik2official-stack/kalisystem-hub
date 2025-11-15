@@ -102,8 +102,11 @@ const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
 
 // Generate Kali Unify Report
 export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[], previousDue: number = 0, topUp: number = 0): string => {
-    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    let report = `KALI UNIFY ${today}\n\n`;
+    const reportDate = orders.length > 0 && orders[0].completedAt 
+        ? new Date(orders[0].completedAt) 
+        : new Date();
+    const dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    let report = `KALI UNIFY ${dateStr}\n\n`;
 
     const ordersByStore = orders.reduce((acc, order) => {
         if (!acc[order.store]) acc[order.store] = [];
@@ -147,10 +150,10 @@ export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]
     const totalDue = previousDue + grandTotal - topUp;
 
     report += `---------------------\n`;
-    report += `PREV DUE: ${formatPrice(previousDue)}\n`;
-    report += `TODAY   : ${formatPrice(grandTotal)}\n`;
-    report += `TOP UP  : ${formatPrice(topUp)}\n`;
-    report += `TOTAL DUE: ${formatPrice(totalDue)}\n`;
+    report += `PREV DUE  : ${formatPrice(previousDue)}\n`;
+    report += `TOP UP    : ${formatPrice(topUp)}\n`;
+    report += `SPENDINGS : ${formatPrice(grandTotal)}\n`;
+    report += `TOTAL DUE : ${formatPrice(totalDue)}\n`;
 
     return report;
 };
@@ -170,10 +173,9 @@ export const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]):
     // Ensure grandTotal is never negative, as it's an estimate
     grandTotal = Math.max(0, grandTotal);
 
-
-    let report = `<pre>Date ${dateStr}\n`;
+    let report = `Date ${dateStr}\n`;
     report += `EST. report sum ${formatPrice(grandTotal)}\n`;
-    report += `_________________\n\n`;
+    report += `---------------------\n\n`;
 
     for (const storeName of Object.keys(ordersByStore).sort()) {
         const storeOrders = ordersByStore[storeName];
@@ -211,17 +213,13 @@ export const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]):
 
         for (const item of sortedItems) {
             const unitPrice = item.quantity > 0 ? item.totalValue / item.quantity : 0;
-            const totalStr = item.totalValue > 0 ? formatPrice(item.totalValue) : '-';
-            const priceStr = unitPrice > 0 ? formatPrice(unitPrice) : '-';
-            const qtyStr = `${item.quantity}${item.unit || ''}`;
+            const totalStr = formatPrice(item.totalValue);
             
-            report += `${totalStr}, ${escapeHtml(item.name)}, ${priceStr}, ${qtyStr}\n`;
+            report += ` ${totalStr} ${escapeHtml(item.name)}  (${formatPrice(unitPrice)}) x${item.quantity}${item.unit || ''}\n`;
         }
         report += `\n`;
     }
     
-    report += `</pre>`;
-
     return report;
 };
 

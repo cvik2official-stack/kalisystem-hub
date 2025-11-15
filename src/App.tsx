@@ -18,7 +18,7 @@ import { useNotificationState, useNotificationDispatch } from './context/Notific
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -190,6 +190,19 @@ const App: React.FC = () => {
     }
   };
 
+  const isDragging = !!draggedOrderId || !!draggedItem;
+  
+  const handleDropOnDeleteZone = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedOrderId) {
+      actions.deleteOrder(draggedOrderId);
+    } else if (draggedItem) {
+      actions.deleteItemFromOrder(draggedItem.item, draggedItem.sourceOrderId);
+    }
+    // Clean up global drag state
+    dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
+    dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
+  };
 
   if (!isInitialized) {
     return (
@@ -214,6 +227,20 @@ const App: React.FC = () => {
 
   return (
     <>
+      {isDragging && (
+        <div 
+          className="fixed top-0 left-0 right-0 h-24 bg-indigo-900/50 z-50 flex items-center justify-center border-b-2 border-dashed border-indigo-400 transition-opacity duration-300"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDropOnDeleteZone}
+        >
+          <div className="flex flex-col items-center justify-center pointer-events-none">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <span className="text-indigo-300 font-bold text-lg mt-1">Drop to Delete</span>
+          </div>
+        </div>
+      )}
       <div className="min-h-screen bg-gray-900 text-gray-200">
         <div className="bg-gray-900 w-full xl:max-w-7xl xl:mx-auto min-h-screen flex flex-col">
             <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">

@@ -27,15 +27,54 @@ const formatDateGroupHeader = (key: string): string => {
   return `${day}.${month}.${year}`;
 };
 
+const CompletedReportView: React.FC<{ orders: Order[] }> = ({ orders }) => {
+    const { state } = useContext(AppContext);
+    const { suppliers } = state;
+    const paymentMethodBadgeColors: Record<string, string> = {
+        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
+        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
+        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
+        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
+        [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
+    };
+
+    return (
+        <div className="space-y-2">
+            {orders.length > 0 ? orders.map(order => {
+                const supplier = suppliers.find(s => s.id === order.supplierId);
+                const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
+
+                return (
+                    <div key={order.id} className="bg-gray-800 p-2 rounded-lg">
+                        <div className="flex items-center space-x-2">
+                            <h3 className="font-bold text-white">{order.supplierName}</h3>
+                            {displayPaymentMethod && (
+                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-500/50 text-gray-300'}`}>
+                                    {displayPaymentMethod.toUpperCase()}
+                                </span>
+                            )}
+                        </div>
+                        <ul className="text-sm list-disc list-inside mt-1 text-gray-300">
+                           {order.items.map((item, index) => <li key={`${order.id}-${item.itemId}-${index}`}>{item.name} x {item.quantity}{item.unit}</li>)}
+                        </ul>
+                    </div>
+                );
+            }) : <p className="text-center text-gray-500 py-12">No completed orders for today.</p>}
+        </div>
+    );
+};
+
+
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { activeStore, orders, suppliers, isEditModeEnabled, draggedOrderId, columnCount, activeStatus, draggedItem } = state;
   const { notify } = useNotifier();
 
-  const [isAddSupplierModalOpen, setAddSupplierModalOpen] = useState(false);
+  const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
   const [isPasteModalOpen, setPasteModalOpen] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
+  const [orderToChange, setOrderToChange] = useState<Order | null>(null);
   const [isDragOverEmpty, setIsDragOverEmpty] = useState(false);
 
   const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
@@ -49,6 +88,7 @@ const OrderWorkspace: React.FC = () => {
   const [dragOverDateGroup, setDragOverDateGroup] = useState<string | null>(null);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
+  const [completedViewMode, setCompletedViewMode] = useState<'card' | 'report'>('card');
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -77,11 +117,20 @@ const OrderWorkspace: React.FC = () => {
     touchStartX.current = 0;
     touchEndX.current = 0;
   };
+  
+  const handleCompletedTabClick = () => {
+    if (activeStatus === OrderStatus.COMPLETED) {
+        setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card');
+    } else {
+        dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.COMPLETED });
+        setCompletedViewMode('card'); // Reset to default when switching to tab
+    }
+  };
 
   const handleAddOrder = async (supplier: Supplier) => {
     if (activeStore === 'Settings' || !activeStore) return;
     await actions.addOrder(supplier, activeStore, [], OrderStatus.DISPATCHING);
-    setAddSupplierModalOpen(false);
+    setSupplierSelectModalOpen(false);
   };
   
   const handleItemDropOnCard = async (destinationOrderId: string) => {
@@ -168,8 +217,22 @@ const OrderWorkspace: React.FC = () => {
       await actions.addOrder(supplier, activeStore, [itemForNewOrder.item]);
     }
     
-    setAddSupplierModalOpen(false);
+    setSupplierSelectModalOpen(false);
     setItemForNewOrder(null);
+  };
+
+  const handleChangeSupplierForOrder = async (newSupplier: Supplier) => {
+    if (!orderToChange) return;
+    
+    let supplierToUse = newSupplier;
+    if (newSupplier.id.startsWith('new_')) {
+        const newSupplierFromDb = await actions.addSupplier({ name: newSupplier.name });
+        supplierToUse = newSupplierFromDb;
+    }
+    await actions.updateOrder({ ...orderToChange, supplierId: supplierToUse.id, supplierName: supplierToUse.name, paymentMethod: supplierToUse.paymentMethod });
+
+    setSupplierSelectModalOpen(false);
+    setOrderToChange(null);
   };
   
   const handleGenerateStoreReport = () => {
@@ -281,7 +344,7 @@ const OrderWorkspace: React.FC = () => {
 
     if (dateGroupKey === 'Today') {
         options.push(
-            { label: 'New Card...', action: () => setAddSupplierModalOpen(true) },
+            { label: 'New Card...', action: () => setSupplierSelectModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
         );
     }
@@ -310,26 +373,48 @@ const OrderWorkspace: React.FC = () => {
     dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
     setDragOverDateGroup(null);
   }
+  
+  const handleDragOverDateGroup = (e: React.DragEvent, key: string) => {
+    const orderToMove = orders.find(o => o.id === draggedOrderId);
+    if (!orderToMove || orderToMove.status !== OrderStatus.COMPLETED) {
+        return;
+    }
+
+    // Replicate grouping logic to find the source group key
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const completedDate = new Date(orderToMove.completedAt || 0);
+    completedDate.setHours(0, 0, 0, 0);
+    const sourceKey = completedDate.getTime() === today.getTime() ? 'Today' : completedDate.toISOString().split('T')[0];
+
+    // Only allow dropping on a DIFFERENT group
+    if (sourceKey !== key) {
+        e.preventDefault();
+        setDragOverDateGroup(key);
+    }
+};
 
   const handleDropOnStatus = (status: OrderStatus) => {
     if (draggedOrderId) {
       const sourceOrder = orders.find((o) => o.id === draggedOrderId);
-      if (sourceOrder && sourceOrder.status !== status) {
-        const updatedOrder: Partial<Order> & { id: string } = { ...sourceOrder, status };
-        if (status === OrderStatus.DISPATCHING) {
-          updatedOrder.isSent = false;
-          updatedOrder.isReceived = false;
-          updatedOrder.completedAt = undefined;
-        } else if (status === OrderStatus.ON_THE_WAY) {
-          updatedOrder.isSent = true;
-          updatedOrder.isReceived = false;
-          updatedOrder.completedAt = undefined;
-        } else if (status === OrderStatus.COMPLETED) {
-          updatedOrder.isSent = true;
-          updatedOrder.isReceived = true;
-          updatedOrder.completedAt = new Date().toISOString();
+      if (sourceOrder) {
+        if (sourceOrder.status !== status) {
+            const updatedOrder: Partial<Order> & { id: string } = { ...sourceOrder, status };
+            if (status === OrderStatus.DISPATCHING) {
+              updatedOrder.isSent = false;
+              updatedOrder.isReceived = false;
+              updatedOrder.completedAt = undefined;
+            } else if (status === OrderStatus.ON_THE_WAY) {
+              updatedOrder.isSent = true;
+              updatedOrder.isReceived = false;
+              updatedOrder.completedAt = undefined;
+            } else if (status === OrderStatus.COMPLETED) {
+              updatedOrder.isSent = true;
+              updatedOrder.isReceived = true;
+              updatedOrder.completedAt = new Date().toISOString();
+            }
+            actions.updateOrder(updatedOrder as Order);
         }
-        actions.updateOrder(updatedOrder as Order);
       }
       setDragOverColumn(null);
       setDragOverStatusTab(null);
@@ -343,7 +428,7 @@ const OrderWorkspace: React.FC = () => {
         ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
       `}
        onDragOver={(e) => {
-        if (draggedItem) {
+        if (draggedItem || (draggedOrderId && state.orders.find(o => o.id === draggedOrderId)?.status === OrderStatus.DISPATCHING)) {
           e.preventDefault();
           setIsDragOverEmpty(true);
         }
@@ -353,15 +438,22 @@ const OrderWorkspace: React.FC = () => {
         e.preventDefault();
         if (draggedItem) {
           setItemForNewOrder(draggedItem);
-          setAddSupplierModalOpen(true);
+          setSupplierSelectModalOpen(true);
+        } else if (draggedOrderId) {
+            const order = orders.find(o => o.id === draggedOrderId);
+            if(order) {
+                setOrderToChange(order);
+                setSupplierSelectModalOpen(true);
+            }
         }
         setIsDragOverEmpty(false);
         dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
+        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
       }}
     >
         <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
            <button 
-             onClick={() => setAddSupplierModalOpen(true)} 
+             onClick={() => setSupplierSelectModalOpen(true)} 
              className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
            >
              + select supplier
@@ -415,60 +507,61 @@ const OrderWorkspace: React.FC = () => {
     );
   };
   
-  const renderCompletedColumn = () => (
-    <>
-      {sortedCompletedGroupKeys.length > 0 ? (
-        <div className="space-y-1">
-          {sortedCompletedGroupKeys.map(key => {
-            const isExpanded = expandedGroups.has(key);
-            return (
-              <div 
-                key={key}
-                onDragOver={(e) => {
-                  const orderToMove = orders.find(o => o.id === draggedOrderId);
-                  if (orderToMove && orderToMove.status === OrderStatus.COMPLETED) {
-                      e.preventDefault();
-                      setDragOverDateGroup(key);
-                  }
-                }}
-                onDragLeave={() => setDragOverDateGroup(null)}
-                onDrop={(e) => { e.preventDefault(); handleDropOnDateGroup(key); }}
-              >
-                <div className={`bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl transition-colors ${dragOverDateGroup === key ? 'bg-indigo-900/50' : ''}`}>
-                  <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                    </svg>
-                    <h3 className="font-bold text-white text-base">{formatDateGroupHeader(key)}</h3>
-                  </button>
-                  <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                  </button>
+  const renderCompletedColumn = () => {
+    if (completedViewMode === 'report') {
+        const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
+        return <CompletedReportView orders={todaysCompletedOrders} />;
+    }
+    
+    return (
+        <>
+        {sortedCompletedGroupKeys.length > 0 ? (
+            <div className="space-y-1">
+            {sortedCompletedGroupKeys.map(key => {
+                const isExpanded = expandedGroups.has(key);
+                return (
+                <div 
+                    key={key}
+                    onDragOver={(e) => handleDragOverDateGroup(e, key)}
+                    onDragLeave={() => setDragOverDateGroup(null)}
+                    onDrop={(e) => { e.preventDefault(); handleDropOnDateGroup(key); }}
+                >
+                    <div className={`bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl transition-colors ${dragOverDateGroup === key ? 'bg-indigo-900/50' : ''}`}>
+                    <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
+                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                        <h3 className="font-bold text-white text-base">{formatDateGroupHeader(key)}</h3>
+                    </button>
+                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                    </button>
+                    </div>
+                    {isExpanded && (
+                    <div className="space-y-4 p-2">
+                        {groupedCompletedOrders[key].map((order) => (
+                        <SupplierCard 
+                            key={order.id} 
+                            order={order}
+                            onItemDrop={handleItemDropOnCard}
+                            showStoreName={activeStore === StoreName.KALI} 
+                            isEditModeEnabled={isEditModeEnabled}
+                        />
+                        ))}
+                    </div>
+                    )}
                 </div>
-                {isExpanded && (
-                  <div className="space-y-4 p-2">
-                    {groupedCompletedOrders[key].map((order) => (
-                      <SupplierCard 
-                          key={order.id} 
-                          order={order}
-                          onItemDrop={handleItemDropOnCard}
-                          showStoreName={activeStore === StoreName.KALI} 
-                          isEditModeEnabled={isEditModeEnabled}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No completed orders.</p>
-        </div>
-      )}
-    </>
-  );
+                );
+            })}
+            </div>
+        ) : (
+            <div className="text-center py-12">
+            <p className="text-gray-500">No completed orders.</p>
+            </div>
+        )}
+        </>
+    );
+  };
 
   const renderStatusContent = (status: OrderStatus) => {
     switch (status) {
@@ -490,7 +583,7 @@ const OrderWorkspace: React.FC = () => {
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.id}
-              onClick={() => dispatch({ type: 'SET_ACTIVE_STATUS', payload: tab.id })}
+              onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : () => dispatch({ type: 'SET_ACTIVE_STATUS', payload: tab.id })}
               onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverStatusTab(tab.id); }}}
               onDragLeave={() => setDragOverStatusTab(null)}
               onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
@@ -514,7 +607,7 @@ const OrderWorkspace: React.FC = () => {
               {renderStatusContent(activeStatus)}
             </div>
         </div>
-        <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
+        <AddSupplierModal isOpen={isSupplierSelectModalOpen} onClose={() => { setSupplierSelectModalOpen(false); setItemForNewOrder(null); setOrderToChange(null); }} onSelect={orderToChange ? handleChangeSupplierForOrder : itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={orderToChange ? "Change Supplier" : itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
         <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
         {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
         <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
@@ -539,17 +632,19 @@ const OrderWorkspace: React.FC = () => {
               className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === tab.id ? 'bg-indigo-900/50' : ''}`}
               onDragOver={(e) => {
                 if (draggedOrderId) {
-                  const sourceOrder = orders.find((o) => o.id === draggedOrderId);
-                  if (sourceOrder && sourceOrder.status !== tab.id) {
                     e.preventDefault();
                     setDragOverColumn(tab.id);
-                  }
                 }
               }}
               onDragLeave={() => setDragOverColumn(null)}
               onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
             >
-              <h2 className="text-lg font-semibold text-white p-3">{tab.label}</h2>
+              <h2
+                className={`text-lg font-semibold text-white p-3 ${tab.id === OrderStatus.COMPLETED ? 'cursor-pointer hover:text-indigo-400 transition-colors' : ''}`}
+                onClick={tab.id === OrderStatus.COMPLETED ? () => setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card') : undefined}
+              >
+                {tab.label}
+              </h2>
               <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
                 <div className="grid grid-cols-1 gap-4">
                     {renderStatusContent(tab.id)}
@@ -560,7 +655,7 @@ const OrderWorkspace: React.FC = () => {
         })}
       </div>
       
-      <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => { setAddSupplierModalOpen(false); setItemForNewOrder(null); }} onSelect={itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
+      <AddSupplierModal isOpen={isSupplierSelectModalOpen} onClose={() => { setSupplierSelectModalOpen(false); setItemForNewOrder(null); setOrderToChange(null); }} onSelect={orderToChange ? handleChangeSupplierForOrder : itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={orderToChange ? "Change Supplier" : itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
       <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
       {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
       <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />

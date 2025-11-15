@@ -66,7 +66,7 @@ const StoresSettings: React.FC = () => {
 
 
   return (
-    <div className="flex flex-col flex-grow md:w-1/2">
+    <div className="flex flex-col flex-grow w-full lg:w-3/4">
       <div className="overflow-x-auto hide-scrollbar">
           <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-800">

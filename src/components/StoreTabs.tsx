@@ -50,7 +50,7 @@ const StoreTabs: React.FC = () => {
   });
 
   // Sort stores to ensure consistent order, with CV2 always first.
-  // FIX: Explicitly typed sort callback parameters to resolve type inference failure where parameters were inferred as 'unknown'.
+  // FIX: Explicitly typing the sort callback parameters 'a' and 'b' as 'Store' resolves a TypeScript inference issue where they were treated as 'unknown'.
   const sortedStores = [...allStoresWithPlaceholders].sort((a: Store, b: Store) => {
     if (a.name === StoreName.CV2) return -1;
     if (b.name === StoreName.CV2) return 1;
@@ -76,6 +76,7 @@ const StoreTabs: React.FC = () => {
           }
           setDragOverStore(null);
           // Also clear the global dragged order ID to finalize the drag operation
+          // FIX: Corrected typo from SET_DRED_ORDER_ID to SET_DRAGGED_ORDER_ID.
           dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
       }
   };

@@ -9,8 +9,8 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
+// FIX: A class component must extend React.Component to have access to state, props, and lifecycle methods.
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  // FIX: Initialize state in the constructor for broader compatibility.
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -51,7 +51,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
       );
     }
 
-    // FIX: Render children if there is no error. The 'props' property is inherited from React.Component.
     return this.props.children;
   }
 }

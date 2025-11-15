@@ -52,6 +52,10 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
             if (activeItemId && itemsContainerRef.current && !itemsContainerRef.current.contains(event.target as Node)) {
                 setActiveItemId(null);
                 setEditingItemId(null);
+                // FIX: Collapse card on focus lost for 'on the way' or 'completed' cards, as requested.
+                if (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) {
+                    setIsManuallyCollapsed(true);
+                }
             }
         };
 
@@ -59,7 +63,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [activeItemId]);
+    }, [activeItemId, order.status]);
 
     // --- RE-IMPLEMENTED DRAG AND DROP LOGIC ---
 
@@ -501,7 +505,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                     </div>
                 </div>
 
-                <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) { setActiveItemId(null); setEditingItemId(null); } }}>
+                <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) { setEditingItemId(null); } }}>
                     <div ref={itemsContainerRef} className="pt-1 pb-1 px-1 space-y-1">
                         {order.items.map(item => {
                             const uniqueItemId = `${item.itemId}-${item.isSpoiled ? 'spoiled' : 'clean'}`;
@@ -550,7 +554,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                         </span>
                                     )}
                                     <div className="flex items-center space-x-2 ml-2">
-                                        {order.status === OrderStatus.DISPATCHING && isStockMovement ? (
+                                        {(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && isStockMovement ? (
                                             <div className="font-mono w-20 text-right p-1 -m-1 rounded-md">
                                                 {isStockOut ? (
                                                     <span className={`font-semibold ${isLowStock ? 'text-red-500' : 'text-yellow-400'}`}>out</span>

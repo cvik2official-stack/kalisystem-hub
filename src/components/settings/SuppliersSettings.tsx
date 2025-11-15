@@ -179,7 +179,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
   ], [editingSupplierId, editFormData]);
 
   return (
-    <div className="flex flex-col flex-grow md:w-1/2">
+    <div className="flex flex-col flex-grow w-full lg:w-3/4">
         {isSearchVisible && (
             <div className="mb-4">
               <input

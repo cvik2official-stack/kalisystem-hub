@@ -1,8 +1,9 @@
-const CACHE_NAME = 'kalisystem-dispatcher-v8';
+const CACHE_NAME = 'kalisystem-dispatcher-v10';
 const urlsToCache = [
   '/',
   '/index.html',
   '/styles.css',
+  '/index.tsx',
   '/manifest.json?v=2',
   '/icons/apple-touch-icon.png',
   '/icons/favicon.ico',
@@ -29,31 +30,25 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  // Use a "stale-while-revalidate" strategy
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    
-    // Try to get the response from the cache.
     const cachedResponse = await cache.match(event.request);
-    if (cachedResponse) {
-      return cachedResponse;
-    }
-    
-    // If it's not in the cache, fetch it from the network.
-    try {
-      const networkResponse = await fetch(event.request);
-      
-      // If the fetch was successful, clone it and store it in the cache.
+
+    const fetchPromise = fetch(event.request).then(networkResponse => {
+      // If the fetch was successful, clone it and store it in the cache for next time.
       if (networkResponse && networkResponse.ok) {
         const responseToCache = networkResponse.clone();
-        await cache.put(event.request, responseToCache);
+        cache.put(event.request, responseToCache);
       }
-      
       return networkResponse;
-    } catch (error) {
-      // The network request failed. This happens when the user is offline.
-      console.error('Service Worker: Fetch failed.', error);
-      // You could return a fallback offline page here if you had one cached.
-    }
+    }).catch(error => {
+      console.error('Service Worker: Fetch failed; user may be offline.', error);
+      // If fetch fails and we have no cached response, the request will fail.
+    });
+
+    // Return the cached response immediately if it exists, otherwise wait for the network.
+    return cachedResponse || fetchPromise;
   })());
 });
 

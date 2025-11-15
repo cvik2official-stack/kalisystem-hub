@@ -6,6 +6,7 @@ import { AppContext } from '../context/AppContext';
 import { SettingsTab } from '../types';
 import TemplatesSettings from './settings/TemplatesSettings';
 import ContextMenu from './ContextMenu';
+import DueReportSettings from './settings/DueReportSettings';
 
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -17,7 +18,7 @@ const SettingsPage: React.FC = () => {
     { id: 'items', label: 'Items' },
     { id: 'suppliers', label: 'Suppliers' },
     { id: 'stores', label: 'Stores' },
-    { id: 'templates', label: 'Templates' },
+    { id: 'due-report', label: 'Due Report' },
   ];
   
   const handleOpenMenu = (e: React.MouseEvent) => {
@@ -35,6 +36,8 @@ const SettingsPage: React.FC = () => {
         return <StoresSettings />;
       case 'templates':
         return <TemplatesSettings />;
+      case 'due-report':
+        return <DueReportSettings />;
       default:
         return null;
     }
