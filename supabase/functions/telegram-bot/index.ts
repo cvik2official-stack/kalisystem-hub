@@ -1,12 +1,8 @@
-// FIX: Replaced the `npm:` specifier with a full URL to ensure TypeScript can find the type definitions for the Deno runtime, which resolves the 'Deno not found' errors.
-// FIX: The esm.sh URL was not resolving correctly. Switched to a stable unpkg URL for the Supabase functions type definitions.
 // @deno-types="https://unpkg.com/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts"
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// FIX: Add type declaration for the Deno namespace to resolve "Cannot find name 'Deno'" errors.
-// This is necessary because the TypeScript compiler in this environment doesn't have the Deno types loaded by default.
 declare const Deno: {
   env: {
     get(key: string): string | undefined;
@@ -14,10 +10,19 @@ declare const Deno: {
 };
 
 const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
+const TELEGRAM_WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET');
 
 // The main function that handles incoming requests.
 serve(async (req)=>{
-  // 1. Acknowledge the request from Telegram immediately to avoid timeouts.
+    const url = new URL(req.url);
+    const secret = url.searchParams.get('secret');
+
+    // 1. Validate secret token to ensure the request is from Telegram.
+    if (TELEGRAM_WEBHOOK_SECRET && secret !== TELEGRAM_WEBHOOK_SECRET) {
+        return new Response("Unauthorized", { status: 401 });
+    }
+
+  // 2. Acknowledge the request from Telegram immediately to avoid timeouts.
   const ack = new Promise((resolve)=>{
     setTimeout(()=>{
       resolve(new Response(null, {

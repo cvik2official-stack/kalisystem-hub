@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kalisystem-dispatcher-v10';
+const CACHE_NAME = 'kalisystem-dispatcher-v11'; // Incremented cache version
 const urlsToCache = [
   '/',
   '/index.html',
@@ -13,48 +13,62 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  // Perform install steps
+  self.skipWaiting(); // Force the waiting service worker to become the active service worker.
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
-        // Add all core assets to the cache
+        console.log('Opened cache and caching core assets.');
         return cache.addAll(urlsToCache);
       })
   );
 });
 
 self.addEventListener('fetch', event => {
-  // We only want to cache GET requests.
-  if (event.request.method !== 'GET') {
+  const { request } = event;
+
+  // We only want to handle GET requests.
+  if (request.method !== 'GET') {
     return;
   }
 
-  // Use a "stale-while-revalidate" strategy
+  // For Supabase API calls, use a network-first strategy.
+  if (request.url.includes('supabase.co')) {
+    event.respondWith(
+      fetch(request)
+        .then(networkResponse => {
+          // If the fetch is successful, cache the response.
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(request, responseToCache);
+          });
+          return networkResponse;
+        })
+        .catch(async () => {
+          // If the network fails, try to serve from the cache.
+          const cachedResponse = await caches.match(request);
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          // If not in cache either, it will fail (which is the expected offline behavior for a failed API call)
+        })
+    );
+    return;
+  }
+
+  // For all other assets (core app shell), use a cache-first strategy.
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
-    const cachedResponse = await cache.match(event.request);
-
-    const fetchPromise = fetch(event.request).then(networkResponse => {
-      // If the fetch was successful, clone it and store it in the cache for next time.
-      if (networkResponse && networkResponse.ok) {
-        const responseToCache = networkResponse.clone();
-        cache.put(event.request, responseToCache);
-      }
-      return networkResponse;
-    }).catch(error => {
-      console.error('Service Worker: Fetch failed; user may be offline.', error);
-      // If fetch fails and we have no cached response, the request will fail.
-    });
-
-    // Return the cached response immediately if it exists, otherwise wait for the network.
-    return cachedResponse || fetchPromise;
+    const cachedResponse = await cache.match(request);
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    return fetch(request);
   })());
 });
 
+
 self.addEventListener('activate', event => {
   const cacheWhitelist = [CACHE_NAME];
-
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(

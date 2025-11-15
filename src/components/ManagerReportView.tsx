@@ -185,7 +185,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
             return <ReportColumn title="On the Way (Report)" orders={onTheWayOrders} groupBy="supplier" />;
         }
         if (singleColumn === 'completed') {
-             return <ReportColumn title="Completed" orders={completedTodayOrders} groupBy="supplier" />;
+             return <ReportColumn title="Completed (Report)" orders={completedTodayOrders} groupBy="supplier" />;
         }
     }
 

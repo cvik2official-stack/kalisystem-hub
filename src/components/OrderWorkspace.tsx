@@ -324,13 +324,13 @@ const OrderWorkspace: React.FC = () => {
         originalCompletedTime.getSeconds()
     );
 
-    const updatePayload: Partial<Order> = { completedAt: targetDate.toISOString() };
+    const updatePayload: Partial<Order> & { id: string } = { ...orderToMove, completedAt: targetDate.toISOString() };
     if (orderToMove.status !== OrderStatus.COMPLETED) {
         updatePayload.status = OrderStatus.COMPLETED;
         updatePayload.isSent = true;
         updatePayload.isReceived = true;
     }
-    actions.updateOrder({ ...orderToMove, ...updatePayload } as Order);
+    actions.updateOrder(updatePayload as Order);
 
     dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
     setDragOverDateGroup(null);

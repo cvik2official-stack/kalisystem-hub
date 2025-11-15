@@ -23,7 +23,7 @@ export enum PaymentMethod {
 
 // FIX: Define SyncStatus here to be the single source of truth.
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
-export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'telegram-bot' | 'due-report';
+export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'telegram-bot' | 'due-report' | 'stock';
 
 export interface Store {
   id: string; // uuid from Supabase
@@ -124,6 +124,13 @@ export interface DueReportTopUp {
     amount: number;
 }
 
+export interface Notification {
+  id: number;
+  message: string;
+  type?: 'on_the_way';
+  orderId?: string;
+}
+
 export interface AppSettings {
     supabaseUrl: string;
     supabaseKey: string;
@@ -140,11 +147,13 @@ export interface AppSettings {
 export interface AppState {
   stores: Store[];
   activeStore: StoreName | 'Settings';
+  previousActiveStore: StoreName | null;
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
   orders: Order[];
   dueReportTopUps: DueReportTopUp[];
+  notifications: Notification[];
   activeStatus: OrderStatus;
   activeSettingsTab: SettingsTab;
   orderIdCounters: Record<string, number>;
