@@ -117,6 +117,22 @@ const App: React.FC = () => {
     }
   }, [dispatch]);
 
+    // Auto-switch to Smart View on landscape
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      const isLandscape = window.innerWidth > window.innerHeight;
+      if (isLandscape && !state.isSmartView) {
+        dispatch({ type: 'SET_SMART_VIEW', payload: true });
+      }
+    };
+    
+    // Check on mount
+    handleOrientationChange();
+
+    window.addEventListener('resize', handleOrientationChange);
+    return () => window.removeEventListener('resize', handleOrientationChange);
+  }, [state.isSmartView, dispatch]);
+
   const handleEnterManagerView = () => {
     if (activeStore !== 'Settings') {
         dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: true, store: activeStore } });

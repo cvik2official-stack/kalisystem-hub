@@ -11,7 +11,7 @@ interface ReportOrderItem extends OrderItem {
 interface ManagerReportViewProps {
   storeName: StoreName | null; // Null for Smart View (all stores)
   orders: Order[];
-  singleColumn?: 'on_the_way' | 'completed';
+  singleColumn?: 'dispatch' | 'on_the_way' | 'completed';
 }
 
 const ReportColumn: React.FC<{ 
@@ -161,7 +161,7 @@ const ReportColumn: React.FC<{
 
 const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders, singleColumn }) => {
     
-    const { onTheWayOrders, completedTodayOrders } = useMemo(() => {
+    const { onTheWayOrders, completedTodayOrders, dispatchingOrders } = useMemo(() => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
@@ -172,23 +172,27 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = ({ storeName, orders
             completedDate.setHours(0, 0, 0, 0);
             return completedDate.getTime() === today.getTime();
         });
+        const dispatching = orders.filter(o => o.status === OrderStatus.DISPATCHING);
         
-        return { onTheWayOrders: onTheWay, completedTodayOrders: completed };
+        return { onTheWayOrders: onTheWay, completedTodayOrders: completed, dispatchingOrders: dispatching };
     }, [orders]);
 
     if (singleColumn) {
+        if (singleColumn === 'dispatch') {
+            return <ReportColumn title="Dispatch (Report)" orders={dispatchingOrders} groupBy="supplier" />;
+        }
         if (singleColumn === 'on_the_way') {
             return <ReportColumn title="On the Way (Report)" orders={onTheWayOrders} groupBy="supplier" />;
         }
         if (singleColumn === 'completed') {
-             return <ReportColumn title="Completed Today" orders={completedTodayOrders} groupBy="supplier" />;
+             return <ReportColumn title="Completed" orders={completedTodayOrders} groupBy="supplier" />;
         }
     }
 
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start h-full">
             <ReportColumn title="On the Way (Report)" orders={onTheWayOrders} groupBy={storeName ? 'supplier' : 'store'} />
-            <ReportColumn title="Completed Today" orders={completedTodayOrders} groupBy="supplier" />
+            <ReportColumn title="Completed" orders={completedTodayOrders} groupBy="supplier" />
         </div>
     );
 };

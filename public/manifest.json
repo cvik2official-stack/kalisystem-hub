@@ -19,7 +19,7 @@
   "start_url": "/",
   "scope": "/",
   "id": "/",
-  "display": "fullscreen",
+  "display": "standalone",
   "theme_color": "#171923",
   "background_color": "#171923"
 }

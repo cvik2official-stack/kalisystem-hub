@@ -1,23 +1,19 @@
 import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Order, ItemPrice, StoreName, PaymentMethod } from '../../types';
-import { getLatestItemPrice } from '../../utils/messageFormatter';
+import { getLatestItemPrice, generateKaliUnifyReport } from '../../utils/messageFormatter';
+import { useNotifier } from '../../context/NotificationContext';
+import { sendDueReport } from '../../services/telegramService';
 
 interface DueReportSettingsProps {
     setMenuOptions: (options: any[]) => void;
 }
 
 const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions }) => {
-    const { state, dispatch, actions } = useContext(AppContext);
+    const { state, actions } = useContext(AppContext);
     const { orders, suppliers, itemPrices, dueReportTopUps, settings } = state;
-
-    const [initialBalance, setInitialBalance] = useState(settings.dueReportInitialBalance || 0);
-
-    const handleInitialBalanceChange = (value: string) => {
-        const amount = parseFloat(value) || 0;
-        setInitialBalance(amount);
-        dispatch({ type: 'SAVE_SETTINGS', payload: { dueReportInitialBalance: amount } });
-    };
+    const { notify } = useNotifier();
+    const [sendingReportDate, setSendingReportDate] = useState<string | null>(null);
 
     const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
         return order.items.reduce((total, item) => {
@@ -76,7 +72,8 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
         
         const uniqueSortedDates = [...new Set(relevantDates)].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
         
-        let runningDue = initialBalance;
+        const hardcodedInitialBalance = 146.26;
+        let runningDue = hardcodedInitialBalance;
         const rows: any[] = [];
 
         for (const dateKey of uniqueSortedDates) {
@@ -99,13 +96,44 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
         }
 
         return rows.reverse(); // Show most recent first
-    }, [dailyKALIspend, topUpsMap, initialBalance]);
+    }, [dailyKALIspend, topUpsMap]);
+
+    const handleSendDailyReport = async (row: any, index: number) => {
+        const { telegramBotToken } = settings;
+        if (!telegramBotToken) {
+            notify('Telegram Bot Token is not set in Settings.', 'error');
+            return;
+        }
+
+        setSendingReportDate(row.dateKey);
+        try {
+            const hardcodedInitialBalance = 146.26;
+            const previousDue = reportRows[index + 1]?.due ?? hardcodedInitialBalance;
+            const topUp = row.topUp || 0;
+            
+            const ordersForDate = orders.filter(order => {
+                if (!order.completedAt) return false;
+                const completedDate = new Date(order.completedAt).toISOString().split('T')[0];
+                return completedDate === row.dateKey;
+            });
+            
+            const message = generateKaliUnifyReport(ordersForDate, itemPrices, previousDue, topUp, row.dateKey, row.dateKey);
+            await sendDueReport(message, telegramBotToken);
+            notify(`Report for ${row.dateKey} sent successfully!`, 'success');
+
+        } catch (error: any) {
+            notify(`Failed to send report: ${error.message}`, 'error');
+        } finally {
+            setSendingReportDate(null);
+        }
+    };
+
 
     const formatCurrency = (amount: number) => amount === 0 ? '-' : amount.toFixed(2);
     
     const handleExportToCsv = () => {
         let csvContent = "data:text/csv;charset=utf-8,";
-        const headers = ["Date", "Top Up", ...storesToTrack, "Due"];
+        const headers = ["Date", "Top Up", "CV2", "STI", "O2", "WB", "Due"];
         csvContent += headers.join(",") + "\r\n";
 
         [...reportRows].reverse().forEach(row => {
@@ -138,31 +166,22 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
 
     return (
         <div className="flex flex-col flex-grow w-full">
-            <div className="mb-4 max-w-xs">
-                <label htmlFor="initial-balance" className="block text-sm font-medium text-gray-300">Initial Due Balance (Nov 1)</label>
-                <input
-                    type="text"
-                    id="initial-balance"
-                    inputMode="decimal"
-                    value={initialBalance}
-                    onChange={(e) => handleInitialBalanceChange(e.target.value)}
-                    className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                />
-            </div>
             <div className="overflow-x-auto hide-scrollbar">
                 <table className="min-w-full divide-y divide-gray-700">
                     <thead className="bg-gray-800">
                         <tr>
                             <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
                             <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Top Up</th>
-                            {storesToTrack.map(store => (
-                                <th key={store} scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">{store}</th>
-                            ))}
+                            <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">CV2</th>
+                            <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">STI</th>
+                            <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">O2</th>
+                            <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">WB</th>
                             <th scope="col" className="px-1 md:px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Due</th>
+                            <th scope="col" className="px-1 md:px-3 py-3 text-center text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
                         </tr>
                     </thead>
                     <tbody className="bg-gray-800 divide-y divide-gray-700">
-                        {reportRows.map(row => (
+                        {reportRows.map((row, index) => (
                             <tr key={row.dateKey} className="hover:bg-gray-700/50">
                                 <td className="px-1 md:px-3 py-2 whitespace-nowrap text-sm text-gray-300">
                                     {row.date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}
@@ -174,7 +193,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
                                         defaultValue={row.topUp || ''}
                                         onBlur={(e) => handleTopUpChange(row.dateKey, e.target.value)}
                                         placeholder="-"
-                                        className="bg-transparent p-1 w-16 md:w-24 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
+                                        className="bg-transparent p-1 w-16 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
                                     />
                                 </td>
                                 <td className="px-1 md:px-3 py-2 whitespace-nowrap text-sm text-gray-300">{formatCurrency(row.cv2)}</td>
@@ -182,10 +201,27 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
                                 <td className="px-1 md:px-3 py-2 whitespace-nowrap text-sm text-gray-300">{formatCurrency(row.stock02)}</td>
                                 <td className="px-1 md:px-3 py-2 whitespace-nowrap text-sm text-gray-300">{formatCurrency(row.wb)}</td>
                                 <td className={`px-1 md:px-3 py-2 whitespace-nowrap text-sm font-semibold ${row.due < 0 ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(row.due)}</td>
+                                <td className="px-1 md:px-3 py-2 whitespace-nowrap text-sm text-gray-300 text-center">
+                                    <button
+                                        onClick={() => handleSendDailyReport(row, index)}
+                                        disabled={sendingReportDate === row.dateKey}
+                                        className="text-blue-400 hover:text-blue-300 disabled:text-gray-500"
+                                        title="Send daily report to Telegram"
+                                    >
+                                        {sendingReportDate === row.dateKey ? (
+                                            <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                        ) : (
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
+                                        )}
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+            </div>
+            <div className="mt-4 text-center text-xs text-gray-500">
+                Initial Due Balance (Nov 1): <span className="font-semibold text-gray-400">146.26</span>
             </div>
         </div>
     );

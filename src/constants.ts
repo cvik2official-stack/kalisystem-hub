@@ -38,5 +38,5 @@ export enum OrderStatus {
 export const STATUS_TABS: { id: OrderStatus; label: string }[] = [
     { id: OrderStatus.DISPATCHING, label: 'Dispatch' },
     { id: OrderStatus.ON_THE_WAY, label: 'On the Way' },
-    { id: OrderStatus.COMPLETED, label: 'Completed Today' },
+    { id: OrderStatus.COMPLETED, label: 'Completed' },
 ];

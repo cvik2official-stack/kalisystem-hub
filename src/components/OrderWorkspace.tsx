@@ -1,11 +1,11 @@
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
-import SupplierCard from './SupplierCard';
+import SupplierCard from '../components/SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
 import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice } from '../types';
 import PasteItemsModal from './modals/PasteItemsModal';
-import ContextMenu from './ContextMenu';
+import ContextMenu from '../components/ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
 import DueReportModal from './modals/DueReportModal';
@@ -564,9 +564,12 @@ const OrderWorkspace: React.FC = () => {
 
 
   if (isSmartView) {
+    // New Smart View: 3 columns, stacking on mobile
     return (
-        <div className="flex-grow pt-4 h-full">
-            <ManagerReportView orders={smartViewOrders} storeName={null} />
+        <div className="flex-grow pt-4 h-full grid grid-cols-1 md:grid-cols-3 gap-4">
+            <ManagerReportView orders={smartViewOrders} storeName={null} singleColumn="dispatch" />
+            <ManagerReportView orders={smartViewOrders} storeName={null} singleColumn="on_the_way" />
+            <ManagerReportView orders={smartViewOrders} storeName={null} singleColumn="completed" />
         </div>
     );
   }
