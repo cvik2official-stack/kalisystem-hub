@@ -18,7 +18,7 @@ import { useNotificationState, useNotificationDispatch } from './context/Notific
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -68,7 +68,7 @@ const App: React.FC = () => {
     // Reset the animation after it finishes
     const timer = setTimeout(() => setIsRedAnimating(false), 1500); // Must match animation-duration in CSS
     return () => clearTimeout(timer);
-  }, [activeStore, activeSettingsTab, activeStatus]); // Dependency array triggers animation on view change
+  }, [activeStore, activeSettingsTab, activeStatus, isSmartView, state.columnCount]);
 
 
   // Handle one-shot click animation for green dot
@@ -182,21 +182,44 @@ const App: React.FC = () => {
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
         { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
         { label: '  Due Report', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'due-report' as SettingsTab }) },
+      ];
+      
+      const viewOptions = [
+          { label: state.isSmartView ? '  Exit Smart View' : '  Smart View', action: () => dispatch({ type: 'SET_SMART_VIEW', payload: !state.isSmartView }) }
+      ];
+      if (activeStore !== 'Settings' && !state.isSmartView) {
+          viewOptions.push({ label: '  Manager View', action: handleEnterManagerView });
+      }
+      options.push({ label: 'View', isHeader: true }, ...viewOptions);
+
+      options.push(
         { label: 'SETTINGS', isHeader: true },
         { label: '  Templates', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'templates' as SettingsTab }) },
         { label: '  Telegram Bot', action: () => setIsTelegramWebhookModalOpen(true) },
-      ];
-      if (activeStore !== 'Settings') {
-        options.push(
-            { label: 'View', isHeader: true },
-            { label: '  Manager View', action: handleEnterManagerView }
-        );
-      }
+      )
+      
       return options;
   };
 
   const handleRedDotClick = () => {
-    dispatch({ type: 'CYCLE_COLUMN_COUNT' });
+    const { columnCount, isSmartView } = state;
+
+    if (isSmartView) {
+      dispatch({ type: 'SET_SMART_VIEW', payload: false });
+      return;
+    }
+
+    const isMobileLayout = window.innerWidth < 1024;
+
+    if (isMobileLayout) {
+      // Cycle: 1 -> 2 -> 3 -> Smart View -> 1
+      if (columnCount === 1) dispatch({ type: 'SET_COLUMN_COUNT', payload: 2 });
+      else if (columnCount === 2) dispatch({ type: 'SET_COLUMN_COUNT', payload: 3 });
+      else if (columnCount === 3) dispatch({ type: 'SET_SMART_VIEW', payload: true });
+    } else {
+      // Cycle: 3 -> Smart View -> 3
+      dispatch({ type: 'SET_SMART_VIEW', payload: true });
+    }
   };
   
   const handleYellowDotClick = () => {
@@ -230,7 +253,7 @@ const App: React.FC = () => {
   const greenDotAnimationClass = useMemo(() => {
     if (isGreenClickAnimating) return 'animate-pulse-expand-once';
     if (syncStatus === 'syncing') return 'animate-pulse-syncing';
-    return 'animate-pulse-idle';
+    return 'sonar-emitter';
   }, [isGreenClickAnimating, syncStatus]);
 
   if (!isInitialized) {
@@ -283,7 +306,7 @@ const App: React.FC = () => {
                     </span>
                   </button>
                   <button onClick={handleGreenDotClick} disabled={syncStatus === 'syncing'} aria-label="Sync with database">
-                    <span className={`w-4 h-4 bg-green-500 rounded-full block ${greenDotAnimationClass}`}></span>
+                    <span className={`relative w-4 h-4 bg-green-500 rounded-full block ${greenDotAnimationClass}`}></span>
                   </button>
                 </div>
                  {isManagerView && <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>}
@@ -332,7 +355,7 @@ const App: React.FC = () => {
 
             <div className="flex-grow px-3 py-2 flex flex-col">
               <main className="flex-grow flex flex-col">
-                <StoreTabs />
+                {!isSmartView && <StoreTabs />}
                 {activeStore === 'Settings' ? <SettingsPage /> : <OrderWorkspace />}
               </main>
             </div>

@@ -20,6 +20,7 @@ export interface AppState {
   isInitialized: boolean;
   syncStatus: SyncStatus;
   isManagerView: boolean;
+  isSmartView: boolean;
   managerStoreFilter: StoreName | null;
   isDualPaneMode: boolean;
   cardWidth: number | null;
@@ -58,6 +59,7 @@ export type Action =
   | { type: 'SET_CARD_WIDTH'; payload: number | null }
   | { type: 'SET_DUE_REPORT_TOP_UPS'; payload: DueReportTopUp[] }
   | { type: 'UPSERT_DUE_REPORT_TOP_UP'; payload: DueReportTopUp }
+  | { type: 'SET_SMART_VIEW'; payload: boolean }
   | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] };
 
 export interface AppContextActions {
@@ -206,6 +208,14 @@ const appReducer = (state: AppState, action: Action): AppState => {
             ...state,
             isManagerView: action.payload.isManager,
             managerStoreFilter: action.payload.store,
+            isSmartView: false, // Exit smart view when entering manager view
+        };
+    case 'SET_SMART_VIEW':
+        return {
+            ...state,
+            isSmartView: action.payload,
+            // Reset column count when exiting smart view to prevent weird states
+            columnCount: action.payload ? state.columnCount : getInitialColumnCount(),
         };
     case 'UPSERT_ITEM_PRICE': {
         const newPrice = action.payload;
@@ -314,6 +324,7 @@ const getInitialState = (): AppState => {
     isInitialized: false,
     syncStatus: 'idle',
     isManagerView: false,
+    isSmartView: false,
     managerStoreFilter: null,
     isDualPaneMode: false,
     draggedOrderId: null,
@@ -337,6 +348,7 @@ const getInitialState = (): AppState => {
   finalState.isInitialized = false;
   finalState.cardWidth = loadedState.cardWidth ?? null;
   finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
+  finalState.isSmartView = loadedState.isSmartView ?? false;
 
   return finalState;
 };
@@ -376,13 +388,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     const handleResize = () => {
-        dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
+        if (!state.isSmartView) {
+            dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
+        }
     };
     window.addEventListener('resize', handleResize);
     // Set initial count on mount
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
-  }, [dispatch]);
+  }, [dispatch, state.isSmartView]);
 
   const syncWithSupabase = useCallback(async (options?: { isInitialSync?: boolean }) => {
     dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
@@ -533,12 +547,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             return;
         }
 
-        // Create a new item list without the deleted item
         const newItems = order.items.filter(i => 
             !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled && i.name === itemToDelete.name)
         );
 
-        // If items remain, update the order
         await actions.updateOrder({ ...order, items: newItems });
         notify('Item removed.', 'success');
     },
@@ -627,7 +639,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             // --- Acknowledgement Polling ---
             try {
                 const unacknowledgedOnTheWay = state.orders
-                    .filter(o => o.status === OrderStatus.ON_THE_WAY && !o.isAcknowledged)
+                    .filter(o => {
+                        if (o.status !== OrderStatus.ON_THE_WAY || o.isAcknowledged) {
+                            return false;
+                        }
+                        const supplier = state.suppliers.find(s => s.id === o.supplierId);
+                        // Only poll for orders where the supplier has the 'OK' button enabled.
+                        return supplier?.botSettings?.showOkButton === true;
+                    })
                     .map(o => o.id);
 
                 if (unacknowledgedOnTheWay.length > 0) {
@@ -645,7 +664,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                         }
                     }
                 }
-            } catch (e) { console.warn('Background sync for acknowledgements failed:', e); }
+            } catch (e: any) {
+              if (e?.message && !e.message.includes('Failed to fetch')) {
+                console.warn('Background sync for acknowledgements failed:', e);
+              }
+            }
 
             // --- Reminder Polling ---
             try {
@@ -679,15 +702,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const originalAction = (actions as any)[actionName];
       (actions as any)[actionName] = async (...args: any[]) => {
           try {
-              if (actionName === 'addItemToDispatch') {
-                 // The 'addItemToDispatch' action calls other wrapped actions, so we call it directly
-                 // to avoid double error handling.
-                 return await originalAction(...args);
-              }
+              // This wrapper was causing crashes on any failed save.
+              // It's better to let individual components handle their own try/catch
+              // if they need specific rollback logic. This global catch is too aggressive.
               return await originalAction(...args);
           } catch (e: any) {
               notify(`Error: ${e.message}`, 'error');
-              throw e;
+              // Re-throwing the error allows component-level catch blocks to run.
+              throw e; 
           }
       };
   }

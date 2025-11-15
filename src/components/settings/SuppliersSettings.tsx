@@ -2,6 +2,7 @@ import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Supplier, SupplierName, PaymentMethod } from '../../types';
 import EditTemplateModal from '../modals/EditTemplateModal';
+import { useNotifier } from '../../context/NotificationContext';
 
 const PaymentMethodBadge: React.FC<{ method?: PaymentMethod }> = ({ method }) => {
     if (!method) return <span className="text-gray-500">-</span>;
@@ -26,6 +27,7 @@ interface SuppliersSettingsProps {
 
 const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions }) => {
   const { state, actions } = useContext(AppContext);
+  const { notify } = useNotifier();
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   
@@ -35,21 +37,56 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Supplier>>({});
   
+  // FIX: Moved `filteredSuppliers` declaration before its usage.
+  const filteredSuppliers = useMemo(() => {
+    const sortedSuppliers = [...state.suppliers].sort((a, b) => a.name.localeCompare(b.name));
+    if (!searchTerm.trim()) {
+        return sortedSuppliers;
+    }
+    return sortedSuppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [state.suppliers, searchTerm]);
+
   const handleAddNew = async () => {
     const newSupplier = await actions.addSupplier({ name: 'New Supplier' as SupplierName });
     setEditingSupplierId(newSupplier.id);
     setEditFormData(newSupplier);
+  };
+  
+  const handleExportSuppliersCsv = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    const headers = ["Name", "Payment Method", "Chat ID", "Contact"];
+    csvContent += headers.join(",") + "\r\n";
+
+    filteredSuppliers.forEach(supplier => {
+        const row = [
+            `"${supplier.name.replace(/"/g, '""')}"`,
+            supplier.paymentMethod ?? '',
+            supplier.chatId ?? '',
+            supplier.contact ?? ''
+        ];
+        csvContent += row.join(",") + "\r\n";
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "suppliers_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    notify('Suppliers exported to CSV.', 'success');
   };
 
   useEffect(() => {
     const options = [
         { label: 'Search', action: () => setIsSearchVisible(prev => !prev) },
         { label: 'Add New', action: handleAddNew },
+        { label: 'Export to CSV', action: handleExportSuppliersCsv },
     ];
     setMenuOptions(options);
 
     return () => setMenuOptions([]);
-  }, [setMenuOptions, handleAddNew]);
+  }, [setMenuOptions, handleAddNew, filteredSuppliers]); // Add filteredSuppliers to deps
 
   const handleEditClick = (supplier: Supplier) => {
     setEditingSupplierId(supplier.id);
@@ -79,14 +116,6 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
     setSelectedSupplierForTemplate(supplier);
     setIsTemplateModalOpen(true);
   };
-
-  const filteredSuppliers = useMemo(() => {
-    const sortedSuppliers = [...state.suppliers].sort((a, b) => a.name.localeCompare(b.name));
-    if (!searchTerm.trim()) {
-        return sortedSuppliers;
-    }
-    return sortedSuppliers.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-  }, [state.suppliers, searchTerm]);
 
   const columns = useMemo(() => [
     { 

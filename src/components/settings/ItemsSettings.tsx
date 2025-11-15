@@ -27,6 +27,21 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const [dragOverSupplier, setDragOverSupplier] = useState<string | null>(null);
 
+  // FIX: Moved `filteredItems` declaration before its usage.
+  const filteredItems = useMemo(() => {
+    const sortedItems = [...state.items].sort((a, b) => {
+        if (a.name === 'New Item' && b.name !== 'New Item') return -1;
+        if (b.name === 'New Item' && a.name !== 'New Item') return 1;
+        return a.name.localeCompare(b.name)
+    });
+    if (!searchTerm.trim()) {
+        return sortedItems;
+    }
+    return sortedItems.filter(item => 
+      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [state.items, searchTerm]);
 
   const handleItemUpdate = async (item: Item, field: keyof Item, value: any) => {
     if (item[field] === value) return; // No change
@@ -176,33 +191,47 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
 
         handleDragEnd();
     };
+    
+  const handleExportItemsCsv = () => {
+    let csvContent = "data:text/csv;charset=utf-8,";
+    const headers = ["Name", "Supplier", "Unit", "Stock Qty", "Price"];
+    csvContent += headers.join(",") + "\r\n";
+
+    filteredItems.forEach(item => {
+        const price = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price ?? '';
+        const row = [
+            `"${item.name.replace(/"/g, '""')}"`,
+            item.supplierName,
+            item.unit,
+            item.stockQuantity ?? '',
+            price
+        ];
+        csvContent += row.join(",") + "\r\n";
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", "items_export.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    notify('Items exported to CSV.', 'success');
+  };
 
   useEffect(() => {
     const options = [
         { label: 'Search', action: () => setIsSearchVisible(prev => !prev) },
         { label: 'Add New', action: handleAddNewItem },
-        { label: isGrouped ? 'Ungroup' : 'Group by Supplier', action: () => setIsGrouped(!isGrouped) }
+        { label: isGrouped ? 'Ungroup' : 'Group by Supplier', action: () => setIsGrouped(!isGrouped) },
+        { label: 'Export to CSV', action: handleExportItemsCsv }
     ];
     setMenuOptions(options);
 
     return () => setMenuOptions([]);
-  }, [handleAddNewItem, setMenuOptions, isGrouped]);
+  }, [handleAddNewItem, setMenuOptions, isGrouped, filteredItems]); // Add filteredItems to deps
 
 
-  const filteredItems = useMemo(() => {
-    const sortedItems = [...state.items].sort((a, b) => {
-        if (a.name === 'New Item' && b.name !== 'New Item') return -1;
-        if (b.name === 'New Item' && a.name !== 'New Item') return 1;
-        return a.name.localeCompare(b.name)
-    });
-    if (!searchTerm.trim()) {
-        return sortedItems;
-    }
-    return sortedItems.filter(item => 
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [state.items, searchTerm]);
   
   const groupedItems = useMemo(() => {
     if (!isGrouped) return null;

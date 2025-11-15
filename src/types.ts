@@ -154,6 +154,7 @@ export interface AppState {
   isInitialized: boolean;
   syncStatus: SyncStatus;
   isManagerView: boolean;
+  isSmartView: boolean;
   managerStoreFilter: StoreName | null;
   isDualPaneMode: boolean;
   cardWidth: number | null;
