@@ -19,10 +19,9 @@ interface SupplierCardProps {
   isOudomManagerWorkflow?: boolean;
   onItemDrop: (destinationOrderId: string) => void;
   showStoreName?: boolean;
-  isEditModeEnabled?: boolean;
 }
 
-const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditModeEnabled }) => {
+const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
     const { state, dispatch, actions } = useContext(AppContext);
     const { notify } = useNotifier();
     const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED);
@@ -102,7 +101,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
             canDrop = true;
         } else if (state.draggedOrderId && state.draggedOrderId !== order.id) {
             const sourceOrder = state.orders.find(o => o.id === state.draggedOrderId);
-            if (sourceOrder && sourceOrder.store === order.store && sourceOrder.status === order.status) {
+            if (sourceOrder) {
                 canDrop = true;
             }
         }
@@ -197,7 +196,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
     };
 
     const handleQuantityOrPriceClick = (item: OrderItem) => {
-        if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
+        if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) {
             setSelectedItem(item);
             setNumpadOpen(true);
         }
@@ -254,11 +253,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
         setIsProcessing(true);
         try {
             const newItems = order.items.filter(i => !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled));
-            if (newItems.length > 0) {
-                await actions.updateOrder({ ...order, items: newItems });
-            } else {
-                await actions.deleteOrder(order.id);
-            }
+            // The order is no longer deleted here; it's handled on blur by App.tsx if empty.
+            await actions.updateOrder({ ...order, items: newItems });
         } finally {
             setIsProcessing(false);
         }
@@ -494,7 +490,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                         </div>
                     </div>
                     <div className="flex-shrink-0 flex items-center">
-                         {!isEffectivelyCollapsed && (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || (order.status === OrderStatus.COMPLETED && isEditModeEnabled)) && (
+                         {!isEffectivelyCollapsed && (
                             <button onClick={() => setAddItemModalOpen(true)} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700" aria-label="Add item">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
                             </button>
@@ -507,7 +503,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
 
                 <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) { setEditingItemId(null); } }}>
                     <div ref={itemsContainerRef} className="pt-1 pb-1 px-1 space-y-1">
-                        {order.items.map(item => {
+                        {order.items.length === 0 ? (
+                            <div className="text-center text-gray-500 text-sm py-4 px-2">
+                                {order.status === OrderStatus.DISPATCHING ? "Drag items here to add." : "No items."}
+                            </div>
+                        ) : order.items.map(item => {
                             const uniqueItemId = `${item.itemId}-${item.isSpoiled ? 'spoiled' : 'clean'}`;
                             const isActive = activeItemId === uniqueItemId;
                             const isEditing = editingItemId === uniqueItemId;
@@ -515,7 +515,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                             const unitPrice = item.price ?? latestPriceInfo?.price ?? null;
                             const priceUnit = latestPriceInfo?.unit;
                             const isEditingPrice = editingPriceUniqueId === uniqueItemId;
-                            const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || (order.status === OrderStatus.COMPLETED && isEditModeEnabled));
+                            const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED);
                             
                             const masterItem = state.items.find(i => i.id === item.itemId);
                             const isStockIn = order.paymentMethod === PaymentMethod.STOCK;
@@ -586,7 +586,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, isEditMo
                                                 </div>
                                             )
                                         )}
-                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
+                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {item.quantity}{item.unit}
                                         </div>
                                         <button 

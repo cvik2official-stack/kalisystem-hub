@@ -155,7 +155,6 @@ export interface AppState {
   syncStatus: SyncStatus;
   isManagerView: boolean;
   managerStoreFilter: StoreName | null;
-  isEditModeEnabled: boolean;
   isDualPaneMode: boolean;
   cardWidth: number | null;
   draggedOrderId: string | null;

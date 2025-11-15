@@ -80,16 +80,20 @@ const App: React.FC = () => {
   }, [isGreenClickAnimating]);
 
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        dispatch({ type: 'SET_EDIT_MODE', payload: false });
+    const handleFocusLoss = () => {
+      const emptyDispatchOrders = state.orders.filter(
+        o => o.items.length === 0 && o.status === OrderStatus.DISPATCHING
+      );
+      if (emptyDispatchOrders.length > 0) {
+        emptyDispatchOrders.forEach(order => {
+          actions.deleteOrder(order.id);
+        });
       }
     };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [dispatch]);
+
+    window.addEventListener('blur', handleFocusLoss);
+    return () => window.removeEventListener('blur', handleFocusLoss);
+  }, [actions, state.orders]);
 
   useEffect(() => {
     const hash = window.location.hash;

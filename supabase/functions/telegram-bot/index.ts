@@ -5,6 +5,14 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// FIX: Add type declaration for the Deno namespace to resolve "Cannot find name 'Deno'" errors.
+// This is necessary because the TypeScript compiler in this environment doesn't have the Deno types loaded by default.
+declare const Deno: {
+  env: {
+    get(key: string): string | undefined;
+  };
+};
+
 const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
 
 // The main function that handles incoming requests.

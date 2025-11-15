@@ -67,7 +67,7 @@ const CompletedReportView: React.FC<{ orders: Order[] }> = ({ orders }) => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, orders, suppliers, isEditModeEnabled, draggedOrderId, columnCount, activeStatus, draggedItem } = state;
+  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem } = state;
   const { notify } = useNotifier();
 
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
@@ -153,13 +153,6 @@ const OrderWorkspace: React.FC = () => {
         return;
     }
     
-    // Permission Check: Cannot modify completed orders without edit mode
-    if ((sourceOrder.status === OrderStatus.COMPLETED && !isEditModeEnabled) || (destinationOrder.status === OrderStatus.COMPLETED && !isEditModeEnabled)) {
-        notify('Enable Edit Mode to modify completed orders.', 'info');
-        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
-        return;
-    }
-
     // --- Update Source Order ---
     const newSourceItems = sourceOrder.items.filter(i => 
         // A more robust check for item identity
@@ -190,13 +183,8 @@ const OrderWorkspace: React.FC = () => {
     
     // --- Commit changes via actions ---
     try {
-        // If source order becomes empty, delete it. Otherwise, update it.
-        if (newSourceItems.length === 0) {
-            await actions.deleteOrder(sourceOrderId);
-        } else {
-            await actions.updateOrder({ ...sourceOrder, items: newSourceItems });
-        }
-
+        // Update the source order, even if it becomes empty. It will be cleaned up on blur.
+        await actions.updateOrder({ ...sourceOrder, items: newSourceItems });
         await actions.updateOrder({ ...destinationOrder, items: newDestinationItems });
     } catch (e) {
         // The context wrapper already shows a notification
@@ -340,8 +328,6 @@ const OrderWorkspace: React.FC = () => {
   const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
     const options = [];
     
-    options.push({ label: isEditModeEnabled ? 'Disable Edit' : 'Enable Edit', action: () => dispatch({ type: 'SET_EDIT_MODE', payload: !isEditModeEnabled }) });
-
     if (dateGroupKey === 'Today') {
         options.push(
             { label: 'New Card...', action: () => setSupplierSelectModalOpen(true) },
@@ -358,7 +344,7 @@ const OrderWorkspace: React.FC = () => {
   const handleDropOnDateGroup = (key: string) => {
     if (!draggedOrderId) return;
     const orderToMove = orders.find(o => o.id === draggedOrderId);
-    if (!orderToMove || orderToMove.status !== OrderStatus.COMPLETED) return;
+    if (!orderToMove) return;
 
     const targetDate = new Date(key === 'Today' ? new Date() : new Date(key));
     
@@ -369,16 +355,21 @@ const OrderWorkspace: React.FC = () => {
         originalCompletedTime.getSeconds()
     );
 
-    actions.updateOrder({ ...orderToMove, completedAt: targetDate.toISOString() });
+    const updatePayload: Partial<Order> = { completedAt: targetDate.toISOString() };
+    if (orderToMove.status !== OrderStatus.COMPLETED) {
+        updatePayload.status = OrderStatus.COMPLETED;
+        updatePayload.isSent = true;
+        updatePayload.isReceived = true;
+    }
+    actions.updateOrder({ ...orderToMove, ...updatePayload } as Order);
+
     dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
     setDragOverDateGroup(null);
   }
   
   const handleDragOverDateGroup = (e: React.DragEvent, key: string) => {
     const orderToMove = orders.find(o => o.id === draggedOrderId);
-    if (!orderToMove || orderToMove.status !== OrderStatus.COMPLETED) {
-        return;
-    }
+    if (!orderToMove) return;
 
     // Replicate grouping logic to find the source group key
     const today = new Date();
@@ -545,7 +536,6 @@ const OrderWorkspace: React.FC = () => {
                             order={order}
                             onItemDrop={handleItemDropOnCard}
                             showStoreName={activeStore === StoreName.KALI} 
-                            isEditModeEnabled={isEditModeEnabled}
                         />
                         ))}
                     </div>

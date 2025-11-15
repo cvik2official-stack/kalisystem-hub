@@ -21,7 +21,6 @@ export interface AppState {
   syncStatus: SyncStatus;
   isManagerView: boolean;
   managerStoreFilter: StoreName | null;
-  isEditModeEnabled: boolean;
   isDualPaneMode: boolean;
   cardWidth: number | null;
   draggedOrderId: string | null;
@@ -51,7 +50,6 @@ export type Action =
   | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
   | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
-  | { type: 'SET_EDIT_MODE'; payload: boolean }
   | { type: 'TOGGLE_DUAL_PANE_MODE' }
   | { type: 'CYCLE_COLUMN_COUNT' }
   | { type: 'SET_COLUMN_COUNT'; payload: 1 | 2 | 3 }
@@ -85,15 +83,13 @@ export interface AppContextActions {
 const appReducer = (state: AppState, action: Action): AppState => {
   switch (action.type) {
     case 'SET_ACTIVE_STORE':
-      return { ...state, activeStore: action.payload, isEditModeEnabled: false }; // Disable edit mode on store change
+      return { ...state, activeStore: action.payload };
     case 'SET_ACTIVE_STATUS':
-      return { ...state, activeStatus: action.payload, isEditModeEnabled: false }; // Disable edit mode on status change
+      return { ...state, activeStatus: action.payload };
     case 'SET_ACTIVE_SETTINGS_TAB':
         return { ...state, activeSettingsTab: action.payload };
     case 'NAVIGATE_TO_SETTINGS':
         return { ...state, activeStore: 'Settings', activeSettingsTab: action.payload };
-    case 'SET_EDIT_MODE':
-        return { ...state, isEditModeEnabled: action.payload };
     case 'TOGGLE_DUAL_PANE_MODE':
         return { ...state, isDualPaneMode: !state.isDualPaneMode };
     case 'SET_CARD_WIDTH':
@@ -319,7 +315,6 @@ const getInitialState = (): AppState => {
     syncStatus: 'idle',
     isManagerView: false,
     managerStoreFilter: null,
-    isEditModeEnabled: false,
     isDualPaneMode: false,
     draggedOrderId: null,
     draggedItem: null,
@@ -340,7 +335,6 @@ const getInitialState = (): AppState => {
   })) as Order[];
   finalState.isLoading = false;
   finalState.isInitialized = false;
-  finalState.isEditModeEnabled = false; // Always start with edit mode off
   finalState.cardWidth = loadedState.cardWidth ?? null;
   finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
 
@@ -544,15 +538,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled && i.name === itemToDelete.name)
         );
 
-        if (newItems.length > 0) {
-            // If items remain, update the order
-            await actions.updateOrder({ ...order, items: newItems });
-            notify('Item removed.', 'success');
-        } else {
-            // If the order is now empty, delete it
-            await actions.deleteOrder(order.id);
-            // deleteOrder action provides its own notification
-        }
+        // If items remain, update the order
+        await actions.updateOrder({ ...order, items: newItems });
+        notify('Item removed.', 'success');
     },
     addItemToDispatch: async (item) => {
         const { activeStore, orders, suppliers, itemPrices } = state;
