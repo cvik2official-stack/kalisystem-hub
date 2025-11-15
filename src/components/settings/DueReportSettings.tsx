@@ -1,11 +1,11 @@
 import React, { useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Order, ItemPrice, StoreName, PaymentMethod } from '../../types';
+import { Order, ItemPrice, StoreName, PaymentMethod, DueReportTopUp } from '../../types';
 import { getLatestItemPrice } from '../../utils/messageFormatter';
 
 const DueReportSettings: React.FC = () => {
-    const { state, dispatch } = useContext(AppContext);
-    const { orders, suppliers, itemPrices, settings } = state;
+    const { state, actions } = useContext(AppContext);
+    const { orders, suppliers, itemPrices, dueReportTopUps } = state;
 
     const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
         return order.items.reduce((total, item) => {
@@ -15,7 +15,6 @@ const DueReportSettings: React.FC = () => {
         }, 0);
     };
     
-    // FIX: Corrected typo from STOCKO2 to STOCK02
     const storesToTrack: StoreName[] = [StoreName.CV2, StoreName.SHANTI, StoreName.STOCK02, StoreName.WB];
 
     const dailyKALIspend = useMemo(() => {
@@ -44,52 +43,48 @@ const DueReportSettings: React.FC = () => {
         return spendMap;
     }, [orders, suppliers, itemPrices]);
 
-    const topUps = settings.dueReportTopUps || {};
+    const topUpsMap = useMemo(() => {
+        return new Map(dueReportTopUps.map(t => [t.date, t.amount]));
+    }, [dueReportTopUps]);
 
     const handleTopUpChange = (dateKey: string, value: string) => {
-        const newTopUp = parseFloat(value) || 0;
-        const updatedTopUps = { ...topUps, [dateKey]: newTopUp };
-        dispatch({ type: 'SAVE_SETTINGS', payload: { dueReportTopUps: updatedTopUps } });
+        const amount = parseFloat(value) || 0;
+        if (amount === 0 && !topUpsMap.has(dateKey)) {
+            return;
+        }
+        actions.upsertDueReportTopUp({ date: dateKey, amount });
     };
 
     const reportRows = useMemo(() => {
-        const dates = Object.keys(dailyKALIspend).concat(Object.keys(topUps));
+        const dates = Object.keys(dailyKALIspend).concat(Array.from(topUpsMap.keys()));
         if (dates.length === 0) return [];
         
-        const uniqueDates = [...new Set(dates)].sort();
-        const startDate = new Date(uniqueDates[0]);
-        const endDate = new Date(); // Today
+        const uniqueSortedDates = [...new Set(dates)].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
         
-        let previousDue = 0;
+        let runningDue = 0;
         const rows: any[] = [];
-        
-        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-            const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            
+
+        for (const dateKey of uniqueSortedDates) {
             const spend = dailyKALIspend[dateKey] || {};
             const totalSpend = storesToTrack.reduce((sum, store) => sum + (spend[store] || 0), 0);
-            const topUp = topUps[dateKey] || 0;
-
-            if (totalSpend === 0 && topUp === 0) continue; 
+            const topUp = topUpsMap.get(dateKey) || 0;
             
-            const due = previousDue + topUp - totalSpend;
+            runningDue = runningDue + topUp - totalSpend;
             
             rows.push({
-                date: new Date(d),
+                date: new Date(dateKey + 'T00:00:00'),
                 dateKey,
                 topUp,
                 cv2: spend[StoreName.CV2] || 0,
                 shanti: spend[StoreName.SHANTI] || 0,
-                // FIX: Corrected typo from STOCKO2 to STOCK02 and updated property name for consistency.
                 stock02: spend[StoreName.STOCK02] || 0,
                 wb: spend[StoreName.WB] || 0,
-                due
+                due: runningDue,
             });
-            previousDue = due;
         }
 
         return rows.reverse(); // Show most recent first
-    }, [dailyKALIspend, topUps]);
+    }, [dailyKALIspend, topUpsMap]);
 
     const formatCurrency = (amount: number) => amount === 0 ? '-' : amount.toFixed(2);
 

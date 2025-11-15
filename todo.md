@@ -8,56 +8,43 @@ This document serves as a single source of truth for all requested features, the
 
 This is a log of all features and fixes requested and implemented during this session.
 
-- [x] Constrain supplier card width to 1/3 of the column.
-- [x] Restore the manual column view switcher button.
-- [x] Ensure all content is left-aligned (remove centering).
-- [x] Reduce supplier name font size to match the payment badge.
-- [x] Add Telegram icon and 'Add Item' (+) button to the supplier card header.
-- [x] Implement comprehensive drag-and-drop for items and cards (tap-to-show, merge, etc.).
-- [x] Fix all module specifier errors for `messageFormatter`.
-- [x] Remove confirmation, merge, move, and variant/stock modals and functionality.
-- [x] Implement a new fully responsive layout with mobile swipe gestures.
-- [x] Overhaul the Settings page UI (adjust tables, remove margins, fix toolbars).
-- [x] Shorten item context menu labels ("Edit Master", "Set Price").
-- [x] Add a red delete button with a trash icon to the Edit Item modal.
-- [x] Display item total price as a badge and fix quantity alignment.
-- [x] Replace header buttons with animated colored dots and hide the main app title.
-- [x] Fix multi-column layout bug where empty columns would collapse.
-- [x] Display total order price in the card header next to the payment badge.
-- [x] Remove currency symbols ($) from all price displays.
-- [x] Increase the size of header dots and restore the main header menu.
-- [x] Correctly handle the 2-column view on wide screens by leaving the 3rd column empty.
-- [x] Adjust supplier card border thickness and color.
-- [x] Overhaul the receipt modal with filters, a new format, and a working print button.
-- [x] Move order to 'On the Way' when Telegram message is sent.
-- [x] Update the Gemini API key.
-- [x] Overhaul the Telegram Bot Options modal with custom message functionality.
-- [x] Add long-press functionality to the dispatch Telegram button (move & copy).
-- [x] Add a 'Contact' column to the Suppliers table and include it in the order message.
-- [x] Update AI parsing rules for aliases (e.g., french fries) and special quantities (mayonnaise).
-- [x] Ensure store location is correctly formatted as a link in order messages.
-- [x] Correct the visibility of the Telegram icon (only on 'On the Way' cards with a contact).
-- [x] Unify the payment method and total amount into a single badge group.
-- [x] Implement toggling between quantity and price numpads by pressing '.'.
-- [x] Fix bug where copying an order message used stale supplier data.
-- [x] Implement inline editing for item names on second click.
-- [x] Add a date selection modal for the "KALI due" report.
-- [x] Standardize all report item lines to the format: `(total) (name) (price) x(qty)`.
-- [x] Implement the "Press Done" button option and two-step Telegram workflow.
-
-- [x] Remove the deleted `ResizableTable` component and its imports, replacing it with a standard table.
-- [x] Merge the `/whoami` command into the main Telegram bot backend file.
+- [x] **UI/UX & Responsiveness:**
+  - [x] Make "Items" and "Suppliers" settings tables responsive (75% max-width on large screens).
+  - [x] Change the "Drop to Delete" zone color from red to a theme-appropriate blue/indigo.
+  - [x] Implement dynamic header dot animations (pulsating green, spinning red, bouncing yellow without a badge).
+- [x] **Settings & Data Management:**
+  - [x] Implement inline editing for an item's supplier in the "Items" table via a dropdown.
+  - [x] Add client-side validation to prevent duplicate item/supplier combinations.
+  - [x] Implement "Group by Supplier" view in the "Items" table, toggled by the header click.
+  - [x] Refine "Group by Supplier" view: make groups collapsible, hide the redundant "Supplier" column, and enable drag-and-drop item reassignment between groups.
+  - [x] Hide "Templates" tab from the settings bar (still accessible from the main header menu).
+- [x] **Order Workspace & Cards:**
+  - [x] For "Stock" orders, display "in" or "out" status instead of a price in the "On the Way" column.
+  - [x] Prevent "On the Way" cards from collapsing immediately after an inline edit; they now collapse on focus loss.
+  - [x] Implement a toggleable "Report View" for the "Completed" column, showing a list of today's orders.
+  - [x] Fix a drag-and-drop bug where "Completed" orders could not be moved back to the "Today" group.
+- [x] **Reports & Telegram:**
+  - [x] Reformat the "KALI est." report: remove code block, align totals, use spaces, and update the item line format to `(total) (name)  ((price)) x(qty)`.
+  - [x] Create a new "Due Report" table in Settings with a running daily balance and editable "Top Up" amounts.
+  - [x] Pre-populate "Due Report" with historical "Top Up" data from an image.
+  - [x] Fix a bug where local storage was overwriting the pre-populated "Top Up" data.
+  - [x] Overhaul the "KALI Due Report" modal: rename "Today" to "Spendings," support date ranges with per-day inputs, and add a "Unify" option to consolidate multi-day reports.
+  - [x] Update the "KALI Due Report" title format to `(Date) KALI Due report`.
+  - [x] Add an "Export to CSV" option to a new 3-dot menu in the "Due Report" tab.
+- [x] **Navigation & Layout:**
+  - [x] Reorganize the main header menu to include a "TABLES" section for data-heavy settings pages.
+  - [x] Implement a new "Smart View" layout: a 3-column, multi-store dashboard on desktop and a 2-page swipeable view on mobile.
 
 ---
 
-## 🧐 Functions for Review
+## 🐞 Anomalies & Bugs to Fix
 
-These files have been edited frequently or are highly complex. They are the most likely to contain hidden anomalies or incomplete logic. I recommend a focused review of these specific areas.
+This section lists recurring or notable issues that were encountered and fixed during this session. While resolved, they highlight areas of the codebase that may be brittle.
 
-*   **`src/context/AppContext.tsx`**: This file is the core of the application's state. Its size and complexity make it a high-risk area for bugs.
-*   **`src/components/SupplierCard.tsx`**: The "danger zone" file. It contains a massive amount of state and logic for UI interactions, modals, and drag-and-drop. It should be reviewed to ensure all interactions work as expected after the many surgical edits.
-*   **`src/utils/messageFormatter.ts`**: This file has been edited multiple times to get the formatting right. A final check is needed to confirm all report and message formats are 100% correct and consistent.
-*   **`supabase/functions/telegram-bot/index.ts`**: This backend file now handles multiple callbacks and commands. It should be reviewed to ensure the `OK` -> `Done` workflow and the `/whoami` command are both stable.
+- [x] **TypeScript Inference Failures:** Several components (`StoreTabs`, `ItemsSettings`, `ManagerReportView`) experienced issues where `.sort()` or `.map()` callback parameters were inferred as `unknown` or `any`, requiring explicit type annotations to fix. This suggests potential inconsistencies in how data arrays are typed or passed.
+- [x] **Local Storage State Conflicts:** The pre-populated "Top Up" data was being overwritten by an older state from `localStorage`. The loading logic in `AppContext` was adjusted to handle this, but it highlights a risk when introducing new, hardcoded default states.
+- [x] **Component Implementation Errors:** The `ErrorBoundary` component was not correctly extending `React.Component`, causing it to fail. This indicates a need for careful review when creating or modifying class-based components.
+- [x] **Drag-and-Drop Edge Cases:** The bug preventing drops onto the "Today" group in the "Completed" column shows that drag-and-drop logic, especially across different zones or states, can have subtle flaws that require thorough testing.
 
 ---
 

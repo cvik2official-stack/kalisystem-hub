@@ -39,9 +39,24 @@
 
   -- Add a numeric column for stock quantity on items
   ALTER TABLE public.items ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC;
+  
+  -- Create the table for Due Report top-up amounts
+  CREATE TABLE IF NOT EXISTS public.due_report_top_ups (
+    date DATE PRIMARY KEY,
+    amount NUMERIC NOT NULL
+  );
+
+  -- Seed the top-up table with historical data (run this only once)
+  INSERT INTO public.due_report_top_ups (date, amount) VALUES
+      ('2025-11-01', 140.00), ('2025-11-02', 100.00), ('2025-11-03', 354.25),
+      ('2025-11-04', 125.00), ('2025-11-05', 300.00), ('2025-11-06', 250.00),
+      ('2025-11-07', 100.00), ('2025-11-08', 315.00), ('2025-11-09', 150.00),
+      ('2025-11-10', 250.00), ('2025-11-11', 312.00), ('2025-11-12', 200.00),
+      ('2025-11-13', 110.00), ('2025-11-14', 100.00)
+  ON CONFLICT (date) DO NOTHING;
 
 */
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -106,6 +121,11 @@ interface ItemPriceFromDb {
     is_master?: boolean;
 }
 
+interface DueReportTopUpFromDb {
+  date: string;
+  amount: number;
+}
+
 
 const getHeaders = (key: string) => ({
     'apikey': key,
@@ -116,26 +136,29 @@ const getHeaders = (key: string) => ({
 
 // --- READ OPERATIONS ---
 
-export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[], itemPrices: ItemPrice[] }> => {
+export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[] }> => {
   const headers = getHeaders(key);
 
   try {
-    const [suppliersResponse, itemsResponse, storesResponse, itemPricesResponse] = await Promise.all([
+    const [suppliersResponse, itemsResponse, storesResponse, itemPricesResponse, dueReportTopUpsResponse] = await Promise.all([
         fetch(`${url}/rest/v1/suppliers?select=*`, { headers }),
         fetch(`${url}/rest/v1/items?select=*`, { headers }),
         fetch(`${url}/rest/v1/stores?select=*`, { headers }),
         fetch(`${url}/rest/v1/item_prices?select=*`, { headers }),
+        fetch(`${url}/rest/v1/due_report_top_ups?select=*`, { headers }),
     ]);
 
     if (!suppliersResponse.ok) throw new Error(`Failed to fetch suppliers: ${await suppliersResponse.text()}`);
     if (!itemsResponse.ok) throw new Error(`Failed to fetch items: ${await itemsResponse.text()}`);
     if (!storesResponse.ok) throw new Error(`Failed to fetch stores: ${await storesResponse.text()}`);
     if (!itemPricesResponse.ok) throw new Error(`Failed to fetch item prices: ${await itemPricesResponse.text()}`);
+    if (!dueReportTopUpsResponse.ok) throw new Error(`Failed to fetch due report top ups: ${await dueReportTopUpsResponse.text()}`);
 
     const suppliersData: SupplierFromDb[] = await suppliersResponse.json();
     const itemsData: ItemFromDb[] = await itemsResponse.json();
     const storesData: StoreFromDb[] = await storesResponse.json();
     const itemPricesData: ItemPriceFromDb[] = await itemPricesResponse.json();
+    const dueReportTopUpsData: DueReportTopUpFromDb[] = await dueReportTopUpsResponse.json();
     
     const stores: Store[] = storesData.map(s => ({
       id: s.id,
@@ -182,7 +205,12 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         isMaster: p.is_master,
     }));
 
-    return { items, suppliers: Array.from(supplierMap.values()), stores, itemPrices };
+    const dueReportTopUps: DueReportTopUp[] = dueReportTopUpsData.map(t => ({
+        date: t.date,
+        amount: t.amount,
+    }));
+
+    return { items, suppliers: Array.from(supplierMap.values()), stores, itemPrices, dueReportTopUps };
 
   } catch (error) {
     console.error("Error fetching from Supabase:", error);
@@ -518,6 +546,22 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
         // FIX: Map is_master from database to isMaster in the application state.
         isMaster: upsertedPrice.is_master,
     };
+};
+
+export const upsertDueReportTopUp = async ({ topUp, url, key }: { topUp: DueReportTopUp; url: string; key: string }): Promise<DueReportTopUp> => {
+    const headers = { ...getHeaders(key), 'Prefer': 'return=representation,resolution=merge-duplicates' };
+    const payload = { date: topUp.date, amount: topUp.amount };
+    
+    const response = await fetch(`${url}/rest/v1/due_report_top_ups?on_conflict=date`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload)
+    });
+    
+    if (!response.ok) throw new Error(`Failed to upsert due report top up: ${await response.text()}`);
+    
+    const [data] = await response.json();
+    return { date: data.date, amount: data.amount };
 };
 
 

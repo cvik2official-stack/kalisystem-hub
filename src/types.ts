@@ -119,6 +119,11 @@ export interface AiParsingRules {
     [storeName: string]: Record<string, string> | undefined; // Per-store rules
 }
 
+export interface DueReportTopUp {
+    date: string; // YYYY-MM-DD
+    amount: number;
+}
+
 export interface AppSettings {
     supabaseUrl: string;
     supabaseKey: string;
@@ -130,7 +135,6 @@ export interface AppSettings {
     aiParsingRules?: AiParsingRules;
     receiptTemplates?: Record<string, string>; // e.g. { 'default': '<html>...' }
     messageTemplates?: { [key: string]: string; };
-    dueReportTopUps?: Record<string, number>;
 }
 
 export interface AppState {
@@ -140,6 +144,7 @@ export interface AppState {
   items: Item[];
   itemPrices: ItemPrice[];
   orders: Order[];
+  dueReportTopUps: DueReportTopUp[];
   activeStatus: OrderStatus;
   activeSettingsTab: SettingsTab;
   orderIdCounters: Record<string, number>;

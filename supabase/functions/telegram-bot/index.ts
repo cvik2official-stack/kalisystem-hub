@@ -1,5 +1,6 @@
-// FIX: This triple-slash directive loads the necessary types for the Supabase Edge Functions environment, resolving errors where the 'Deno' global was not found.
-/// <reference types="https://esm.sh/@supabase/functions-js@2/src/edge-runtime.d.ts" />
+// FIX: Replaced the `npm:` specifier with a full URL to ensure TypeScript can find the type definitions for the Deno runtime, which resolves the 'Deno not found' errors.
+// FIX: The esm.sh URL was not resolving correctly. Switched to a stable unpkg URL for the Supabase functions type definitions.
+/// <reference types="https://unpkg.com/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts" />
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';

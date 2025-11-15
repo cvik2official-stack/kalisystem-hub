@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useState, useRef } from 'react';
+import React, { useContext, useEffect, useState, useRef, useMemo } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
@@ -18,7 +18,7 @@ import { useNotificationState, useNotificationDispatch } from './context/Notific
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -26,6 +26,8 @@ const App: React.FC = () => {
   // Animations
   const [isRedAnimating, setIsRedAnimating] = useState(false);
   const [isYellowAnimating, setIsYellowAnimating] = useState(false);
+  const [isGreenClickAnimating, setIsGreenClickAnimating] = useState(false);
+  const isInitialMount = useRef(true);
   const prevHasUnreadRef = useRef(hasUnread);
   
   // Panel Control
@@ -55,11 +57,31 @@ const App: React.FC = () => {
     // Trigger bounce animation only when hasUnread changes from false to true
     if (hasUnread && !prevHasUnreadRef.current) {
         setIsYellowAnimating(true);
-        const timer = setTimeout(() => setIsYellowAnimating(false), 3000);
+        const timer = setTimeout(() => setIsYellowAnimating(false), 800); // Match wobble animation duration
         return () => clearTimeout(timer);
     }
     prevHasUnreadRef.current = hasUnread;
   }, [hasUnread]);
+
+  // Animate red dot on page/view changes
+  useEffect(() => {
+    if (isInitialMount.current) {
+        isInitialMount.current = false;
+    } else {
+        setIsRedAnimating(true);
+        // Animation duration is now 1.5s
+        const timer = setTimeout(() => setIsRedAnimating(false), 1500);
+        return () => clearTimeout(timer);
+    }
+  }, [activeStore, activeSettingsTab, activeStatus]);
+
+  // Handle one-shot click animation for green dot
+  useEffect(() => {
+    if (isGreenClickAnimating) {
+        const timer = setTimeout(() => setIsGreenClickAnimating(false), 1000); // Animation duration
+        return () => clearTimeout(timer);
+    }
+  }, [isGreenClickAnimating]);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -155,10 +177,12 @@ const App: React.FC = () => {
         { label: 'Reports', isHeader: true },
         { label: '  KALI est.', action: handleSendKaliZapReport },
         { label: '  KALI due', action: () => setIsKaliReportModalOpen(true) },
-        { label: 'Settings', isHeader: true },
+        { label: 'TABLES', isHeader: true },
         { label: '  Items', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' as SettingsTab }) },
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
         { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
+        { label: '  Due Report', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'due-report' as SettingsTab }) },
+        { label: 'SETTINGS', isHeader: true },
         { label: '  Templates', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'templates' as SettingsTab }) },
         { label: '  Telegram Bot', action: () => setIsTelegramWebhookModalOpen(true) },
       ];
@@ -173,8 +197,6 @@ const App: React.FC = () => {
 
   const handleRedDotClick = () => {
     dispatch({ type: 'CYCLE_COLUMN_COUNT' });
-    setIsRedAnimating(true);
-    setTimeout(() => setIsRedAnimating(false), 3000);
   };
   
   const handleYellowDotClick = () => {
@@ -186,6 +208,7 @@ const App: React.FC = () => {
   
   const handleGreenDotClick = () => {
     if (syncStatus !== 'syncing') {
+      setIsGreenClickAnimating(true);
       actions.syncWithSupabase();
     }
   };
@@ -203,6 +226,12 @@ const App: React.FC = () => {
     dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
     dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
   };
+
+  const greenDotAnimationClass = useMemo(() => {
+    if (isGreenClickAnimating) return 'animate-pulse-expand-once';
+    if (syncStatus === 'syncing') return 'animate-pulse-syncing';
+    return 'animate-pulse-idle';
+  }, [isGreenClickAnimating, syncStatus]);
 
   if (!isInitialized) {
     return (
@@ -250,12 +279,11 @@ const App: React.FC = () => {
                     <span className={`w-4 h-4 bg-red-500 rounded-full block ${isRedAnimating ? 'animate-spin-coin' : ''}`}></span>
                   </button>
                   <button onClick={handleYellowDotClick} aria-label="Notifications" ref={yellowDotRef}>
-                    <span className={`w-4 h-4 bg-yellow-400 rounded-full block relative ${isYellowAnimating ? 'animate-bounce-twice' : ''}`}>
-                       {hasUnread && <span className="absolute top-0 right-0 -mr-1 -mt-1 flex h-2.5 w-2.5"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-300 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-400"></span></span>}
+                    <span className={`w-4 h-4 bg-yellow-400 rounded-full block ${isYellowAnimating ? 'animate-wobble' : ''}`}>
                     </span>
                   </button>
                   <button onClick={handleGreenDotClick} disabled={syncStatus === 'syncing'} aria-label="Sync with database">
-                    <span className={`w-4 h-4 bg-green-500 rounded-full block ${syncStatus === 'syncing' ? 'animate-pulse-pulsar' : ''}`}></span>
+                    <span className={`w-4 h-4 bg-green-500 rounded-full block ${greenDotAnimationClass}`}></span>
                   </button>
                 </div>
                  {isManagerView && <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>}

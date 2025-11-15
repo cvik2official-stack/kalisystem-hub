@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier } from '../services/supabaseService';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp } from '../types';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp } from '../services/supabaseService';
 import { useNotifier } from './NotificationContext';
 import { sendReminderToSupplier } from '../services/telegramService';
 
@@ -11,6 +11,7 @@ export interface AppState {
   items: Item[];
   itemPrices: ItemPrice[];
   orders: Order[];
+  dueReportTopUps: DueReportTopUp[];
   activeStatus: OrderStatus;
   activeSettingsTab: SettingsTab;
   orderIdCounters: Record<string, number>;
@@ -57,6 +58,8 @@ export type Action =
   | { type: 'SET_DRAGGED_ORDER_ID'; payload: string | null }
   | { type: 'SET_DRAGGED_ITEM'; payload: { item: OrderItem; sourceOrderId: string } | null }
   | { type: 'SET_CARD_WIDTH'; payload: number | null }
+  | { type: 'SET_DUE_REPORT_TOP_UPS'; payload: DueReportTopUp[] }
+  | { type: 'UPSERT_DUE_REPORT_TOP_UP'; payload: DueReportTopUp }
   | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] };
 
 export interface AppContextActions {
@@ -75,6 +78,7 @@ export interface AppContextActions {
     addItemToDispatch: (item: Item) => Promise<void>;
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
     upsertItemPrice: (itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>) => Promise<void>;
+    upsertDueReportTopUp: (topUp: DueReportTopUp) => Promise<void>;
 }
 
 
@@ -218,6 +222,20 @@ const appReducer = (state: AppState, action: Action): AppState => {
         }
         return { ...state, itemPrices: newItemPrices };
     }
+    case 'SET_DUE_REPORT_TOP_UPS':
+        return { ...state, dueReportTopUps: action.payload };
+    case 'UPSERT_DUE_REPORT_TOP_UP': {
+        const newTopUp = action.payload;
+        const existingIndex = state.dueReportTopUps.findIndex(t => t.date === newTopUp.date);
+        let newTopUps;
+        if (existingIndex > -1) {
+            newTopUps = [...state.dueReportTopUps];
+            newTopUps[existingIndex] = newTopUp;
+        } else {
+            newTopUps = [...state.dueReportTopUps, newTopUp];
+        }
+        return { ...state, dueReportTopUps: newTopUps };
+    }
     case '_BATCH_UPDATE_ITEMS_STOCK': {
         const updates = new Map(action.payload.map(u => [u.itemId, u.stockQuantity]));
         return {
@@ -261,6 +279,7 @@ const getInitialState = (): AppState => {
     items: [],
     itemPrices: [],
     orders: [],
+    dueReportTopUps: [],
     activeStatus: OrderStatus.DISPATCHING,
     activeSettingsTab: 'items',
     orderIdCounters: {},
@@ -310,6 +329,10 @@ const getInitialState = (): AppState => {
 
   const finalState = { ...initialState, ...loadedState };
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
+  // FIX: Corrected handling of legacy 'dueReportTopUps' property from localStorage by casting to 'any' to prevent type errors during state hydration.
+  if ((finalState.settings as any)?.dueReportTopUps) {
+      delete (finalState.settings as any).dueReportTopUps;
+  }
   finalState.orders = (loadedState.orders || []).map((o: Partial<Order>) => ({
       ...o,
       createdAt: o.createdAt || new Date(0).toISOString(),
@@ -342,6 +365,7 @@ export const AppContext = createContext<{
       addItemToDispatch: async () => {},
       mergeOrders: async () => {},
       upsertItemPrice: async () => {},
+      upsertDueReportTopUp: async () => {},
   }
 });
 
@@ -376,10 +400,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { supabaseUrl, supabaseKey } = state.settings;
         if (!options?.isInitialSync) notify('Syncing with database...', 'info');
 
-        const { items, suppliers, stores, itemPrices } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
+        const { items, suppliers, stores, itemPrices, dueReportTopUps } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
         dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices } }); 
+        dispatch({ type: 'SET_DUE_REPORT_TOP_UPS', payload: dueReportTopUps });
         
         if (!options?.isInitialSync) notify('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -598,6 +623,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     upsertItemPrice: async (itemPrice) => {
         const savedPrice = await supabaseUpsertItemPrice({ itemPrice, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPSERT_ITEM_PRICE', payload: savedPrice });
+    },
+    upsertDueReportTopUp: async (topUp) => {
+        const savedTopUp = await supabaseUpsertDueReportTopUp({ topUp, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: 'UPSERT_DUE_REPORT_TOP_UP', payload: savedTopUp });
     },
     syncWithSupabase,
   };
