@@ -37,7 +37,7 @@ const SettingsPage: React.FC = () => {
       case 'templates':
         return <TemplatesSettings />;
       case 'due-report':
-        return <DueReportSettings />;
+        return <DueReportSettings setMenuOptions={setMenuOptions} />;
       default:
         return null;
     }

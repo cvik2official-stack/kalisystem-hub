@@ -27,7 +27,6 @@ const App: React.FC = () => {
   const [isRedAnimating, setIsRedAnimating] = useState(false);
   const [isYellowAnimating, setIsYellowAnimating] = useState(false);
   const [isGreenClickAnimating, setIsGreenClickAnimating] = useState(false);
-  const isInitialMount = useRef(true);
   const prevHasUnreadRef = useRef(hasUnread);
   
   // Panel Control
@@ -65,15 +64,12 @@ const App: React.FC = () => {
 
   // Animate red dot on page/view changes
   useEffect(() => {
-    if (isInitialMount.current) {
-        isInitialMount.current = false;
-    } else {
-        setIsRedAnimating(true);
-        // Animation duration is now 1.5s
-        const timer = setTimeout(() => setIsRedAnimating(false), 1500);
-        return () => clearTimeout(timer);
-    }
-  }, [activeStore, activeSettingsTab, activeStatus]);
+    setIsRedAnimating(true);
+    // Reset the animation after it finishes
+    const timer = setTimeout(() => setIsRedAnimating(false), 1500); // Must match animation-duration in CSS
+    return () => clearTimeout(timer);
+  }, [activeStore, activeSettingsTab, activeStatus]); // Dependency array triggers animation on view change
+
 
   // Handle one-shot click animation for green dot
   useEffect(() => {

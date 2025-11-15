@@ -135,6 +135,7 @@ export interface AppSettings {
     aiParsingRules?: AiParsingRules;
     receiptTemplates?: Record<string, string>; // e.g. { 'default': '<html>...' }
     messageTemplates?: { [key: string]: string; };
+    dueReportInitialBalance?: number;
 }
 
 export interface AppState {
