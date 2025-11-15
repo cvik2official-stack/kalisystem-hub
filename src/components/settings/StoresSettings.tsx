@@ -14,7 +14,7 @@
 
   -- 2. Seed the table with your store names (run this once)
   INSERT INTO public.stores (name)
-  VALUES ('CV2'), ('STOCKO2'), ('WB'), ('SHANTI'), ('OUDOM'), ('KALI')
+  VALUES ('CV2'), ('STOCKO2'), ('WB'), ('SHANTI'), ('KALI')
   ON CONFLICT (name) DO NOTHING;
 
 */

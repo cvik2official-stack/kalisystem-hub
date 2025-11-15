@@ -34,66 +34,14 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
     dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.DISPATCHING });
   };
 
-  const isOudom = storeName === StoreName.OUDOM;
-  const isWbStore = storeName === StoreName.WB;
-  const isKaliManager = storeName === StoreName.KALI;
-
   const filteredOrders = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    return orders.filter(order => order.store === storeName);
+  }, [orders, storeName]);
 
-    const onTheWayOrders: Order[] = [];
-    const completedTodayOrders: Order[] = [];
-
-    orders.forEach(order => {
-      if (isOudom) {
-        if ((order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK) &&
-            order.status === OrderStatus.ON_THE_WAY) {
-          onTheWayOrders.push(order);
-        }
-        return;
-      }
-      
-      if (isKaliManager) {
-        const supplier = suppliers.find(s => s.id === order.supplierId);
-        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-        if (paymentMethod === PaymentMethod.KALI) {
-            if (order.status === OrderStatus.ON_THE_WAY) {
-                onTheWayOrders.push(order);
-            } else if (order.status === OrderStatus.COMPLETED && order.completedAt) {
-                const completedDate = new Date(order.completedAt);
-                completedDate.setHours(0, 0, 0, 0);
-                if (completedDate.getTime() === today.getTime()) {
-                    completedTodayOrders.push(order);
-                }
-            }
-        }
-        return;
-      }
-
-      if (order.store !== storeName) return;
-      
-      if (order.status === OrderStatus.ON_THE_WAY) {
-        onTheWayOrders.push(order);
-      } else if (order.status === OrderStatus.COMPLETED && order.completedAt) {
-          const completedDate = new Date(order.completedAt);
-          completedDate.setHours(0, 0, 0, 0);
-          if (completedDate.getTime() === today.getTime()) {
-              completedTodayOrders.push(order);
-          }
-      }
-    });
-
-    onTheWayOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    completedTodayOrders.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    return [...onTheWayOrders, ...completedTodayOrders];
-  }, [orders, storeName, isOudom, isKaliManager, suppliers]);
-
-  const onTheWayCount = filteredOrders.filter(o => o.status === OrderStatus.ON_THE_WAY).length;
+  const onTheWayCount = useMemo(() => {
+    return filteredOrders.filter(o => o.status === OrderStatus.ON_THE_WAY).length;
+  }, [filteredOrders]);
   
-  const effectiveViewMode = (isWbStore || isKaliManager) ? 'report' : viewMode;
-
   return (
     <div className="min-h-screen bg-gray-900 text-gray-200">
       <div className="bg-gray-900 w-full md:w-1/2 md:mx-auto min-h-screen flex flex-col">
@@ -133,18 +81,16 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
                 {onTheWayCount} On The Way
             </span>
           </div>
-          {!isWbStore && !isKaliManager && (
-              <button
-                onClick={() => setViewMode(viewMode === 'report' ? 'card' : 'report')}
-                className="px-3 py-1 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
-              >
-                {viewMode === 'report' ? 'Card View' : 'Report View'}
-              </button>
-          )}
+          <button
+            onClick={() => setViewMode(viewMode === 'report' ? 'card' : 'report')}
+            className="px-3 py-1 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            {viewMode === 'report' ? 'Card View' : 'Report View'}
+          </button>
         </div>
 
         <main className="flex-grow p-2 overflow-y-auto hide-scrollbar">
-          {effectiveViewMode === 'report' ? (
+          {viewMode === 'report' ? (
             <ManagerReportView storeName={storeName} orders={filteredOrders} />
           ) : (
              filteredOrders.length > 0 ? (
@@ -154,8 +100,6 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
                     key={order.id}
                     order={order}
                     isManagerView={true}
-                    isOudomManagerWorkflow={isOudom && (order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK)}
-                    // FIX: Provide a dummy function for onItemDrop as this view doesn't support item dragging.
                     onItemDrop={() => {}}
                   />
                 ))}

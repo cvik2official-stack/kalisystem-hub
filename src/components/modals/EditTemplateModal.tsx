@@ -90,9 +90,6 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
         case SupplierName.KALI:
             defaultTemplate = templates.kaliOrder || defaultTemplate;
             break;
-        case SupplierName.OUDOM:
-            defaultTemplate = templates.oudomOrder || defaultTemplate;
-            break;
     }
 
     useEffect(() => {

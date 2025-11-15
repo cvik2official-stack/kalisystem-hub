@@ -38,7 +38,6 @@ export const generateOrderMessage = (order: Order, format: 'html' | 'plain', sup
 
     let templateKey = 'defaultOrder';
     if (supplier?.name === SupplierName.KALI) templateKey = 'kaliOrder';
-    if (supplier?.name === SupplierName.OUDOM) templateKey = 'oudomOrder';
     
     const template = supplier?.botSettings?.messageTemplate || templates[templateKey] || 'Order {{orderId}} for {{storeName}}\n{{items}}';
 
@@ -101,12 +100,27 @@ const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
 };
 
 // Generate Kali Unify Report
-export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[], previousDue: number = 0, topUp: number = 0): string => {
-    const reportDate = orders.length > 0 && orders[0].completedAt 
-        ? new Date(orders[0].completedAt) 
-        : new Date();
-    const dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-    let report = `KALI UNIFY ${dateStr}\n\n`;
+export const generateKaliUnifyReport = (
+    orders: Order[], 
+    itemPrices: ItemPrice[], 
+    previousDue: number = 0, 
+    topUp: number = 0,
+    startDate?: string, // YYYY-MM-DD
+    endDate?: string   // YYYY-MM-DD
+): string => {
+    let dateStr;
+    if (startDate && endDate && startDate !== endDate) {
+        const start = new Date(startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
+        const end = new Date(endDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        dateStr = `${start} - ${end}`;
+    } else {
+        const reportDate = orders.length > 0 && orders[0].completedAt 
+            ? new Date(orders[0].completedAt) 
+            : new Date(startDate || new Date());
+        dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    }
+    
+    let report = `${dateStr} KALI Due report\n\n`;
 
     const ordersByStore = orders.reduce((acc, order) => {
         if (!acc[order.store]) acc[order.store] = [];
@@ -151,8 +165,8 @@ export const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[]
 
     report += `---------------------\n`;
     report += `PREV DUE  : ${formatPrice(previousDue)}\n`;
-    report += `TOP UP    : ${formatPrice(topUp)}\n`;
     report += `SPENDINGS : ${formatPrice(grandTotal)}\n`;
+    report += `TOP UP    : ${formatPrice(topUp)}\n`;
     report += `TOTAL DUE : ${formatPrice(totalDue)}\n`;
 
     return report;

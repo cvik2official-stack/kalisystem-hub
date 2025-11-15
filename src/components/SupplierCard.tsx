@@ -16,7 +16,6 @@ import { getLatestItemPrice } from '../utils/messageFormatter';
 interface SupplierCardProps {
   order: Order;
   isManagerView?: boolean;
-  isOudomManagerWorkflow?: boolean;
   onItemDrop: (destinationOrderId: string) => void;
   showStoreName?: boolean;
 }
@@ -517,12 +516,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                             const isEditingPrice = editingPriceUniqueId === uniqueItemId;
                             const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED);
                             
-                            const masterItem = state.items.find(i => i.id === item.itemId);
                             const isStockIn = order.paymentMethod === PaymentMethod.STOCK;
                             const isStockOut = order.supplierName === SupplierName.STOCK;
-                            const isStockMovement = isStockIn || isStockOut;
-                            const isLowStock = masterItem && (masterItem.stockQuantity ?? 0) < 1;
-
+                            const isStockMovement = (isStockIn || isStockOut) && order.status !== OrderStatus.DISPATCHING;
 
                             return (
                                 <div key={uniqueItemId} className="flex items-center group">
@@ -554,15 +550,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                                         </span>
                                     )}
                                     <div className="flex items-center space-x-2 ml-2">
-                                        {(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && isStockMovement ? (
-                                            <div className="font-mono w-20 text-right p-1 -m-1 rounded-md">
-                                                {isStockOut ? (
-                                                    <span className={`font-semibold ${isLowStock ? 'text-red-500' : 'text-yellow-400'}`}>out</span>
-                                                ) : (
-                                                    <span className="font-semibold text-green-400">in</span>
-                                                )}
-                                            </div>
-                                        ) : order.status !== OrderStatus.DISPATCHING && (
+                                        {isStockMovement ? (
+                                             <div className="text-gray-500 w-20 text-right p-1 -m-1">-</div>
+                                        ) : (
                                             isEditingPrice && canEditPrice ? (
                                                 <input
                                                     type="text"
@@ -588,6 +578,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                                         )}
                                         <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {item.quantity}{item.unit}
+                                            {isStockMovement && (
+                                                isStockOut ? <span className="font-semibold text-yellow-400 ml-1">out</span> : <span className="font-semibold text-green-400 ml-1">in</span>
+                                            )}
                                         </div>
                                         <button 
                                             onClick={(e) => handleItemActionsClick(e, item)}

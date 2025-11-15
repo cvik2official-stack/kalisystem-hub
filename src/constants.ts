@@ -3,7 +3,6 @@ export enum StoreName {
     STOCK02 = 'STOCKO2',
     WB = 'WB',
     SHANTI = 'SHANTI',
-    OUDOM = 'OUDOM',
     KALI = 'KALI',
 }
 
@@ -13,7 +12,6 @@ export enum SupplierName {
     MARKET = 'MARKET',
     KALI = 'KALI',
     MIKHAIL = 'MIKHAIL',
-    OUDOM = 'OUDOM',
     STOCK = 'STOCK',
     PISEY = 'PISEY',
 }
@@ -40,5 +38,5 @@ export enum OrderStatus {
 export const STATUS_TABS: { id: OrderStatus; label: string }[] = [
     { id: OrderStatus.DISPATCHING, label: 'Dispatch' },
     { id: OrderStatus.ON_THE_WAY, label: 'On the Way' },
-    { id: OrderStatus.COMPLETED, label: 'Completed' },
+    { id: OrderStatus.COMPLETED, label: 'Completed Today' },
 ];

@@ -23,7 +23,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
       ? availableSuppliers
       : availableSuppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
       
-    const prioritySuppliers = ['OUDOM', 'KALI', 'MIKHAIL', 'STOCK'];
+    const prioritySuppliers = ['KALI', 'MIKHAIL', 'STOCK'];
       
     return searchFiltered.sort((a, b) => {
       const aIsPriority = prioritySuppliers.includes(a.name);

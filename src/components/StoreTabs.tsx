@@ -42,15 +42,14 @@ const StoreTabs: React.FC = () => {
     }
   };
 
-  // Create a comprehensive list of all stores from the enum, excluding OUDOM.
-  const allStoreNames: StoreName[] = Object.values(StoreName).filter(name => name !== StoreName.OUDOM);
+  // Create a comprehensive list of all stores from the enum.
+  const allStoreNames: StoreName[] = Object.values(StoreName);
   const storesFromStateMap = new Map(stores.map(s => [s.name, s]));
   const allStoresWithPlaceholders: Store[] = allStoreNames.map(name => {
       return storesFromStateMap.get(name) || { id: `enum_store_${name}`, name: name };
   });
 
   // Sort stores to ensure consistent order, with CV2 always first.
-  // FIX: Explicitly typing the sort callback parameters 'a' and 'b' as 'Store' resolves a TypeScript inference issue where they were treated as 'unknown'.
   const sortedStores = [...allStoresWithPlaceholders].sort((a: Store, b: Store) => {
     if (a.name === StoreName.CV2) return -1;
     if (b.name === StoreName.CV2) return 1;

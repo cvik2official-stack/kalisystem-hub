@@ -3,13 +3,14 @@ import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
 import SupplierCard from './SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
-import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit } from '../types';
+import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice } from '../types';
 import PasteItemsModal from './modals/PasteItemsModal';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
-import { generateStoreReport, getLatestItemPrice } from '../utils/messageFormatter';
+import { generateStoreReport } from '../utils/messageFormatter';
 import DueReportModal from './modals/DueReportModal';
 import ReceiptModal from './modals/ReceiptModal';
+import ManagerReportView from './ManagerReportView';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -27,51 +28,9 @@ const formatDateGroupHeader = (key: string): string => {
   return `${day}.${month}.${year}`;
 };
 
-const CompletedReportView: React.FC<{ orders: Order[], title?: string }> = ({ orders, title = "Completed Today" }) => {
-    const { state } = useContext(AppContext);
-    const { suppliers } = state;
-    const paymentMethodBadgeColors: Record<string, string> = {
-        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
-        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
-        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
-        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
-        [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
-    };
-
-    return (
-        <section className="flex flex-col bg-gray-900/50 rounded-lg">
-            <h2 className="text-lg font-semibold text-white p-3">{title}</h2>
-            <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2 space-y-2">
-                {orders.length > 0 ? orders.map(order => {
-                    const supplier = suppliers.find(s => s.id === order.supplierId);
-                    const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
-
-                    return (
-                        <div key={order.id} className="bg-gray-800 p-2 rounded-lg">
-                            <div className="flex items-center space-x-2">
-                                <h3 className="font-bold text-white text-sm">{order.supplierName}</h3>
-                                <span className="text-xs text-gray-400">({order.store})</span>
-                                {displayPaymentMethod && (
-                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-500/50 text-gray-300'}`}>
-                                        {displayPaymentMethod.toUpperCase()}
-                                    </span>
-                                )}
-                            </div>
-                            <ul className="text-sm list-disc list-inside mt-1 text-gray-300">
-                               {order.items.map((item, index) => <li key={`${order.id}-${item.itemId}-${index}`}>{item.name} x {item.quantity}{item.unit}</li>)}
-                            </ul>
-                        </div>
-                    );
-                }) : <p className="text-center text-gray-500 py-12">No completed orders for today.</p>}
-            </div>
-        </section>
-    );
-};
-
-
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, isSmartView } = state;
+  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, isSmartView, itemPrices } = state;
   const { notify } = useNotifier();
 
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
@@ -81,7 +40,9 @@ const OrderWorkspace: React.FC = () => {
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
   const [isDragOverEmpty, setIsDragOverEmpty] = useState(false);
 
-  const [expandedGroups, setExpandedGroups] = useState(new Set<string>(['Today']));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['Today', 'Yesterday']));
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
+
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number, y: number, dateGroupKey: string } | null>(null);
   const [isDueReportModalOpen, setIsDueReportModalOpen] = useState(false);
   const [ordersForDueReport, setOrdersForDueReport] = useState<Order[]>([]);
@@ -94,16 +55,14 @@ const OrderWorkspace: React.FC = () => {
   const touchEndX = useRef(0);
   const [completedViewMode, setCompletedViewMode] = useState<'card' | 'report'>('card');
 
-  // --- SMART VIEW STATE ---
   const allStoreNames = useMemo(() => Array.from(new Set(state.stores.map(s => s.name))), [state.stores]);
-  const [expandedSmartStores, setExpandedSmartStores] = useState<Set<StoreName>>(new Set(allStoreNames));
-  const [smartViewPage, setSmartViewPage] = useState(0); // 0=OnTheWay, 1=Dispatch
+  const [smartViewPage, setSmartViewPage] = useState(0); 
   const swipeContainerRef = useRef<HTMLDivElement>(null);
 
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
-    touchEndX.current = 0; // Reset endX on new touch
+    touchEndX.current = 0; 
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -112,7 +71,7 @@ const OrderWorkspace: React.FC = () => {
 
   const handleTouchEnd = () => {
     if (isSmartView) {
-        if (swipeContainerRef.current) {
+        if (swipeContainerRef.current && window.innerWidth < 768) {
             const swipeDistance = touchStartX.current - touchEndX.current;
             if (swipeDistance > 75 && smartViewPage === 0) setSmartViewPage(1); // Swipe left
             if (swipeDistance < -75 && smartViewPage === 1) setSmartViewPage(0); // Swipe right
@@ -137,12 +96,14 @@ const OrderWorkspace: React.FC = () => {
     touchEndX.current = 0;
   };
   
-  const handleCompletedTabClick = () => {
-    if (activeStatus === OrderStatus.COMPLETED) {
+  const handleCompletedTabClick = (e: React.MouseEvent) => {
+    const isHeaderClick = (e.target as HTMLElement).tagName.toLowerCase() === 'h2';
+    if (activeStatus === OrderStatus.COMPLETED || isHeaderClick) {
         setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card');
-    } else {
+    } 
+    if (activeStatus !== OrderStatus.COMPLETED) {
         dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.COMPLETED });
-        setCompletedViewMode('card'); // Reset to default when switching to tab
+        setCompletedViewMode('card');
     }
   };
 
@@ -260,12 +221,7 @@ const OrderWorkspace: React.FC = () => {
   
       let filtered: Order[];
   
-      if (activeStore === StoreName.OUDOM) {
-          filtered = orders.filter(order => 
-              (order.supplierName === SupplierName.OUDOM || order.supplierName === SupplierName.STOCK) &&
-              order.status === status
-          );
-      } else if (activeStore === StoreName.KALI) {
+      if (activeStore === StoreName.KALI) {
           filtered = orders.filter(order => {
               const supplier = suppliers.find(s => s.id === order.supplierId);
               const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
@@ -303,6 +259,11 @@ const OrderWorkspace: React.FC = () => {
       return new Date(b).getTime() - new Date(a).getTime();
     });
   }, [groupedCompletedOrders]);
+
+  const visibleCompletedGroupKeys = useMemo(() => {
+    if (showAllCompleted) return sortedCompletedGroupKeys;
+    return sortedCompletedGroupKeys.filter(key => key === 'Today' || formatDateGroupHeader(key) === 'Yesterday');
+  }, [sortedCompletedGroupKeys, showAllCompleted]);
 
   const toggleGroup = (key: string) => {
     setExpandedGroups(prev => {
@@ -379,22 +340,9 @@ const OrderWorkspace: React.FC = () => {
     const orderToMove = orders.find(o => o.id === draggedOrderId);
     if (!orderToMove) return;
 
-    if (orderToMove.status !== OrderStatus.COMPLETED) {
-        e.preventDefault();
-        setDragOverDateGroup(key);
-        return;
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const completedDate = new Date(orderToMove.completedAt || 0);
-    completedDate.setHours(0, 0, 0, 0);
-    const sourceKey = completedDate.getTime() === today.getTime() ? 'Today' : completedDate.toISOString().split('T')[0];
-
-    if (sourceKey !== key) {
-        e.preventDefault();
-        setDragOverDateGroup(key);
-    }
+    // Allow any order to be dropped here now.
+    e.preventDefault();
+    setDragOverDateGroup(key);
 };
 
   const handleDropOnStatus = (status: OrderStatus) => {
@@ -511,16 +459,16 @@ const OrderWorkspace: React.FC = () => {
   };
   
   const renderCompletedColumn = () => {
-    if (completedViewMode === 'report') {
+    if (completedViewMode === 'report' && activeStore !== 'Settings') {
         const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
-        return <CompletedReportView orders={todaysCompletedOrders} title="Completed Today" />;
+        return <ManagerReportView orders={todaysCompletedOrders} storeName={activeStore} singleColumn="completed" />;
     }
     
     return (
         <>
         {sortedCompletedGroupKeys.length > 0 ? (
             <div className="space-y-1">
-            {sortedCompletedGroupKeys.map(key => {
+            {visibleCompletedGroupKeys.map(key => {
                 const isExpanded = expandedGroups.has(key);
                 return (
                 <div 
@@ -555,6 +503,16 @@ const OrderWorkspace: React.FC = () => {
                 </div>
                 );
             })}
+             {sortedCompletedGroupKeys.length > visibleCompletedGroupKeys.length && (
+                 <button onClick={() => setShowAllCompleted(true)} className="w-full text-center text-sm text-indigo-400 hover:text-indigo-300 py-2">
+                     Show more...
+                 </button>
+             )}
+             {showAllCompleted && (
+                  <button onClick={() => setShowAllCompleted(false)} className="w-full text-center text-sm text-indigo-400 hover:text-indigo-300 py-2">
+                     Show less
+                 </button>
+             )}
             </div>
         ) : (
             <div className="text-center py-12">
@@ -580,122 +538,37 @@ const OrderWorkspace: React.FC = () => {
 
   // --- SMART VIEW IMPLEMENTATION ---
   
-  const smartViewData = useMemo(() => {
+  const smartViewOrders = useMemo(() => {
     const dispatchingByStore: Record<string, Order[]> = {};
     const onTheWayByStore: Record<string, Order[]> = {};
-    const completedTodayOrders: Order[] = [];
     
-    interface AggregatedItem { name: string; quantity: number; unit?: Unit; }
-    const onTheWayItemsMap = new Map<string, AggregatedItem>();
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     orders.forEach(order => {
-      const storeKey = order.store;
-      if (order.status === OrderStatus.DISPATCHING) {
-        if (!dispatchingByStore[storeKey]) dispatchingByStore[storeKey] = [];
-        dispatchingByStore[storeKey].push(order);
-      } else if (order.status === OrderStatus.ON_THE_WAY) {
-        if (!onTheWayByStore[storeKey]) onTheWayByStore[storeKey] = [];
-        onTheWayByStore[storeKey].push(order);
-        
-        order.items.forEach(item => {
-          const itemKey = `${item.name}-${item.unit || 'pc'}`;
-          if (onTheWayItemsMap.has(itemKey)) {
-            onTheWayItemsMap.get(itemKey)!.quantity += item.quantity;
-          } else {
-            onTheWayItemsMap.set(itemKey, { name: item.name, quantity: item.quantity, unit: item.unit });
-          }
-        });
-
-      } else if (order.status === OrderStatus.COMPLETED && order.completedAt) {
-        const completedDate = new Date(order.completedAt);
-        completedDate.setHours(0, 0, 0, 0);
-        if (completedDate.getTime() === today.getTime()) {
-          completedTodayOrders.push(order);
+        if(order.store === StoreName.KALI) return;
+        const storeKey = order.store;
+        if (order.status === OrderStatus.DISPATCHING) {
+            if (!dispatchingByStore[storeKey]) dispatchingByStore[storeKey] = [];
+            dispatchingByStore[storeKey].push(order);
+        } else if (order.status === OrderStatus.ON_THE_WAY) {
+            if (!onTheWayByStore[storeKey]) onTheWayByStore[storeKey] = [];
+            onTheWayByStore[storeKey].push(order);
         }
-      }
     });
 
-    const onTheWayItems = Array.from(onTheWayItemsMap.values()).sort((a,b) => a.name.localeCompare(b.name));
+    const storesForView = allStoreNames.filter(name => 
+        (dispatchingByStore[name] || []).length === 0 && 
+        (onTheWayByStore[name] || []).length > 0
+    );
 
-    return { dispatchingByStore, onTheWayByStore, completedTodayOrders, onTheWayItems };
-  }, [orders]);
+    return orders.filter(order => storesForView.includes(order.store));
+  }, [orders, allStoreNames]);
 
-  const toggleSmartStore = (storeName: StoreName) => {
-    setExpandedSmartStores(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(storeName)) newSet.delete(storeName);
-        else newSet.add(storeName);
-        return newSet;
-    });
-  };
 
   if (isSmartView) {
-      if (columnCount === 1) { // Mobile View
-          return (
-              <div 
-                  className="flex-grow pt-4 flex flex-col overflow-hidden" 
-                  ref={swipeContainerRef}
-                  onTouchStart={handleTouchStart}
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
-              >
-                  <div className="flex-shrink-0 px-3 flex justify-center space-x-4">
-                      <button onClick={() => setSmartViewPage(0)} className={`font-semibold ${smartViewPage === 0 ? 'text-indigo-400' : 'text-gray-400'}`}>On the Way</button>
-                      <button onClick={() => setSmartViewPage(1)} className={`font-semibold ${smartViewPage === 1 ? 'text-indigo-400' : 'text-gray-400'}`}>Dispatch</button>
-                  </div>
-                  <div className="flex-grow flex mt-4" style={{ transform: `translateX(-${smartViewPage * 100}%)`, transition: 'transform 300ms ease-in-out' }}>
-                      <div className="w-full flex-shrink-0 overflow-y-auto hide-scrollbar px-2 pb-2 space-y-4">
-                          {allStoreNames.map(storeName => (
-                              <div key={storeName}>
-                                  <button onClick={() => toggleSmartStore(storeName as StoreName)} className="font-bold text-white text-base flex items-center">{storeName} <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></button>
-                                  {expandedSmartStores.has(storeName as StoreName) && (smartViewData.onTheWayByStore[storeName] || []).map(order => <SupplierCard key={order.id} order={order} onItemDrop={handleItemDropOnCard} />)}
-                              </div>
-                          ))}
-                      </div>
-                      <div className="w-full flex-shrink-0 overflow-y-auto hide-scrollbar px-2 pb-2 space-y-4">
-                          {allStoreNames.map(storeName => (
-                              <div key={storeName}>
-                                  <h3 className="font-bold text-white text-base">{storeName}</h3>
-                                  {(smartViewData.dispatchingByStore[storeName] || []).map(order => <SupplierCard key={order.id} order={order} onItemDrop={handleItemDropOnCard} />)}
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              </div>
-          );
-      }
-
-      // Desktop View
-      return (
-          <div className="flex-grow pt-4 grid grid-cols-3 gap-4 h-full">
-              <section className="flex flex-col bg-gray-900/50 rounded-lg">
-                  <h2 className="text-lg font-semibold text-white p-3">On the Way (Cards)</h2>
-                  <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2 space-y-3">
-                      {allStoreNames.map(storeName => (
-                          <div key={storeName}>
-                              <button onClick={() => toggleSmartStore(storeName as StoreName)} className="font-bold text-white text-base flex items-center w-full">{storeName} <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg></button>
-                              {expandedSmartStores.has(storeName as StoreName) && (smartViewData.onTheWayByStore[storeName] || []).map(order => <SupplierCard key={order.id} order={order} onItemDrop={handleItemDropOnCard} />)}
-                          </div>
-                      ))}
-                  </div>
-              </section>
-              <section className="flex flex-col bg-gray-900/50 rounded-lg">
-                  <h2 className="text-lg font-semibold text-white p-3">On the Way (Report)</h2>
-                  <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2 space-y-1">
-                      {smartViewData.onTheWayItems.map((item, index) => (
-                          <div key={index} className="flex justify-between items-center text-sm bg-gray-800 p-2 rounded-md">
-                              <span className="text-gray-300 flex-1 truncate pr-2">{item.name}</span>
-                              <span className="font-mono text-gray-400 w-16 text-right">{item.quantity}{item.unit}</span>
-                          </div>
-                      ))}
-                  </div>
-              </section>
-              <CompletedReportView orders={smartViewData.completedTodayOrders} />
-          </div>
-      );
+    return (
+        <div className="flex-grow pt-4 h-full">
+            <ManagerReportView orders={smartViewOrders} storeName={null} />
+        </div>
+    );
   }
 
   // --- REGULAR VIEW IMPLEMENTATION ---
@@ -740,13 +613,13 @@ const OrderWorkspace: React.FC = () => {
     );
   }
 
-  const gridColsClass = 'grid-cols-3';
+  const gridColsClass = columnCount === 2 ? 'grid-cols-2' : 'grid-cols-3';
 
   return (
     <div className="flex-grow pt-4 overflow-x-auto hide-scrollbar">
       <div className={`h-full grid ${gridColsClass} gap-4 min-w-[900px] xl:min-w-full`}>
         {STATUS_TABS.map((tab, index) => {
-          if (columnCount === 2 && index === 2) return null;
+          if (columnCount === 2 && tab.id === OrderStatus.DISPATCHING) return null;
           return (
             <section
               key={tab.id}
@@ -762,7 +635,7 @@ const OrderWorkspace: React.FC = () => {
             >
               <h2
                 className={`text-lg font-semibold text-white p-3 ${tab.id === OrderStatus.COMPLETED ? 'cursor-pointer hover:text-indigo-400 transition-colors' : ''}`}
-                onClick={tab.id === OrderStatus.COMPLETED ? () => setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card') : undefined}
+                onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}
               >
                 {tab.label}
               </h2>
