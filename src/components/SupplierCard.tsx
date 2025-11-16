@@ -555,31 +555,27 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                                         </span>
                                     )}
                                     <div className="flex items-center space-x-2 ml-2">
-                                        {isStockMovement ? (
-                                             <div className="text-gray-500 w-20 text-right p-1 -m-1">-</div>
+                                        {isEditingPrice && canEditPrice ? (
+                                            <input
+                                                type="text"
+                                                inputMode="decimal"
+                                                defaultValue={unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : ''}
+                                                autoFocus
+                                                onBlur={(e) => handleSaveInlinePrice(item, e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') e.currentTarget.blur();
+                                                    if (e.key === 'Escape') setEditingPriceUniqueId(null);
+                                                }}
+                                                className="bg-gray-700 text-cyan-300 font-mono rounded px-1 py-0.5 w-20 text-right outline-none ring-1 ring-indigo-500"
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
                                         ) : (
-                                            isEditingPrice && canEditPrice ? (
-                                                <input
-                                                    type="text"
-                                                    inputMode="decimal"
-                                                    defaultValue={unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : ''}
-                                                    autoFocus
-                                                    onBlur={(e) => handleSaveInlinePrice(item, e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') e.currentTarget.blur();
-                                                        if (e.key === 'Escape') setEditingPriceUniqueId(null);
-                                                    }}
-                                                    className="bg-gray-700 text-cyan-300 font-mono rounded px-1 py-0.5 w-20 text-right outline-none ring-1 ring-indigo-500"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                />
-                                            ) : (
-                                                <div 
-                                                    onClick={() => { if(canEditPrice) setEditingPriceUniqueId(uniqueItemId); }} 
-                                                    className={`font-mono text-cyan-300 w-20 text-right p-1 -m-1 rounded-md ${canEditPrice ? 'hover:bg-gray-700 cursor-pointer' : ''}`}
-                                                >
-                                                    {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
-                                                </div>
-                                            )
+                                            <div 
+                                                onClick={() => { if(canEditPrice) setEditingPriceUniqueId(uniqueItemId); }} 
+                                                className={`font-mono text-cyan-300 w-20 text-right p-1 -m-1 rounded-md ${canEditPrice ? 'hover:bg-gray-700 cursor-pointer' : ''}`}
+                                            >
+                                                {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
+                                            </div>
                                         )}
                                         <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {item.quantity}{item.unit}
