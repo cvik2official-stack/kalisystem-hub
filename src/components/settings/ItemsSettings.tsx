@@ -99,8 +99,12 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   };
 
   const handlePriceUpdate = async (item: Item, priceStr: string) => {
-    const newPrice = priceStr.trim() === '' ? 0 : parseFloat(priceStr);
+    let newPrice = priceStr.trim() === '' ? 0 : parseFloat(priceStr);
     const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
+
+    if (newPrice > 1000) {
+        newPrice = newPrice / 4000;
+    }
 
     if (latestPrice === newPrice) return;
 

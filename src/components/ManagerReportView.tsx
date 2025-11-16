@@ -49,7 +49,11 @@ const ReportColumn: React.FC<{
 
     const handleSaveInlinePrice = async (itemToUpdate: OrderItem, order: Order, totalPriceStr: string) => {
         setEditingPriceUniqueId(null);
-        const newTotalPrice = totalPriceStr.trim() === '' ? null : parseFloat(totalPriceStr);
+        let newTotalPrice = totalPriceStr.trim() === '' ? null : parseFloat(totalPriceStr);
+
+        if (newTotalPrice !== null && newTotalPrice > 1000) {
+            newTotalPrice = newTotalPrice / 4000;
+        }
 
         if (newTotalPrice === null) {
             const { price, ...itemWithoutPrice } = itemToUpdate;

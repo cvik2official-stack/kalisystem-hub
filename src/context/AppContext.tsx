@@ -1,14 +1,12 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp } from '../services/supabaseService';
-// FIX: Import useNotificationDispatch to correctly handle notifications.
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
 
 export interface AppState {
   stores: Store[];
   activeStore: StoreName | 'Settings';
-  previousActiveStore: StoreName | null;
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
@@ -30,6 +28,8 @@ export interface AppState {
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
+  // FIX: Add previousActiveStore to AppState to track navigation away from settings.
+  previousActiveStore: StoreName | 'Settings' | null;
 }
 
 export type Action =
@@ -96,7 +96,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'NAVIGATE_TO_SETTINGS':
         return { 
             ...state, 
-            previousActiveStore: state.activeStore === 'Settings' ? state.previousActiveStore : state.activeStore,
+            // FIX: Persist the store that was active before navigating to settings.
+            previousActiveStore: state.activeStore !== 'Settings' ? state.activeStore : state.previousActiveStore,
             activeStore: 'Settings', 
             activeSettingsTab: action.payload 
         };
@@ -288,7 +289,6 @@ const getInitialState = (): AppState => {
   const initialState: AppState = {
     stores: [],
     activeStore: StoreName.CV2,
-    previousActiveStore: null,
     suppliers: [],
     items: [],
     itemPrices: [],
@@ -339,13 +339,15 @@ const getInitialState = (): AppState => {
     draggedItem: null,
     cardWidth: null,
     columnCount: 3,
+    // FIX: Initialize previousActiveStore.
+    previousActiveStore: null,
   };
 
   const finalState = { ...initialState, ...loadedState };
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
   // Remove legacy properties that are now managed differently
-  if ((finalState as any)?.dueReportTopUps) delete (finalState as any).dueReportTopUps;
-  if ((finalState as any)?.notifications) delete (finalState as any).notifications;
+  if ((finalState as any).dueReportTopUps) delete (finalState as any).dueReportTopUps;
+  if ((finalState as any).notifications) delete (finalState as any).notifications;
 
   finalState.orders = (loadedState.orders || []).map((o: Partial<Order>) => ({
       ...o,
@@ -356,7 +358,10 @@ const getInitialState = (): AppState => {
   finalState.isInitialized = false;
   finalState.cardWidth = loadedState.cardWidth ?? null;
   finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
-  finalState.isSmartView = loadedState.isSmartView ?? false;
+  // FIX: Restore previousActiveStore from localStorage or set to null.
+  finalState.previousActiveStore = loadedState.previousActiveStore ?? null;
+  // Set smart view as default on wider screens
+  finalState.isSmartView = loadedState.isSmartView ?? (window.innerWidth >= 1024);
 
   return finalState;
 };
@@ -386,7 +391,6 @@ export const AppContext = createContext<{
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, getInitialState());
-  // FIX: Destructure addNotification from useNotificationDispatch instead of the non-existent addRawNotification from useNotifier.
   const { notify } = useNotifier();
   const { addNotification } = useNotificationDispatch();
   
@@ -509,8 +513,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         
         // Notification for "On the Way"
         if (previousOrder && previousOrder.status !== OrderStatus.ON_THE_WAY && order.status === OrderStatus.ON_THE_WAY) {
-            // FIX: Use the correct addNotification function with just the message string.
-            addNotification(`Order for ${order.supplierName} (${order.store}) is on the way.`);
+            const notification: Notification = {
+                id: Date.now(),
+                message: `Order for ${order.supplierName} (${order.store}) is on the way.`,
+                type: 'on_the_way',
+                orderId: order.id,
+            };
+            addNotification(notification);
         }
         
         // Stock management logic
@@ -667,6 +676,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                             return false;
                         }
                         const supplier = state.suppliers.find(s => s.id === o.supplierId);
+                        // Only poll for suppliers who have the OK button enabled
                         return supplier?.botSettings?.showOkButton === true;
                     })
                     .map(o => o.id);
@@ -687,6 +697,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     }
                 }
             } catch (e: any) {
+              // Be less noisy with fetch errors, which are common when offline
               if (e?.message && !e.message.includes('Failed to fetch')) {
                 console.warn('Background sync for acknowledgements failed:', e);
               }
@@ -719,20 +730,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }, [state.isInitialized, state.settings, state.orders, state.suppliers, dispatch, notify]);
 
 
-  for (const actionName in actions) {
-      const originalAction = (actions as any)[actionName];
-      (actions as any)[actionName] = async (...args: any[]) => {
-          try {
-              return await originalAction(...args);
-          } catch (e: any) {
-              notify(`Error: ${e.message}`, 'error');
-              throw e; 
-          }
-      };
+  // Global error handler for actions
+  const wrappedActions = { ...actions };
+  for (const actionName in wrappedActions) {
+      if (Object.prototype.hasOwnProperty.call(wrappedActions, actionName)) {
+        const originalAction = (wrappedActions as any)[actionName];
+        (wrappedActions as any)[actionName] = async (...args: any[]) => {
+            try {
+                return await originalAction(...args);
+            } catch (e: any) {
+                // Prevent toast from showing for user-initiated aborts or common network errors.
+                if (e.name !== 'AbortError' && !e.message.includes('Failed to fetch')) {
+                    notify(`Error: ${e.message}`, 'error');
+                }
+                // Re-throw so individual callers can still catch it if needed.
+                throw e; 
+            }
+        };
+      }
   }
 
   return (
-    <AppContext.Provider value={{ state, dispatch, actions }}>
+    <AppContext.Provider value={{ state, dispatch, actions: wrappedActions }}>
       {children}
     </AppContext.Provider>
   );

@@ -57,10 +57,12 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
   const handleBackspace = () => setValue(value.slice(0, -1));
 
   const handleSave = () => {
-    const numericValue = parseFloat(value);
+    let numericValue = parseFloat(value);
     if (!isNaN(numericValue) && value) {
-      const priceToSave = numericValue > 1000 ? numericValue / 4000 : numericValue;
-      onSave(priceToSave, selectedUnit);
+      if (numericValue > 1000) {
+        numericValue = numericValue / 4000;
+      }
+      onSave(numericValue, selectedUnit);
     }
   };
   

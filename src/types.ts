@@ -147,7 +147,6 @@ export interface AppSettings {
 export interface AppState {
   stores: Store[];
   activeStore: StoreName | 'Settings';
-  previousActiveStore: StoreName | null;
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
@@ -169,4 +168,6 @@ export interface AppState {
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
+  // FIX: Add previousActiveStore to AppState to track navigation away from settings.
+  previousActiveStore: StoreName | 'Settings' | null;
 }

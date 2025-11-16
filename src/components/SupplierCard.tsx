@@ -208,7 +208,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
     const handleSaveInlinePrice = async (itemToUpdate: OrderItem, totalPriceStr: string) => {
         setEditingPriceUniqueId(null); 
 
-        const newTotalPrice = totalPriceStr.trim() === '' ? null : parseFloat(totalPriceStr);
+        let newTotalPrice = totalPriceStr.trim() === '' ? null : parseFloat(totalPriceStr);
+
+        if (newTotalPrice !== null && newTotalPrice > 1000) {
+            newTotalPrice = newTotalPrice / 4000;
+        }
 
         if (newTotalPrice === null) {
             const { price, ...itemWithoutPrice } = itemToUpdate;
@@ -519,11 +523,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                             const unitPrice = item.price ?? latestPriceInfo?.price ?? null;
                             const priceUnit = latestPriceInfo?.unit;
                             const isEditingPrice = editingPriceUniqueId === uniqueItemId;
-                            const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED);
                             
                             const isStockIn = order.paymentMethod === PaymentMethod.STOCK;
                             const isStockOut = order.supplierName === SupplierName.STOCK;
-                            const isStockMovement = (isStockIn || isStockOut) && order.status !== OrderStatus.DISPATCHING;
+                            const isStockMovement = isStockIn || isStockOut;
+
+                            const canEditPrice = (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED);
 
                             return (
                                 <div key={uniqueItemId} className="flex items-center group">
@@ -574,12 +579,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                                                 onClick={() => { if(canEditPrice) setEditingPriceUniqueId(uniqueItemId); }} 
                                                 className={`font-mono text-cyan-300 w-20 text-right p-1 -m-1 rounded-md ${canEditPrice ? 'hover:bg-gray-700 cursor-pointer' : ''}`}
                                             >
-                                                {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
+                                                {isStockMovement && order.status !== OrderStatus.DISPATCHING ? '-' : (unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>)}
                                             </div>
                                         )}
                                         <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {item.quantity}{item.unit}
-                                            {isStockMovement && (
+                                            {isStockMovement && order.status !== OrderStatus.DISPATCHING && (
                                                 isStockOut ? <span className="font-semibold text-yellow-400 ml-1">out</span> : <span className="font-semibold text-green-400 ml-1">in</span>
                                             )}
                                         </div>
