@@ -18,7 +18,7 @@ import { useNotificationState, useNotificationDispatch } from './context/Notific
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView, previousActiveStore } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -201,7 +201,6 @@ const App: React.FC = () => {
         { label: '  Items', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' as SettingsTab }) },
         { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
         { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
-        { label: '  Stock', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stock' as SettingsTab }) },
         { label: '  Due Report', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'due-report' as SettingsTab }) },
       ];
       
@@ -254,6 +253,12 @@ const App: React.FC = () => {
     if (syncStatus !== 'syncing') {
       setIsGreenClickAnimating(true);
       actions.syncWithSupabase();
+    }
+  };
+
+  const handleHeaderIconClick = () => {
+    if (activeStore === 'Settings') {
+        dispatch({ type: 'SET_ACTIVE_STORE', payload: previousActiveStore || StoreName.CV2 });
     }
   };
 
@@ -318,6 +323,9 @@ const App: React.FC = () => {
         <div className="bg-gray-900 w-full xl:max-w-7xl xl:mx-auto min-h-screen flex flex-col">
             <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
               <div className="flex items-center space-x-2">
+                 <button onClick={handleHeaderIconClick} className={`p-1 rounded-full ${activeStore === 'Settings' ? 'cursor-pointer hover:bg-gray-700' : 'cursor-default'}`} aria-label="Go back">
+                    <img src="/icons/web-app-manifest-192x192.png" alt="App Logo" className={`w-8 h-8 rounded-full transition-opacity ${activeStore === 'Settings' ? 'opacity-100' : 'opacity-50'}`} />
+                 </button>
                 <div className="flex space-x-2">
                   <button onClick={handleRedDotClick} aria-label="Cycle column view">
                     <span className={`w-4 h-4 bg-red-500 rounded-full block ${isRedAnimating ? 'animate-spin-coin' : ''}`}></span>
@@ -330,35 +338,9 @@ const App: React.FC = () => {
                     <span className={`relative w-4 h-4 bg-green-500 rounded-full block ${greenDotAnimationClass}`}></span>
                   </button>
                 </div>
-                 {isManagerView && <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>}
               </div>
               
               <div className="flex items-center space-x-2">
-                  {isManagerView && (
-                    <>
-                      <button
-                          onClick={() => dispatch({ type: 'CYCLE_COLUMN_COUNT' })}
-                          className="text-gray-400 hover:text-white p-1"
-                          aria-label="Cycle column view"
-                      >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2" />
-                          </svg>
-                      </button>
-                      <button
-                          onClick={() => actions.syncWithSupabase()}
-                          disabled={syncStatus === 'syncing'}
-                          className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed p-1"
-                          aria-label="Sync with database"
-                      >
-                          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors duration-300 ${syncStatus === 'syncing' ? 'animate-spin' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
-                          </svg>
-                      </button>
-                      {/* FIX: Removed invalid 'actions' prop from NotificationBell component. */}
-                      <NotificationBell />
-                    </>
-                  )}
                   <button 
                     onClick={(e) => {
                         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -393,7 +375,6 @@ const App: React.FC = () => {
         />
       )}
       {yellowDotRect && (
-        // FIX: Removed invalid 'actions' prop from NotificationBell component.
         <NotificationBell
             isControlled={true}
             isOpen={isNotificationPanelOpen}

@@ -1,17 +1,20 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp } from '../services/supabaseService';
-import { useNotifier } from './NotificationContext';
-import { sendReminderToSupplier } from '../services/telegramService';
+// FIX: Import useNotificationDispatch to correctly handle notifications.
+import { useNotifier, useNotificationDispatch } from './NotificationContext';
+import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
 
 export interface AppState {
   stores: Store[];
   activeStore: StoreName | 'Settings';
+  previousActiveStore: StoreName | null;
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
   orders: Order[];
   dueReportTopUps: DueReportTopUp[];
+  notifications: Notification[];
   activeStatus: OrderStatus;
   activeSettingsTab: SettingsTab;
   orderIdCounters: Record<string, number>;
@@ -47,7 +50,7 @@ export type Action =
   | { type: 'SAVE_SETTINGS'; payload: Partial<AppState['settings']> }
   | { type: 'REPLACE_ITEM_DATABASE'; payload: { items: Item[], suppliers: Supplier[], rawCsv: string } }
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
-  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[] } }
+  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
   | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
@@ -57,7 +60,6 @@ export type Action =
   | { type: 'SET_DRAGGED_ORDER_ID'; payload: string | null }
   | { type: 'SET_DRAGGED_ITEM'; payload: { item: OrderItem; sourceOrderId: string } | null }
   | { type: 'SET_CARD_WIDTH'; payload: number | null }
-  | { type: 'SET_DUE_REPORT_TOP_UPS'; payload: DueReportTopUp[] }
   | { type: 'UPSERT_DUE_REPORT_TOP_UP'; payload: DueReportTopUp }
   | { type: 'SET_SMART_VIEW'; payload: boolean }
   | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] };
@@ -79,6 +81,7 @@ export interface AppContextActions {
     mergeOrders: (sourceOrderId: string, destinationOrderId: string) => Promise<void>;
     upsertItemPrice: (itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>) => Promise<void>;
     upsertDueReportTopUp: (topUp: DueReportTopUp) => Promise<void>;
+    sendEtaRequest: (order: Order) => Promise<void>;
 }
 
 
@@ -91,7 +94,12 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'SET_ACTIVE_SETTINGS_TAB':
         return { ...state, activeSettingsTab: action.payload };
     case 'NAVIGATE_TO_SETTINGS':
-        return { ...state, activeStore: 'Settings', activeSettingsTab: action.payload };
+        return { 
+            ...state, 
+            previousActiveStore: state.activeStore === 'Settings' ? state.previousActiveStore : state.activeStore,
+            activeStore: 'Settings', 
+            activeSettingsTab: action.payload 
+        };
     case 'TOGGLE_DUAL_PANE_MODE':
         return { ...state, isDualPaneMode: !state.isDualPaneMode };
     case 'SET_CARD_WIDTH':
@@ -165,7 +173,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case '_SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload, isLoading: action.payload === 'syncing' };
     case '_MERGE_DATABASE': {
-        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores, itemPrices: remoteItemPrices } = action.payload;
+        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores, itemPrices: remoteItemPrices, dueReportTopUps: remoteTopUps } = action.payload;
         
         const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
         state.items.forEach(localItem => !mergedItemsMap.has(localItem.id) && mergedItemsMap.set(localItem.id, localItem));
@@ -199,6 +207,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
             stores: Array.from(mergedStoresMap.values()),
             orders: mergedOrders,
             itemPrices: Array.from(mergedItemPricesMap.values()),
+            dueReportTopUps: remoteTopUps,
         };
     }
     case 'INITIALIZATION_COMPLETE':
@@ -228,8 +237,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
         }
         return { ...state, itemPrices: newItemPrices };
     }
-    case 'SET_DUE_REPORT_TOP_UPS':
-        return { ...state, dueReportTopUps: action.payload };
     case 'UPSERT_DUE_REPORT_TOP_UP': {
         const newTopUp = action.payload;
         const existingIndex = state.dueReportTopUps.findIndex(t => t.date === newTopUp.date);
@@ -281,10 +288,12 @@ const getInitialState = (): AppState => {
   const initialState: AppState = {
     stores: [],
     activeStore: StoreName.CV2,
+    previousActiveStore: null,
     suppliers: [],
     items: [],
     itemPrices: [],
     orders: [],
+    notifications: [],
     dueReportTopUps: [],
     activeStatus: OrderStatus.DISPATCHING,
     activeSettingsTab: 'items',
@@ -316,7 +325,6 @@ const getInitialState = (): AppState => {
       messageTemplates: {
         defaultOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}',
         kaliOrder: '<b>{{storeName}}</b>\n{{items}}',
-        oudomOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}\n\nPlease approve and mark as done from the app:\n<a href="https://kalisystem-hub.vercel.app/?view=manager&store=OUDOM">OUDOM TASKS</a>',
         telegramReceipt: '🧾 <b>Receipt for Order <code>{{orderId}}</code></b>\n<b>Store:</b> {{store}}\n<b>Supplier:</b> {{supplierName}}\n<b>Date:</b> {{date}}\n\n{{items}}\n---------------------\n<b>Grand Total: {{grandTotal}}</b>'
       },
     },
@@ -335,10 +343,10 @@ const getInitialState = (): AppState => {
 
   const finalState = { ...initialState, ...loadedState };
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
-  // FIX: Corrected handling of legacy 'dueReportTopUps' property from localStorage by casting to 'any' to prevent type errors during state hydration.
-  if ((finalState.settings as any)?.dueReportTopUps) {
-      delete (finalState.settings as any).dueReportTopUps;
-  }
+  // Remove legacy properties that are now managed differently
+  if ((finalState as any)?.dueReportTopUps) delete (finalState as any).dueReportTopUps;
+  if ((finalState as any)?.notifications) delete (finalState as any).notifications;
+
   finalState.orders = (loadedState.orders || []).map((o: Partial<Order>) => ({
       ...o,
       createdAt: o.createdAt || new Date(0).toISOString(),
@@ -372,16 +380,19 @@ export const AppContext = createContext<{
       mergeOrders: async () => {},
       upsertItemPrice: async () => {},
       upsertDueReportTopUp: async () => {},
+      sendEtaRequest: async () => {},
   }
 });
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, getInitialState());
+  // FIX: Destructure addNotification from useNotificationDispatch instead of the non-existent addRawNotification from useNotifier.
   const { notify } = useNotifier();
+  const { addNotification } = useNotificationDispatch();
   
   useEffect(() => {
     try {
-        const stateToSave = { ...state, isLoading: false, isInitialized: true };
+        const stateToSave = { ...state, isLoading: false, isInitialized: true, notifications: [], dueReportTopUps: [] };
         localStorage.setItem(APP_STATE_KEY, JSON.stringify(stateToSave));
     } catch(err) { console.error("Could not save state to localStorage", err); }
   }, [state]);
@@ -411,8 +422,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { items, suppliers, stores, itemPrices, dueReportTopUps } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
-        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices } }); 
-        dispatch({ type: 'SET_DUE_REPORT_TOP_UPS', payload: dueReportTopUps });
+        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices, dueReportTopUps } }); 
         
         if (!options?.isInitialSync) notify('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -497,13 +507,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const updatedOrder = await supabaseUpdateOrder({ order, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
         
+        // Notification for "On the Way"
+        if (previousOrder && previousOrder.status !== OrderStatus.ON_THE_WAY && order.status === OrderStatus.ON_THE_WAY) {
+            // FIX: Use the correct addNotification function with just the message string.
+            addNotification(`Order for ${order.supplierName} (${order.store}) is on the way.`);
+        }
+        
         // Stock management logic
         if (previousOrder && previousOrder.status !== OrderStatus.COMPLETED && order.status === OrderStatus.COMPLETED) {
             const isStockMovement = order.supplierName === SupplierName.STOCK || order.paymentMethod === PaymentMethod.STOCK;
             
             if (isStockMovement) {
-                // 'STOCK' supplier is for outgoing stock (-1), and takes precedence.
-                // 'STOCK' payment on any other supplier is for incoming stock (+1).
                 const direction = order.supplierName === SupplierName.STOCK ? -1 : 1;
                 const itemDbUpdatePromises: Promise<any>[] = [];
                 const stockUpdatesForState: { itemId: string; stockQuantity: number }[] = [];
@@ -511,7 +525,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 for (const orderItem of order.items) {
                     const masterItem = state.items.find(i => i.id === orderItem.itemId);
                     if (masterItem) {
-                        // The stock quantity can be null/undefined, so default to 0.
                         const newStockQuantity = (masterItem.stockQuantity || 0) + (orderItem.quantity * direction);
                         
                         itemDbUpdatePromises.push(supabaseUpdateItem({
@@ -525,9 +538,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
 
                 if (itemDbUpdatePromises.length > 0) {
-                    // Wait for all database updates to complete
                     await Promise.all(itemDbUpdatePromises);
-                    // Then, dispatch a single action to update local state
                     dispatch({ type: '_BATCH_UPDATE_ITEMS_STOCK', payload: stockUpdatesForState });
                     const directionText = direction === 1 ? 'added to' : 'deducted from';
                     notify(`Stock quantity for ${itemDbUpdatePromises.length} item(s) ${directionText} stock.`, 'success');
@@ -550,12 +561,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const newItems = order.items.filter(i => 
             !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled && i.name === itemToDelete.name)
         );
-
+        // Do not delete the order if it becomes empty. Let the on-blur handler do it.
         await actions.updateOrder({ ...order, items: newItems });
         notify('Item removed.', 'success');
     },
     addItemToDispatch: async (item) => {
-        const { activeStore, orders, suppliers, itemPrices } = state;
+        const { activeStore, orders, suppliers } = state;
         if (activeStore === 'Settings') {
             notify('Cannot add items to dispatch from this view.', 'info');
             return;
@@ -570,24 +581,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (existingOrder) {
             const itemInOrderIndex = existingOrder.items.findIndex(i => i.itemId === item.id);
             if (itemInOrderIndex > -1) {
-                // Item exists, increment quantity
                 const updatedItems = [...existingOrder.items];
                 updatedItems[itemInOrderIndex] = {
                     ...updatedItems[itemInOrderIndex],
-                    quantity: updatedItems[itemInOrderIndex].quantity + 1 // Assume adding 1
+                    quantity: updatedItems[itemInOrderIndex].quantity + 1
                 };
                 await actions.updateOrder({ ...existingOrder, items: updatedItems });
                 notify(`Incremented "${item.name}" in existing order.`, 'success');
                 return;
             }
             
-            // Item does not exist in the order, so add it
             const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
             notify(`Added "${item.name}" to existing order.`, 'success');
         } else {
-            // No existing order for this supplier, so create a new one
             const supplier = suppliers.find(s => s.id === item.supplierId);
             if (!supplier) {
                 notify(`Supplier for "${item.name}" not found.`, 'error');
@@ -628,6 +636,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const savedTopUp = await supabaseUpsertDueReportTopUp({ topUp, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPSERT_DUE_REPORT_TOP_UP', payload: savedTopUp });
     },
+    sendEtaRequest: async (order: Order) => {
+        const { settings, suppliers } = state;
+        const supplier = suppliers.find(s => s.id === order.supplierId);
+        if (!supplier || !supplier.chatId || !settings.telegramBotToken) {
+            notify('ETA request failed: Supplier Chat ID or Bot Token not set.', 'error');
+            return;
+        }
+        const message = `ETA for order ${order.orderId} (${order.store})?`;
+        try {
+            await sendCustomMessageToSupplier(supplier, message, settings.telegramBotToken);
+            notify('ETA request sent.', 'success');
+        } catch (e: any) {
+            notify(`ETA request failed: ${e.message}`, 'error');
+        }
+    },
     syncWithSupabase,
   };
 
@@ -644,7 +667,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                             return false;
                         }
                         const supplier = state.suppliers.find(s => s.id === o.supplierId);
-                        // Only poll for orders where the supplier has the 'OK' button enabled.
                         return supplier?.botSettings?.showOkButton === true;
                     })
                     .map(o => o.id);
@@ -685,7 +707,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     for (const order of ordersToRemind) {
                         const supplier = state.suppliers.find(s => s.id === order.supplierId)!;
                         await sendReminderToSupplier(order, supplier, state.settings.telegramBotToken);
-                        // Silently update order without a user-facing notification
                         const updatedOrder = await supabaseUpdateOrder({ order: { ...order, reminderSentAt: new Date().toISOString() }, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
                         dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
                     }
@@ -702,13 +723,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const originalAction = (actions as any)[actionName];
       (actions as any)[actionName] = async (...args: any[]) => {
           try {
-              // This wrapper was causing crashes on any failed save.
-              // It's better to let individual components handle their own try/catch
-              // if they need specific rollback logic. This global catch is too aggressive.
               return await originalAction(...args);
           } catch (e: any) {
               notify(`Error: ${e.message}`, 'error');
-              // Re-throwing the error allows component-level catch blocks to run.
               throw e; 
           }
       };

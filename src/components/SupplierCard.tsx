@@ -33,7 +33,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
     const isLongPress = useRef(false);
     const [activeItemId, setActiveItemId] = useState<string | null>(null);
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
-    const itemsContainerRef = useRef<HTMLDivElement>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
 
 
     // State for item modals
@@ -47,11 +47,15 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (activeItemId && itemsContainerRef.current && !itemsContainerRef.current.contains(event.target as Node)) {
+            // If we click outside the entire card
+            if (cardRef.current && !cardRef.current.contains(event.target as Node)) {
+                // De-select any active item
                 setActiveItemId(null);
                 setEditingItemId(null);
-                // FIX: Collapse card on focus lost for 'on the way' or 'completed' cards, as requested.
-                if (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) {
+                setEditingPriceUniqueId(null);
+                
+                // And collapse the card if it's on the way or completed, and currently expanded
+                if ((order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) && !isManuallyCollapsed) {
                     setIsManuallyCollapsed(true);
                 }
             }
@@ -61,7 +65,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [activeItemId, order.status]);
+    }, [order.status, isManuallyCollapsed]);
 
     // --- RE-IMPLEMENTED DRAG AND DROP LOGIC ---
 
@@ -415,6 +419,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
     return (
         <>
             <div 
+                ref={cardRef}
                 onDragOver={handleCardDragOver}
                 onDragLeave={handleCardDragLeave}
                 onDrop={handleCardDrop}
@@ -501,7 +506,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                 </div>
 
                 <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) { setEditingItemId(null); } }}>
-                    <div ref={itemsContainerRef} className="pt-1 pb-1 px-1 space-y-1">
+                    <div className="pt-1 pb-1 px-1 space-y-1">
                         {order.items.length === 0 ? (
                             <div className="text-center text-gray-500 text-sm py-4 px-2">
                                 {order.status === OrderStatus.DISPATCHING ? "Drag items here to add." : "No items."}

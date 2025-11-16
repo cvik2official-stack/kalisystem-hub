@@ -148,7 +148,6 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     };
 
     const handleSendMessage = async () => {
-        // FIX: 'stores' does not exist on type 'AppSettings'. It is a top-level property of 'state'.
         const { telegramBotToken } = state.settings;
         if (!telegramBotToken || !supplier.chatId) {
             notify('Bot Token or Supplier Chat ID is not configured.', 'error'); return;

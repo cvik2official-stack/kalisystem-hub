@@ -55,7 +55,6 @@ const OrderWorkspace: React.FC = () => {
   const touchEndX = useRef(0);
   const [completedViewMode, setCompletedViewMode] = useState<'card' | 'report'>('card');
 
-  const allStoreNames = useMemo(() => Array.from(new Set(state.stores.map(s => s.name))), [state.stores]);
   const [smartViewPage, setSmartViewPage] = useState(0); 
   const swipeContainerRef = useRef<HTMLDivElement>(null);
 
@@ -539,28 +538,23 @@ const OrderWorkspace: React.FC = () => {
   // --- SMART VIEW IMPLEMENTATION ---
   
   const smartViewOrders = useMemo(() => {
-    const dispatchingByStore: Record<string, Order[]> = {};
-    const onTheWayByStore: Record<string, Order[]> = {};
-    
-    orders.forEach(order => {
-        if(order.store === StoreName.KALI) return;
-        const storeKey = order.store;
-        if (order.status === OrderStatus.DISPATCHING) {
-            if (!dispatchingByStore[storeKey]) dispatchingByStore[storeKey] = [];
-            dispatchingByStore[storeKey].push(order);
-        } else if (order.status === OrderStatus.ON_THE_WAY) {
-            if (!onTheWayByStore[storeKey]) onTheWayByStore[storeKey] = [];
-            onTheWayByStore[storeKey].push(order);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return orders.filter(order => {
+        // Include any order that is not completed
+        if (order.status !== OrderStatus.COMPLETED) {
+            return true;
         }
+        // Include completed orders only if they were completed today
+        if (order.completedAt) {
+            const completedDate = new Date(order.completedAt);
+            completedDate.setHours(0, 0, 0, 0);
+            return completedDate.getTime() === today.getTime();
+        }
+        return false;
     });
-
-    const storesForView = allStoreNames.filter(name => 
-        (dispatchingByStore[name] || []).length === 0 && 
-        (onTheWayByStore[name] || []).length > 0
-    );
-
-    return orders.filter(order => storesForView.includes(order.store));
-  }, [orders, allStoreNames]);
+  }, [orders]);
 
 
   if (isSmartView) {

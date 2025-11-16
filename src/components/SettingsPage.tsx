@@ -3,14 +3,14 @@ import ItemsSettings from './settings/ItemsSettings';
 import SuppliersSettings from './settings/SuppliersSettings';
 import StoresSettings from './settings/StoresSettings';
 import { AppContext } from '../context/AppContext';
-import { SettingsTab } from '../types';
+import { SettingsTab, StoreName } from '../types';
 import TemplatesSettings from './settings/TemplatesSettings';
 import ContextMenu from './ContextMenu';
 import DueReportSettings from './settings/DueReportSettings';
 
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
-  const { activeSettingsTab } = state;
+  const { activeSettingsTab, previousActiveStore } = state;
   const [menu, setMenu] = useState<{ x: number, y: number, options: any[] } | null>(null);
   const [menuOptions, setMenuOptions] = useState<any[]>([]);
 
@@ -47,12 +47,12 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="mt-6 flex flex-col flex-grow">
       <div>
-        <nav className="-mb-px flex space-x-6 items-center">
+        <nav className="-mb-px flex space-x-2 md:space-x-6 items-center">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => dispatch({ type: 'SET_ACTIVE_SETTINGS_TAB', payload: tab.id })}
-              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm ${
+              className={`whitespace-nowrap py-3 px-1 md:px-2 border-b-2 font-medium text-xs md:text-sm ${
                 activeSettingsTab === tab.id
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'

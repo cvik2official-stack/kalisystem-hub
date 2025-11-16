@@ -23,7 +23,7 @@ export enum PaymentMethod {
 
 // FIX: Define SyncStatus here to be the single source of truth.
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
-export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'telegram-bot' | 'due-report' | 'stock';
+export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'telegram-bot' | 'due-report';
 
 export interface Store {
   id: string; // uuid from Supabase
