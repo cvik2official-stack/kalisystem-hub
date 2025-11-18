@@ -23,7 +23,7 @@ export enum PaymentMethod {
 
 // FIX: Define SyncStatus here to be the single source of truth.
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
-export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'telegram-bot' | 'due-report';
+export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'due-report';
 
 export interface Store {
   id: string; // uuid from Supabase
@@ -168,6 +168,10 @@ export interface AppState {
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
-  // FIX: Add previousActiveStore to AppState to track navigation away from settings.
-  previousActiveStore: StoreName | 'Settings' | null;
+}
+
+export interface KaliTodoItem extends OrderItem {
+  uniqueId: string;
+  originalOrderId: string;
+  ticked: boolean;
 }

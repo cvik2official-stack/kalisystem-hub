@@ -43,13 +43,14 @@ const StoreTabs: React.FC = () => {
   };
 
   // Create a comprehensive list of all stores from the enum.
-  const allStoreNames: StoreName[] = Object.values(StoreName);
+  const allStoreNames = Object.values(StoreName) as StoreName[];
   const storesFromStateMap = new Map(stores.map(s => [s.name, s]));
   const allStoresWithPlaceholders: Store[] = allStoreNames.map(name => {
       return storesFromStateMap.get(name) || { id: `enum_store_${name}`, name: name };
   });
 
   // Sort stores to ensure consistent order, with CV2 always first.
+  // FIX: Added explicit type annotations for 'a' and 'b' in the sort callback to rely on type inference.
   const sortedStores = [...allStoresWithPlaceholders].sort((a: Store, b: Store) => {
     if (a.name === StoreName.CV2) return -1;
     if (b.name === StoreName.CV2) return 1;

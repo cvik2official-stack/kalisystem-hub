@@ -125,7 +125,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                             name="item-name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none"
                         />
                     </div>
                      <div>
@@ -135,7 +135,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                             name="item-supplier"
                             value={supplierId}
                             onChange={handleSupplierChange}
-                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none"
                         >
                             {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
                                 <option key={s.id} value={s.id}>{s.name}</option>
@@ -152,7 +152,7 @@ const EditItemModal: React.FC<EditItemModalProps> = ({ item, isOpen, onClose, on
                             name="item-unit"
                             value={unit}
                             onChange={(e) => setUnit(e.target.value as Unit)}
-                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                            className="mt-1 w-full bg-gray-900 text-gray-200 rounded-md p-2 outline-none"
                         >
                             {/* FIX: Cast enum values to an array of Unit to ensure proper type inference. */}
                             {(Object.values(Unit) as Unit[]).map(u => (

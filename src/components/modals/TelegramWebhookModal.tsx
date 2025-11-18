@@ -50,7 +50,7 @@ const TelegramWebhookModal: React.FC<TelegramWebhookModalProps> = ({ isOpen, onC
                         type="text"
                         value={webhookUrl}
                         onChange={(e) => setWebhookUrl(e.target.value)}
-                        className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                        className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none"
                         autoFocus
                     />
                     <button

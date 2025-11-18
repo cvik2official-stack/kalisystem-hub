@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { StoreName, OrderStatus, SupplierName, Order, PaymentMethod } from '../types';
@@ -5,17 +6,16 @@ import SupplierCard from './SupplierCard';
 import ManagerReportView from './ManagerReportView';
 import NotificationBell from './NotificationBell';
 
-interface ManagerViewProps {
-  storeName: StoreName;
-}
-
-const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
+const ManagerView: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { orders, syncStatus, suppliers } = state;
+  const { orders, syncStatus, managerStoreFilter } = state;
   const [viewMode, setViewMode] = useState<'report' | 'card'>('report');
   
   const [animateSyncSuccess, setAnimateSyncSuccess] = useState(false);
   const prevSyncStatusRef = useRef<string | undefined>(undefined);
+
+  const storeName = managerStoreFilter;
+  if (!storeName) return null; // Should not happen if isManagerView is true
 
   useEffect(() => {
     if (prevSyncStatusRef.current === 'syncing' && syncStatus === 'idle') {
@@ -30,8 +30,8 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
 
   const handleExitManagerView = () => {
     dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: false, store: null } });
-    dispatch({ type: 'SET_ACTIVE_STORE', payload: storeName }); 
-    dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.DISPATCHING });
+    // Also reset active store to prevent being "stuck"
+    dispatch({ type: 'SET_ACTIVE_STORE', payload: storeName });
   };
 
   const filteredOrders = useMemo(() => {
@@ -46,18 +46,20 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
     <div className="min-h-screen bg-gray-900 text-gray-200">
       <div className="bg-gray-900 w-full md:w-1/2 md:mx-auto min-h-screen flex flex-col">
         <header className="flex-shrink-0 px-3 py-2 flex items-center justify-between sticky top-0 bg-gray-900 z-10">
-          <div 
-            className="flex items-center space-x-2 cursor-pointer"
-            onClick={handleExitManagerView}
-            title="Exit Manager View"
-          >
-            <div className="flex space-x-1.5">
-              <span className="w-3 h-3 bg-red-500 rounded-full"></span>
-              <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
-              <span className="w-3 h-3 bg-green-500 rounded-full"></span>
+          <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-2">
+                <button onClick={handleExitManagerView} title="Exit Manager View">
+                  <span className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500"></span>
+                </button>
+                 <span className="w-4 h-4 bg-yellow-400 rounded-full block opacity-50"></span>
+                 <span className="w-4 h-4 bg-green-500 rounded-full block opacity-50"></span>
             </div>
-            <h1 className="text-xs font-semibold text-gray-300">Kali System: Dispatch</h1>
+            <h1 className="text-lg font-bold text-white">Manager: {storeName}</h1>
+            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/50 text-yellow-300">
+                {onTheWayCount} On The Way
+            </span>
           </div>
+
           <div className="flex items-center space-x-2">
               <button
                   onClick={() => actions.syncWithSupabase()}
@@ -71,27 +73,18 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
                   </svg>
               </button>
               <NotificationBell />
+              <button
+                onClick={() => setViewMode(viewMode === 'report' ? 'card' : 'report')}
+                className="px-3 py-1 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                {viewMode === 'report' ? 'Card View' : 'Report View'}
+              </button>
           </div>
         </header>
         
-        <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <h1 className="text-lg font-bold text-white">Manager: {storeName}</h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-yellow-500/50 text-yellow-300">
-                {onTheWayCount} On The Way
-            </span>
-          </div>
-          <button
-            onClick={() => setViewMode(viewMode === 'report' ? 'card' : 'report')}
-            className="px-3 py-1 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
-          >
-            {viewMode === 'report' ? 'Card View' : 'Report View'}
-          </button>
-        </div>
-
         <main className="flex-grow p-2 overflow-y-auto hide-scrollbar">
           {viewMode === 'report' ? (
-            <ManagerReportView storeName={storeName} orders={filteredOrders} />
+            <ManagerReportView orders={filteredOrders} onItemDrop={() => {}} singleColumn="on_the_way" />
           ) : (
              filteredOrders.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 justify-items-center">
@@ -99,7 +92,6 @@ const ManagerView: React.FC<ManagerViewProps> = ({ storeName }) => {
                   <SupplierCard
                     key={order.id}
                     order={order}
-                    isManagerView={true}
                     onItemDrop={() => {}}
                   />
                 ))}

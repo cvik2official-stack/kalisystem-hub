@@ -128,7 +128,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
                 value={editFormData.name || ''}
                 autoFocus
                 onChange={(e) => handleInputChange('name', e.target.value.toUpperCase() as SupplierName)}
-                className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500 text-white whitespace-nowrap"
+                className="bg-gray-900 p-1 w-full rounded outline-none text-white whitespace-nowrap"
             />
           ) : supplier.name}
         </div>
@@ -140,7 +140,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
         <select
             value={editFormData.paymentMethod || ''}
             onChange={(e) => handleInputChange('paymentMethod', e.target.value as PaymentMethod)}
-            className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500"
+            className="bg-gray-900 p-1 w-full rounded outline-none"
         >
             <option value="">-</option>
             {Object.values(PaymentMethod).map(method => (
@@ -156,7 +156,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
             type="text"
             value={editFormData.chatId || ''}
             onChange={(e) => handleInputChange('chatId', e.target.value)}
-            className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500 font-mono"
+            className="bg-gray-900 p-1 w-full rounded outline-none font-mono"
         />
       ) : supplier.chatId || '-'
     },
@@ -167,7 +167,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
             type="text"
             value={editFormData.contact || ''}
             onChange={(e) => handleInputChange('contact', e.target.value)}
-            className="bg-gray-900 p-1 w-full rounded ring-1 ring-indigo-500 font-mono"
+            className="bg-gray-900 p-1 w-full rounded outline-none font-mono"
         />
       ) : supplier.contact || '-'
     },
@@ -217,7 +217,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
                 onChange={(e) => setSearchTerm(e.target.value)}
                 autoFocus
                 onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
-                className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none"
                 placeholder="Search suppliers..."
               />
             </div>

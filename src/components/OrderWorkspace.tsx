@@ -4,29 +4,217 @@ import { STATUS_TABS } from '../constants';
 import SupplierCard from '../components/SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
 import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice } from '../types';
-import PasteItemsModal from './modals/PasteItemsModal';
-import ContextMenu from '../components/ContextMenu';
+import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport } from '../utils/messageFormatter';
 import DueReportModal from './modals/DueReportModal';
 import ReceiptModal from './modals/ReceiptModal';
 import ManagerReportView from './ManagerReportView';
 
+// Timezone offset for Asia/Phnom_Penh (UTC+7) in minutes
+const PHNOM_PENH_OFFSET = 7 * 60;
+
+// Helper to get a Date object adjusted for Phnom Penh timezone from a local or UTC timestamp
+const getPhnomPenhDate = (date?: Date | string): Date => {
+    const d = date ? new Date(date) : new Date();
+    // Get the time in UTC milliseconds
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    // Return a new Date object for Phnom Penh time
+    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
+};
+
+// Helper to get the YYYY-MM-DD key for a given date, adjusted for Phnom Penh timezone
+const getPhnomPenhDateKey = (date?: Date | string): string => {
+    return getPhnomPenhDate(date).toISOString().split('T')[0];
+};
+
+const AutocompleteInput: React.FC<{
+    placeholder: string;
+    suggestions: { id: string, name: string }[];
+    onSelect: (selected: { id: string, name: string }) => void;
+    onCreate?: (newName: string) => void;
+    onBlur?: () => void;
+}> = ({ placeholder, suggestions, onSelect, onCreate, onBlur }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isFocused, setIsFocused] = useState(true);
+    const [activeIndex, setActiveIndex] = useState(-1);
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        inputRef.current?.focus();
+    }, []);
+    
+    const handleBlur = () => {
+        setTimeout(() => {
+            if (onBlur) onBlur();
+            setIsFocused(false);
+        }, 150);
+    };
+
+    const filteredSuggestions = useMemo(() => {
+        if (!searchTerm) return suggestions;
+        return suggestions.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    }, [searchTerm, suggestions]);
+
+    const handleSelect = (item: { id: string, name: string }) => {
+        onSelect(item);
+        setSearchTerm('');
+        setIsFocused(false);
+    };
+
+    const handleCreate = () => {
+        if (onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase())) {
+            onCreate(searchTerm.trim());
+            setSearchTerm('');
+            setIsFocused(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setActiveIndex(prev => Math.min(prev + 1, filteredSuggestions.length - 1));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setActiveIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (activeIndex > -1 && filteredSuggestions[activeIndex]) {
+                handleSelect(filteredSuggestions[activeIndex]);
+            } else {
+                handleCreate();
+            }
+        } else if (e.key === 'Escape') {
+            setIsFocused(false);
+            if (onBlur) onBlur();
+            (e.target as HTMLInputElement).blur();
+        }
+    };
+    
+    return (
+        <div className="relative">
+            <input
+                ref={inputRef}
+                type="text"
+                value={searchTerm}
+                onChange={e => { setSearchTerm(e.target.value); setActiveIndex(-1); }}
+                onFocus={() => setIsFocused(true)}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
+                placeholder={placeholder}
+                className="bg-transparent p-1 w-full rounded outline-none text-sm placeholder-gray-500"
+            />
+            {isFocused && (filteredSuggestions.length > 0 || (onCreate && searchTerm.trim())) && (
+                <ul className="absolute bottom-full left-0 right-0 mb-1 bg-gray-700 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
+                    {filteredSuggestions.map((item, index) => (
+                        <li key={item.id}>
+                            <button onMouseDown={() => handleSelect(item)} className={`w-full text-left p-2 text-sm ${activeIndex === index ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}>
+                                <span className="text-white">{item.name}</span>
+                            </button>
+                        </li>
+                    ))}
+                    {onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase()) && (
+                         <li><button onMouseDown={handleCreate} className={`w-full text-left p-2 text-sm ${activeIndex === -1 ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}><span className="text-indigo-300">+ Create "{searchTerm.trim()}"</span></button></li>
+                    )}
+                </ul>
+            )}
+        </div>
+    );
+};
+
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
-  const date = new Date(key);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
+  
+  const todayPhnomPenh = getPhnomPenhDate();
+  const todayKey = todayPhnomPenh.toISOString().split('T')[0];
 
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  const yesterdayPhnomPenh = getPhnomPenhDate();
+  yesterdayPhnomPenh.setDate(yesterdayPhnomPenh.getDate() - 1);
+  const yesterdayKey = yesterdayPhnomPenh.toISOString().split('T')[0];
+  
+  if (key === todayKey) return 'Today'; // Should not happen if key is 'Today' already but good for safety
+  if (key === yesterdayKey) return 'Yesterday';
 
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = String(date.getFullYear()).slice(-2);
-
-  return `${day}.${month}.${year}`;
+  const [year, month, day] = key.split('-').map(Number);
+  return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
 };
+
+const InlineAddOrder: React.FC = () => {
+    const { state, actions } = useContext(AppContext);
+    const { activeStore } = state;
+    const [mode, setMode] = useState<'buttons' | 'supplier' | 'paste'>('buttons');
+
+    if (activeStore === 'Settings') { return null; }
+
+    const handleSelectSupplier = async (supplierInfo: { id: string, name: string }) => {
+        const supplier = state.suppliers.find(s => s.id === supplierInfo.id);
+        if (supplier) {
+            await actions.addOrder(supplier, activeStore);
+        }
+        setMode('buttons'); 
+    };
+
+    const handleCreateSupplier = async (name: string) => {
+        const newSupplier = await actions.addSupplier({ name: name as SupplierName });
+        await actions.addOrder(newSupplier, activeStore);
+        setMode('buttons');
+    };
+
+    const handlePaste = async (e: React.FocusEvent<HTMLTextAreaElement>) => {
+        const text = e.target.value;
+        if (text.trim()) {
+            await actions.pasteItemsForStore(text, activeStore);
+        }
+        e.target.value = '';
+        setMode('buttons'); 
+    };
+
+    if (mode === 'supplier') {
+        const supplierSuggestions = state.suppliers.map(s => ({ id: s.id, name: s.name }));
+        return (
+            <div className="bg-gray-800 rounded-xl shadow-lg border-2 border-dashed border-gray-700 p-4 min-h-[10rem] w-full max-w-sm flex items-center justify-center">
+                <div className="w-full">
+                    <AutocompleteInput 
+                        placeholder="+ select supplier" 
+                        suggestions={supplierSuggestions} 
+                        onSelect={handleSelectSupplier} 
+                        onCreate={handleCreateSupplier} 
+                        onBlur={() => setMode('buttons')} 
+                    />
+                </div>
+            </div>
+        );
+    }
+    
+    if (mode === 'paste') {
+         return (
+             <div className="bg-gray-800 rounded-xl shadow-lg border-2 border-dashed border-gray-700 p-4 min-h-[10rem] w-full max-w-sm flex items-center justify-center">
+                <textarea
+                    autoFocus
+                    onBlur={handlePaste}
+                    placeholder="Paste items here and click away..."
+                    className="w-full h-24 bg-gray-900 text-gray-200 rounded-md p-2 font-mono text-xs outline-none"
+                />
+            </div>
+         );
+    }
+
+    // Default 'buttons' mode
+    return (
+        <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[10rem] w-full max-w-sm">
+            <div className="flex flex-col items-center justify-center space-y-2">
+                <button onClick={() => setMode('supplier')} className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg">
+                    + select supplier
+                </button>
+                <span className="text-gray-500 text-xs">or</span>
+                <button onClick={() => setMode('paste')} className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg">
+                    paste a list
+                </button>
+            </div>
+        </div>
+    );
+};
+
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
@@ -34,7 +222,6 @@ const OrderWorkspace: React.FC = () => {
   const { notify } = useNotifier();
 
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
-  const [isPasteModalOpen, setPasteModalOpen] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
@@ -54,10 +241,8 @@ const OrderWorkspace: React.FC = () => {
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
   const [completedViewMode, setCompletedViewMode] = useState<'card' | 'report'>('card');
-
-  const [smartViewPage, setSmartViewPage] = useState(0); 
-  const swipeContainerRef = useRef<HTMLDivElement>(null);
-
+  
+  const [mobileSmartViewPage, setMobileSmartViewPage] = useState(1); // 0: Dispatch, 1: On The Way, 2: Completed
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -69,21 +254,18 @@ const OrderWorkspace: React.FC = () => {
   };
 
   const handleTouchEnd = () => {
-    if (isSmartView) {
-        if (swipeContainerRef.current && window.innerWidth < 768) {
-            const swipeDistance = touchStartX.current - touchEndX.current;
-            if (swipeDistance > 75 && smartViewPage === 0) setSmartViewPage(1); // Swipe left
-            if (swipeDistance < -75 && smartViewPage === 1) setSmartViewPage(0); // Swipe right
-        }
-        return;
-    }
-
-    if (touchStartX.current === 0 || touchEndX.current === 0) return;
+    if (touchEndX.current === 0) return; // No movement, likely a click
     const swipeDistance = touchStartX.current - touchEndX.current;
-    const isLeftSwipe = swipeDistance > 75;
-    const isRightSwipe = swipeDistance < -75;
-
-    if (isLeftSwipe || isRightSwipe) {
+    const isLeftSwipe = swipeDistance > 50;
+    const isRightSwipe = swipeDistance < -50;
+    
+    if (isSmartView && columnCount === 1) {
+        if (isLeftSwipe) {
+            setMobileSmartViewPage(p => Math.min(2, p + 1));
+        } else if (isRightSwipe) {
+            setMobileSmartViewPage(p => Math.max(0, p - 1));
+        }
+    } else if (!isSmartView && columnCount === 1) {
         const currentIndex = STATUS_TABS.findIndex(tab => tab.id === activeStatus);
         if (isLeftSwipe && currentIndex < STATUS_TABS.length - 1) {
             dispatch({ type: 'SET_ACTIVE_STATUS', payload: STATUS_TABS[currentIndex + 1].id });
@@ -91,8 +273,6 @@ const OrderWorkspace: React.FC = () => {
             dispatch({ type: 'SET_ACTIVE_STATUS', payload: STATUS_TABS[currentIndex - 1].id });
         }
     }
-    touchStartX.current = 0;
-    touchEndX.current = 0;
   };
   
   const handleCompletedTabClick = (e: React.MouseEvent) => {
@@ -230,24 +410,51 @@ const OrderWorkspace: React.FC = () => {
           filtered = orders.filter(order => order.store === activeStore && order.status === status);
       }
       
-      return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const customSortOrder: string[] = ['KALI', 'STOCK'];
+      const lastSupplier = 'PISEY';
+
+      return filtered.sort((a, b) => {
+          const nameA = a.supplierName;
+          const nameB = b.supplierName;
+
+          if (nameA === lastSupplier && nameB !== lastSupplier) return 1;
+          if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
+
+          const indexA = customSortOrder.indexOf(nameA);
+          const indexB = customSortOrder.indexOf(nameB);
+
+          if (indexA > -1 && indexB > -1) return indexA - indexB;
+          if (indexA > -1) return -1;
+          if (indexB > -1) return 1;
+          
+          return nameA.localeCompare(nameB);
+      });
   };
   
   const groupedCompletedOrders = useMemo(() => {
     const ordersToGroup = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
-    if (ordersToGroup.length === 0) return {};
-    
     const groups: Record<string, Order[]> = {};
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+
+    const todayPhnomPenh = getPhnomPenhDate();
+    const todayKey = todayPhnomPenh.toISOString().split('T')[0];
+
+    const yesterdayPhnomPenh = getPhnomPenhDate();
+    yesterdayPhnomPenh.setDate(yesterdayPhnomPenh.getDate() - 1);
+    const yesterdayKey = yesterdayPhnomPenh.toISOString().split('T')[0];
+
+    // Ensure Today and Yesterday groups always exist
+    groups['Today'] = [];
+    groups[yesterdayKey] = [];
 
     ordersToGroup.forEach(order => {
-      const completedDate = new Date(order.completedAt || 0);
-      completedDate.setHours(0, 0, 0, 0);
-      const key = completedDate.getTime() === today.getTime() ? 'Today' : completedDate.toISOString().split('T')[0];
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(order);
+        const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+        const key = completedDateKey === todayKey ? 'Today' : completedDateKey;
+        if (!groups[key]) {
+            groups[key] = [];
+        }
+        groups[key].push(order);
     });
+    
     return groups;
   }, [orders, activeStore, suppliers]);
 
@@ -314,16 +521,14 @@ const OrderWorkspace: React.FC = () => {
     const orderToMove = orders.find(o => o.id === draggedOrderId);
     if (!orderToMove) return;
 
-    const targetDate = new Date(key === 'Today' ? new Date() : new Date(key));
-    
-    const originalCompletedTime = new Date(orderToMove.completedAt || 0);
-    targetDate.setHours(
-        originalCompletedTime.getHours(),
-        originalCompletedTime.getMinutes(),
-        originalCompletedTime.getSeconds()
-    );
+    const todayKey = getPhnomPenhDateKey();
+    const dateKeyToUse = key === 'Today' ? todayKey : key;
+
+    // Create a date at noon in Phnom Penh for the target date, then get its UTC ISO string.
+    const targetDate = new Date(`${dateKeyToUse}T12:00:00.000+07:00`);
 
     const updatePayload: Partial<Order> & { id: string } = { ...orderToMove, completedAt: targetDate.toISOString() };
+
     if (orderToMove.status !== OrderStatus.COMPLETED) {
         updatePayload.status = OrderStatus.COMPLETED;
         updatePayload.isSent = true;
@@ -372,53 +577,6 @@ const OrderWorkspace: React.FC = () => {
     }
   };
 
-  const AddOrderDropZone = () => (
-    <div
-      className={`bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed items-center justify-center p-4 min-h-[10rem] transition-colors duration-200 w-full max-w-sm
-        ${isDragOverEmpty ? 'border-indigo-500 bg-indigo-900/20' : 'border-gray-700'}
-      `}
-       onDragOver={(e) => {
-        if (draggedItem || (draggedOrderId && state.orders.find(o => o.id === draggedOrderId)?.status === OrderStatus.DISPATCHING)) {
-          e.preventDefault();
-          setIsDragOverEmpty(true);
-        }
-      }}
-      onDragLeave={() => setIsDragOverEmpty(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        if (draggedItem) {
-          setItemForNewOrder(draggedItem);
-          setSupplierSelectModalOpen(true);
-        } else if (draggedOrderId) {
-            const order = orders.find(o => o.id === draggedOrderId);
-            if(order) {
-                setOrderToChange(order);
-                setSupplierSelectModalOpen(true);
-            }
-        }
-        setIsDragOverEmpty(false);
-        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
-        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
-      }}
-    >
-        <div className="flex flex-col items-center justify-center space-y-2 pointer-events-none">
-           <button 
-             onClick={() => setSupplierSelectModalOpen(true)} 
-             className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
-           >
-             + select supplier
-           </button>
-           <span className="text-gray-500 text-xs">or</span>
-           <button 
-             onClick={() => setPasteModalOpen(true)} 
-             className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg pointer-events-auto"
-           >
-             paste a list
-           </button>
-        </div>
-    </div>
-  );
-
   const DispatchingColumnContent = () => {
     const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
     return (
@@ -431,7 +589,7 @@ const OrderWorkspace: React.FC = () => {
               showStoreName={activeStore === StoreName.KALI}
           />
         ))}
-        <AddOrderDropZone />
+        <InlineAddOrder />
       </>
     );
   };
@@ -460,7 +618,7 @@ const OrderWorkspace: React.FC = () => {
   const renderCompletedColumn = () => {
     if (completedViewMode === 'report' && activeStore !== 'Settings') {
         const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
-        return <ManagerReportView orders={todaysCompletedOrders} storeName={activeStore} singleColumn="completed" />;
+        return <ManagerReportView orders={todaysCompletedOrders} onItemDrop={handleItemDropOnCard} singleColumn="completed" />;
     }
     
     return (
@@ -469,6 +627,7 @@ const OrderWorkspace: React.FC = () => {
             <div className="space-y-1">
             {visibleCompletedGroupKeys.map(key => {
                 const isExpanded = expandedGroups.has(key);
+                const ordersInGroup = groupedCompletedOrders[key] || [];
                 return (
                 <div 
                     key={key}
@@ -489,14 +648,18 @@ const OrderWorkspace: React.FC = () => {
                     </div>
                     {isExpanded && (
                     <div className="space-y-4 p-2">
-                        {groupedCompletedOrders[key].map((order) => (
+                        {ordersInGroup.length > 0 ? ordersInGroup.map((order) => (
                         <SupplierCard 
                             key={order.id} 
                             order={order}
                             onItemDrop={handleItemDropOnCard}
                             showStoreName={activeStore === StoreName.KALI} 
                         />
-                        ))}
+                        )) : (
+                            <div className="text-center text-gray-500 text-sm py-4 px-2">
+                                No completed orders for this day.
+                            </div>
+                        )}
                     </div>
                     )}
                 </div>
@@ -534,23 +697,18 @@ const OrderWorkspace: React.FC = () => {
         return null;
     }
   };
-
-  // --- SMART VIEW IMPLEMENTATION ---
   
   const smartViewOrders = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayKey = getPhnomPenhDateKey();
+    const yesterdayKey = getPhnomPenhDateKey(new Date(Date.now() - 86400000));
 
     return orders.filter(order => {
-        // Include any order that is not completed
-        if (order.status !== OrderStatus.COMPLETED) {
+        if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
             return true;
         }
-        // Include completed orders only if they were completed today
-        if (order.completedAt) {
-            const completedDate = new Date(order.completedAt);
-            completedDate.setHours(0, 0, 0, 0);
-            return completedDate.getTime() === today.getTime();
+        if (order.status === OrderStatus.COMPLETED && order.completedAt) {
+            const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+            return completedDateKey === todayKey || completedDateKey === yesterdayKey;
         }
         return false;
     });
@@ -558,12 +716,105 @@ const OrderWorkspace: React.FC = () => {
 
 
   if (isSmartView) {
-    // New Smart View: 3 columns, stacking on mobile
+      if (columnCount === 1) { // Mobile Portrait Smart View
+        const isDragging = !!draggedOrderId || !!draggedItem;
+        return (
+            <div 
+                className="flex-grow flex flex-col overflow-hidden pt-2"
+                onTouchStart={handleTouchStart} 
+                onTouchMove={handleTouchMove} 
+                onTouchEnd={handleTouchEnd}
+            >
+                 {isDragging && (
+                    <>
+                        <div 
+                            className="fixed top-0 left-0 h-full w-[15vw] z-20"
+                            onDragEnter={() => setMobileSmartViewPage(p => Math.max(0, p - 1))}
+                        />
+                        <div 
+                            className="fixed top-0 right-0 h-full w-[15vw] z-20"
+                            onDragEnter={() => setMobileSmartViewPage(p => Math.min(2, p + 1))}
+                        />
+                    </>
+                )}
+                {/* Titles */}
+                <div className="flex justify-center items-center space-x-4 px-2 pb-2">
+                    {STATUS_TABS.map((tab, index) => (
+                        <h2 key={tab.id} className={`text-lg font-semibold transition-colors ${mobileSmartViewPage === index ? 'text-white' : 'text-gray-600'}`}>
+                            {tab.label}
+                        </h2>
+                    ))}
+                </div>
+                 {/* Page indicators */}
+                 <div className="flex justify-center items-center space-x-2 pb-2">
+                    {STATUS_TABS.map((_tab, index) => (
+                        <button key={index} onClick={() => setMobileSmartViewPage(index)} className="p-1">
+                            <span className={`block w-2 h-2 rounded-full transition-colors ${mobileSmartViewPage === index ? 'bg-indigo-400' : 'bg-gray-600'}`}></span>
+                        </button>
+                    ))}
+                </div>
+                {/* Swipeable content */}
+                <div className="flex-grow flex transition-transform duration-300 ease-in-out" style={{ transform: `translateX(-${mobileSmartViewPage * 100}%)` }}>
+                    {STATUS_TABS.map(tab => (
+                        <div key={tab.id} className="w-full flex-shrink-0 px-1 flex flex-col">
+                            <div 
+                                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(tab.id); }}}
+                                onDragLeave={() => setDragOverColumn(null)}
+                                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
+                                className={`flex-grow rounded-lg transition-colors duration-200 overflow-y-auto hide-scrollbar ${dragOverColumn === tab.id ? 'bg-indigo-900/20' : ''}`}
+                            >
+                                <ManagerReportView 
+                                    orders={smartViewOrders} 
+                                    singleColumn={tab.id === OrderStatus.DISPATCHING ? 'dispatch' : tab.id}
+                                    onItemDrop={handleItemDropOnCard}
+                                    hideTitle={true}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+    // Desktop / Landscape Smart View
     return (
-        <div className="flex-grow pt-4 h-full grid grid-cols-1 md:grid-cols-3 gap-4">
-            <ManagerReportView orders={smartViewOrders} storeName={null} singleColumn="dispatch" />
-            <ManagerReportView orders={smartViewOrders} storeName={null} singleColumn="on_the_way" />
-            <ManagerReportView orders={smartViewOrders} storeName={null} singleColumn="completed" />
+        <div className="flex-grow pt-4 h-full grid grid-cols-1 md:grid-cols-3 gap-10">
+            <div 
+                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}}
+                onDragLeave={() => setDragOverColumn(null)}
+                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.DISPATCHING); }}
+                className={`rounded-lg transition-colors duration-200 ${dragOverColumn === OrderStatus.DISPATCHING ? 'bg-indigo-900/20' : ''}`}
+            >
+                <ManagerReportView 
+                    orders={smartViewOrders} 
+                    singleColumn="dispatch"
+                    onItemDrop={handleItemDropOnCard}
+                />
+            </div>
+             <div 
+                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.ON_THE_WAY); }}}
+                onDragLeave={() => setDragOverColumn(null)}
+                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.ON_THE_WAY); }}
+                className={`rounded-lg transition-colors duration-200 ${dragOverColumn === OrderStatus.ON_THE_WAY ? 'bg-indigo-900/20' : ''}`}
+            >
+                <ManagerReportView 
+                    orders={smartViewOrders} 
+                    singleColumn="on_the_way"
+                    onItemDrop={handleItemDropOnCard}
+                />
+            </div>
+             <div 
+                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.COMPLETED); }}}
+                onDragLeave={() => setDragOverColumn(null)}
+                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.COMPLETED); }}
+                className={`rounded-lg transition-colors duration-200 ${dragOverColumn === OrderStatus.COMPLETED ? 'bg-indigo-900/20' : ''}`}
+            >
+                <ManagerReportView 
+                    orders={smartViewOrders} 
+                    singleColumn="completed"
+                    onItemDrop={handleItemDropOnCard}
+                />
+            </div>
         </div>
     );
   }
@@ -581,77 +832,66 @@ const OrderWorkspace: React.FC = () => {
               onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverStatusTab(tab.id); }}}
               onDragLeave={() => setDragOverStatusTab(null)}
               onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
-              className={`whitespace-nowrap py-3 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md ${
+              className={`whitespace-nowrap py-3 px-2 md:px-4 border-b-2 font-medium text-sm transition-colors ${
                 activeStatus === tab.id
                   ? 'border-indigo-500 text-indigo-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-              } ${dragOverStatusTab === tab.id ? 'bg-indigo-900/50' : ''}`}
+              } ${
+                dragOverStatusTab === tab.id ? 'bg-indigo-900/50' : ''
+              }`}
             >
               {tab.label}
             </button>
           ))}
         </nav>
         <div
-          className="mt-4 flex-grow overflow-y-auto hide-scrollbar px-2 pb-2"
+          className="flex-grow overflow-y-auto pt-4 space-y-4 hide-scrollbar px-1"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-            <div className="grid grid-cols-1 gap-4">
-              {renderStatusContent(activeStatus)}
-            </div>
+          {renderStatusContent(activeStatus)}
         </div>
-        <AddSupplierModal isOpen={isSupplierSelectModalOpen} onClose={() => { setSupplierSelectModalOpen(false); setItemForNewOrder(null); setOrderToChange(null); }} onSelect={orderToChange ? handleChangeSupplierForOrder : itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={orderToChange ? "Change Supplier" : itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
-        <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
-        {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
-        <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
-        <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
       </div>
     );
   }
 
-  const gridColsClass = columnCount === 2 ? 'grid-cols-2' : 'grid-cols-3';
-
+  // Multi-column view
   return (
-    <div className="flex-grow pt-4 overflow-x-auto hide-scrollbar">
-      <div className={`h-full grid ${gridColsClass} gap-4 min-w-[900px] xl:min-w-full`}>
-        {STATUS_TABS.map((tab, index) => {
-          if (columnCount === 2 && tab.id === OrderStatus.DISPATCHING) return null;
-          return (
-            <section
-              key={tab.id}
-              className={`flex flex-col bg-gray-900/50 rounded-lg transition-colors ${dragOverColumn === tab.id ? 'bg-indigo-900/50' : ''}`}
-              onDragOver={(e) => {
-                if (draggedOrderId) {
-                    e.preventDefault();
-                    setDragOverColumn(tab.id);
-                }
-              }}
+    <>
+      <div className={`flex-grow pt-4 grid gap-4 grid-cols-1 md:grid-cols-3`}>
+        {STATUS_TABS.map(tab => (
+            <div 
+              key={tab.id} 
+              className={`flex-grow flex flex-col space-y-4 p-2 rounded-lg transition-colors duration-200 ${dragOverColumn === tab.id ? 'bg-indigo-900/20' : ''}`}
+              onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(tab.id); }}}
               onDragLeave={() => setDragOverColumn(null)}
               onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
             >
-              <h2
-                className={`text-lg font-semibold text-white p-3 ${tab.id === OrderStatus.COMPLETED ? 'cursor-pointer hover:text-indigo-400 transition-colors' : ''}`}
-                onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}
-              >
-                {tab.label}
-              </h2>
-              <div className="flex-grow overflow-y-auto hide-scrollbar px-2 pb-2">
-                <div className="grid grid-cols-1 gap-4">
+                <h2 className="text-lg font-semibold text-white px-1 cursor-pointer" onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}>
+                    {tab.label}
+                </h2>
+                <div className="flex-grow overflow-y-auto space-y-4 hide-scrollbar pr-2 -mr-2">
                     {renderStatusContent(tab.id)}
                 </div>
-              </div>
-            </section>
-          );
-        })}
+            </div>
+        ))}
       </div>
       
-      <AddSupplierModal isOpen={isSupplierSelectModalOpen} onClose={() => { setSupplierSelectModalOpen(false); setItemForNewOrder(null); setOrderToChange(null); }} onSelect={orderToChange ? handleChangeSupplierForOrder : itemForNewOrder ? handleCreateOrderFromDrop : handleAddOrder} title={orderToChange ? "Change Supplier" : itemForNewOrder ? "Select Supplier for New Order" : "Start a New Order"} />
-      <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setPasteModalOpen(false)} />
+      <AddSupplierModal
+        isOpen={isSupplierSelectModalOpen}
+        onClose={() => {
+          setSupplierSelectModalOpen(false);
+          setItemForNewOrder(null);
+          setOrderToChange(null);
+        }}
+        onSelect={itemForNewOrder ? handleCreateOrderFromDrop : (orderToChange ? handleChangeSupplierForOrder : handleAddOrder)}
+        title={itemForNewOrder ? "Create New Order For..." : (orderToChange ? "Change Supplier To..." : "Select Supplier")}
+      />
       {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
       <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
       <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
-    </div>
+    </>
   );
 };
 

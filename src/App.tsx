@@ -14,11 +14,12 @@ import NotificationBell from './components/NotificationBell';
 import KaliReportModal from './components/modals/KaliReportModal';
 import TelegramWebhookModal from './components/modals/TelegramWebhookModal';
 import { useNotificationState, useNotificationDispatch } from './context/NotificationContext';
+import PipWindow from './components/pip/PipWindow';
 
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView, previousActiveStore } = state;
+  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -39,6 +40,7 @@ const App: React.FC = () => {
   const [headerMenu, setHeaderMenu] = useState<{ x: number, y: number } | null>(null);
   const [isKaliReportModalOpen, setIsKaliReportModalOpen] = useState(false);
   const [isTelegramWebhookModalOpen, setIsTelegramWebhookModalOpen] = useState(false);
+  const [isKaliPipOpen, setIsKaliPipOpen] = useState(false);
 
   const completedKaliOrders = React.useMemo(() => {
     return orders.filter(order => {
@@ -117,26 +119,6 @@ const App: React.FC = () => {
     }
   }, [dispatch]);
 
-    // Auto-switch to Smart View on landscape
-  useEffect(() => {
-    const handleOrientationChange = () => {
-      const isLandscape = window.innerWidth > window.innerHeight;
-      if (isLandscape && !state.isSmartView) {
-        dispatch({ type: 'SET_SMART_VIEW', payload: true });
-      }
-    };
-    
-    // Check on mount
-    handleOrientationChange();
-
-    window.addEventListener('resize', handleOrientationChange);
-    window.addEventListener('orientationchange', handleOrientationChange);
-    return () => {
-      window.removeEventListener('resize', handleOrientationChange);
-      window.removeEventListener('orientationchange', handleOrientationChange);
-    };
-  }, [state.isSmartView, dispatch]);
-
   const handleEnterManagerView = () => {
     if (activeStore !== 'Settings') {
         dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: true, store: activeStore } });
@@ -204,12 +186,21 @@ const App: React.FC = () => {
         { label: '  Due Report', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'due-report' as SettingsTab }) },
       ];
       
-      const viewOptions = [
-          { label: state.isSmartView ? '  Exit Smart View' : '  Smart View', action: () => dispatch({ type: 'SET_SMART_VIEW', payload: !state.isSmartView }) }
-      ];
-      if (activeStore !== 'Settings' && !state.isSmartView) {
+      const viewOptions = [];
+
+      if (state.isSmartView) {
+        viewOptions.push({ label: '  Exit Smart View', action: () => dispatch({ type: 'SET_SMART_VIEW', payload: false }) });
+      } else {
+        viewOptions.push({ label: '  Smart View', action: () => dispatch({ type: 'SET_SMART_VIEW', payload: true }) });
+      }
+
+      // Always allow switching to Manager View, unless already in it.
+      if (activeStore !== 'Settings' && !isManagerView) {
           viewOptions.push({ label: '  Manager View', action: handleEnterManagerView });
       }
+
+      viewOptions.push({ label: '  KALI PiP', action: () => setIsKaliPipOpen(true) });
+      
       options.push({ label: 'View', isHeader: true }, ...viewOptions);
 
       options.push(
@@ -222,24 +213,14 @@ const App: React.FC = () => {
   };
 
   const handleRedDotClick = () => {
-    const { columnCount, isSmartView } = state;
-
-    if (isSmartView) {
-      dispatch({ type: 'SET_SMART_VIEW', payload: false });
-      return;
-    }
-
-    const isMobileLayout = window.innerWidth < 1024;
-
-    if (isMobileLayout) {
-      // Cycle: 1 -> 2 -> 3 -> Smart View -> 1
-      if (columnCount === 1) dispatch({ type: 'SET_COLUMN_COUNT', payload: 2 });
-      else if (columnCount === 2) dispatch({ type: 'SET_COLUMN_COUNT', payload: 3 });
-      else if (columnCount === 3) dispatch({ type: 'SET_SMART_VIEW', payload: true });
-    } else {
-      // Cycle: 3 -> Smart View -> 3
-      dispatch({ type: 'SET_SMART_VIEW', payload: true });
-    }
+      // If we are on the settings page, always exit to the default view
+      if (activeStore === 'Settings') {
+          dispatch({ type: 'SET_SMART_VIEW', payload: false });
+          dispatch({ type: 'SET_ACTIVE_STORE', payload: StoreName.CV2 });
+          return;
+      }
+      // Otherwise, toggle Smart View
+      dispatch({ type: 'SET_SMART_VIEW', payload: !isSmartView });
   };
   
   const handleYellowDotClick = () => {
@@ -253,12 +234,6 @@ const App: React.FC = () => {
     if (syncStatus !== 'syncing') {
       setIsGreenClickAnimating(true);
       actions.syncWithSupabase();
-    }
-  };
-
-  const handleHeaderIconClick = () => {
-    if (activeStore === 'Settings') {
-        dispatch({ type: 'SET_ACTIVE_STORE', payload: previousActiveStore || StoreName.CV2 });
     }
   };
 
@@ -298,7 +273,7 @@ const App: React.FC = () => {
   }
 
   if (isManagerView && managerStoreFilter) {
-    return <ManagerView storeName={managerStoreFilter} />;
+    return <ManagerView />;
   }
 
   const yellowDotRect = yellowDotRef.current?.getBoundingClientRect();
@@ -307,37 +282,32 @@ const App: React.FC = () => {
     <>
       {isDragging && (
         <div 
-          className="fixed top-0 left-0 right-0 h-24 bg-indigo-900/50 z-50 flex items-center justify-center border-b-2 border-dashed border-indigo-400 transition-opacity duration-300"
+          className="fixed top-0 left-0 right-0 h-12 md:h-14 bg-indigo-900/50 z-50 flex items-center justify-center border-b-2 border-dashed border-indigo-400 transition-opacity duration-300"
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDropOnDeleteZone}
         >
-          <div className="flex flex-col items-center justify-center pointer-events-none">
-             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="flex items-center justify-center pointer-events-none space-x-2">
+             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
             </svg>
-            <span className="text-indigo-300 font-bold text-lg mt-1">Drop to Delete</span>
+            <span className="text-indigo-300 font-bold text-sm">Drop to Delete</span>
           </div>
         </div>
       )}
       <div className="min-h-screen bg-gray-900 text-gray-200">
         <div className="bg-gray-900 w-full xl:max-w-7xl xl:mx-auto min-h-screen flex flex-col">
-            <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                 <button onClick={handleHeaderIconClick} className={`p-1 rounded-full ${activeStore === 'Settings' ? 'cursor-pointer hover:bg-gray-700' : 'cursor-default'}`} aria-label="Go back">
-                    <img src="/icons/web-app-manifest-192x192.png" alt="App Logo" className={`w-8 h-8 rounded-full transition-opacity ${activeStore === 'Settings' ? 'opacity-100' : 'opacity-50'}`} />
-                 </button>
-                <div className="flex space-x-2">
-                  <button onClick={handleRedDotClick} aria-label="Cycle column view">
-                    <span className={`w-4 h-4 bg-red-500 rounded-full block ${isRedAnimating ? 'animate-spin-coin' : ''}`}></span>
-                  </button>
-                  <button onClick={handleYellowDotClick} aria-label="Notifications" ref={yellowDotRef}>
-                    <span className={`w-4 h-4 bg-yellow-400 rounded-full block ${isYellowAnimating ? 'animate-wobble' : ''}`}>
-                    </span>
-                  </button>
-                  <button onClick={handleGreenDotClick} disabled={syncStatus === 'syncing'} aria-label="Sync with database">
-                    <span className={`relative w-4 h-4 bg-green-500 rounded-full block ${greenDotAnimationClass}`}></span>
-                  </button>
-                </div>
+            <header className="flex-shrink-0 px-3 py-1 flex items-center justify-between">
+              <div className="flex space-x-2">
+                <button onClick={handleRedDotClick} aria-label="Toggle Smart View">
+                  <span className={`w-4 h-4 bg-red-500 rounded-full block ${isRedAnimating ? 'animate-spin-coin' : ''}`}></span>
+                </button>
+                <button onClick={handleYellowDotClick} aria-label="Notifications" ref={yellowDotRef}>
+                  <span className={`w-4 h-4 bg-yellow-400 rounded-full block ${isYellowAnimating ? 'animate-wobble' : ''}`}>
+                  </span>
+                </button>
+                <button onClick={handleGreenDotClick} disabled={syncStatus === 'syncing'} aria-label="Sync with database">
+                  <span className={`relative w-4 h-4 bg-green-500 rounded-full block ${greenDotAnimationClass}`}></span>
+                </button>
               </div>
               
               <div className="flex items-center space-x-2">
@@ -355,9 +325,9 @@ const App: React.FC = () => {
                     </svg>
                   </button>
               </div>
-            </div>
+            </header>
 
-            <div className="flex-grow px-3 py-2 flex flex-col">
+            <div className="flex-grow px-3 flex flex-col">
               <main className="flex-grow flex flex-col">
                 {!isSmartView && <StoreTabs />}
                 {activeStore === 'Settings' ? <SettingsPage /> : <OrderWorkspace />}
@@ -394,6 +364,12 @@ const App: React.FC = () => {
         isOpen={isTelegramWebhookModalOpen}
         onClose={() => setIsTelegramWebhookModalOpen(false)}
       />
+      {isKaliPipOpen && (
+        <PipWindow
+          isOpen={isKaliPipOpen}
+          onClose={() => setIsKaliPipOpen(false)}
+        />
+      )}
     </>
   );
 };

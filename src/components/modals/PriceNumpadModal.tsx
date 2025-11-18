@@ -99,7 +99,7 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
           value={value}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          className="w-full bg-gray-900 text-white text-3xl font-mono text-right rounded-md p-3 mb-3 outline-none ring-2 ring-transparent focus:ring-indigo-500"
+          className="w-full bg-gray-900 text-white text-3xl font-mono text-right rounded-md p-3 mb-3 outline-none"
           aria-label="Price input"
         />
 
@@ -114,7 +114,6 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
               {isUnitPickerOpen && (
                   <div ref={unitPickerRef} className="absolute bottom-full right-0 mb-2 bg-gray-700 rounded-lg shadow-lg p-1 z-10 max-h-64 w-32 overflow-y-auto hide-scrollbar">
                       <div className="grid grid-cols-1 gap-1">
-                      {/* FIX: Cast enum values to an array of Unit to ensure proper type inference. */}
                       {(Object.values(Unit) as Unit[]).map(u => <button key={u} onClick={() => handleUnitSelect(u)} className="px-3 py-1.5 text-sm text-left rounded-md hover:bg-indigo-600 whitespace-nowrap">{u}</button>)}
                       </div>
                   </div>

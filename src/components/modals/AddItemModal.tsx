@@ -106,7 +106,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none"
             />
           </div>
 
@@ -118,7 +118,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
                         <button
                             onClick={handleAddNewItem}
                             disabled={isCreating}
-                            className="w-full text-center p-3 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 disabled:cursor-wait transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+                            className="w-full text-center p-3 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 disabled:cursor-wait transition-colors duration-150 outline-none"
                         >
                             {isCreating ? 'Creating...' : `+ Add "${search.trim()}"`}
                         </button>
@@ -130,7 +130,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
                 )
               ) : (
                 filteredItems.map(item => (
-                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500">
+                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none">
                       <p className="text-gray-300">{item.name}</p>
                   </button>
                 ))

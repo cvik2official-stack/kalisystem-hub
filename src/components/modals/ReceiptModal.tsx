@@ -72,13 +72,11 @@ const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, orders }) 
 
   const plainTextReceipt = useMemo(() => {
     if (!isOpen) return '';
-    // FIX: Pass suppliers to generateConsolidatedReceipt.
     return generateConsolidatedReceipt(filteredOrders, state.itemPrices, state.suppliers, 'plain', { showPaymentMethods: paymentMethodsToShow });
   }, [isOpen, filteredOrders, state.itemPrices, state.suppliers, paymentMethodsToShow]);
 
   const htmlReceipt = useMemo(() => {
     if (!isOpen) return '';
-    // FIX: Pass suppliers to generateConsolidatedReceipt.
     return generateConsolidatedReceipt(filteredOrders, state.itemPrices, state.suppliers, 'html', { showPaymentMethods: paymentMethodsToShow });
   }, [isOpen, filteredOrders, state.itemPrices, state.suppliers, paymentMethodsToShow]);
 

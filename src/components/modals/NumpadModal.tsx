@@ -128,7 +128,7 @@ const NumpadModal: React.FC<NumpadModalProps> = ({ item, isOpen, onClose, onSave
           value={value}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          className="w-full bg-gray-900 text-white text-3xl font-mono text-right rounded-md p-3 mb-3 outline-none ring-2 ring-transparent focus:ring-indigo-500"
+          className="w-full bg-gray-900 text-white text-3xl font-mono text-right rounded-md p-3 mb-3 outline-none"
           aria-label="Quantity input"
         />
 

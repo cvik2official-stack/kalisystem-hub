@@ -94,12 +94,9 @@ export const generateReceiptTemplateHtml = async (apiKey: string): Promise<strin
         throw new Error("Gemini API key is not configured.");
     }
 
-    // FIX: Initialize the Gemini client outside the try...catch block to ensure it's properly scoped.
     const ai = new GoogleGenAI({ apiKey });
 
     try {
-        // FIX: The prompt string was potentially causing parsing errors.
-        // Re-written to ensure placeholders are treated as plain text by the TypeScript compiler.
         const prompt = `
         Generate a single block of HTML and inline CSS for a receipt template.
         The design should mimic a receipt from an 80mm thermal printer: narrow, single-column, and using a monospace font.

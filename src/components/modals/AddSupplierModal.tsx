@@ -23,7 +23,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
       ? availableSuppliers
       : availableSuppliers.filter(s => s.name.toLowerCase().includes(search.toLowerCase()));
       
-    const prioritySuppliers = ['KALI', 'MIKHAIL', 'STOCK'];
+    const prioritySuppliers = ['KALI', 'STOCK'];
       
     return searchFiltered.sort((a, b) => {
       const aIsPriority = prioritySuppliers.includes(a.name);
@@ -82,7 +82,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none"
             />
         </div>
 
@@ -93,7 +93,7 @@ const AddSupplierModal: React.FC<AddSupplierModalProps> = ({ isOpen, onClose, on
                         <button 
                             key={supplier.id} 
                             onClick={() => handleSelect(supplier)} 
-                            className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+                            className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none"
                         >
                             <p className="font-medium text-white">{supplier.name}</p>
                         </button>

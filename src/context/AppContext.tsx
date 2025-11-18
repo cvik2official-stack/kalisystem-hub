@@ -3,6 +3,23 @@ import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, Suppli
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp } from '../services/supabaseService';
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
+import { parseItemListLocally } from '../services/localParsingService';
+import parseItemListWithGemini from '../services/geminiService';
+
+// Client-side safety net to ensure units are always valid for the database enum.
+const normalizeUnit = (unit?: string): Unit | undefined => {
+    if (!unit) return undefined;
+    const u = unit.toLowerCase().trim();
+    switch (u) {
+        case 'pcs': case 'piece': case 'pieces': return Unit.PC;
+        case 'kgs': case 'kilo': case 'kilos': case 'kilogram': return Unit.KG;
+        case 'litter': case 'liters': case 'litres': return Unit.L;
+        case 'rolls': return Unit.ROLL; case 'blocks': return Unit.BLOCK; case 'boxes': case 'bx': return Unit.BOX;
+        case 'pax': case 'packs': return Unit.PK; case 'btl': case 'btls': case 'bottle': case 'bottles': return Unit.BT;
+        case 'cans': return Unit.CAN; case 'glasses': return Unit.GLASS;
+        default: if (Object.values(Unit).includes(u as Unit)) return u as Unit; return undefined;
+    }
+};
 
 export interface AppState {
   stores: Store[];
@@ -28,8 +45,6 @@ export interface AppState {
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
-  // FIX: Add previousActiveStore to AppState to track navigation away from settings.
-  previousActiveStore: StoreName | 'Settings' | null;
 }
 
 export type Action =
@@ -82,6 +97,7 @@ export interface AppContextActions {
     upsertItemPrice: (itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>) => Promise<void>;
     upsertDueReportTopUp: (topUp: DueReportTopUp) => Promise<void>;
     sendEtaRequest: (order: Order) => Promise<void>;
+    pasteItemsForStore: (text: string, store: StoreName) => Promise<void>;
 }
 
 
@@ -96,8 +112,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'NAVIGATE_TO_SETTINGS':
         return { 
             ...state, 
-            // FIX: Persist the store that was active before navigating to settings.
-            previousActiveStore: state.activeStore !== 'Settings' ? state.activeStore : state.previousActiveStore,
             activeStore: 'Settings', 
             activeSettingsTab: action.payload 
         };
@@ -108,7 +122,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case 'CYCLE_COLUMN_COUNT':
         return {
             ...state,
-            columnCount: (state.columnCount === 1 ? 2 : state.columnCount === 2 ? 3 : 1) as 1 | 2 | 3,
+            columnCount: (state.columnCount === 1 ? 3 : 1) as 1 | 3,
         };
     case 'SET_COLUMN_COUNT':
         if (state.columnCount === action.payload) return state;
@@ -270,11 +284,11 @@ const APP_STATE_KEY = 'supplyChainCommanderState_v3';
 
 const getInitialColumnCount = (): 1 | 2 | 3 => {
     const width = window.innerWidth;
-    // Phone portrait (< 640px) -> 1 column
-    if (width < 768) return 1;
-    // Phone landscape & Tablet portrait (768-1023) -> 2 columns
-    if (width < 1024) return 2;
-    // Tablet landscape & Larger screens -> 3 columns
+    if (width < 768) {
+        // Phone: always 1 column
+        return 1;
+    }
+    // Tablet and larger are always 3
     return 3;
 };
 
@@ -339,8 +353,6 @@ const getInitialState = (): AppState => {
     draggedItem: null,
     cardWidth: null,
     columnCount: 3,
-    // FIX: Initialize previousActiveStore.
-    previousActiveStore: null,
   };
 
   const finalState = { ...initialState, ...loadedState };
@@ -358,10 +370,14 @@ const getInitialState = (): AppState => {
   finalState.isInitialized = false;
   finalState.cardWidth = loadedState.cardWidth ?? null;
   finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
-  // FIX: Restore previousActiveStore from localStorage or set to null.
-  finalState.previousActiveStore = loadedState.previousActiveStore ?? null;
-  // Set smart view as default on wider screens
-  finalState.isSmartView = loadedState.isSmartView ?? (window.innerWidth >= 1024);
+  
+  // Only default to smart view if the user hasn't explicitly exited it before
+  if (loadedState.isSmartView === undefined || loadedState.isSmartView === null) {
+    finalState.isSmartView = window.innerWidth >= 768;
+  } else {
+    finalState.isSmartView = loadedState.isSmartView;
+  }
+
 
   return finalState;
 };
@@ -386,6 +402,7 @@ export const AppContext = createContext<{
       upsertItemPrice: async () => {},
       upsertDueReportTopUp: async () => {},
       sendEtaRequest: async () => {},
+      pasteItemsForStore: async () => {},
   }
 });
 
@@ -519,7 +536,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 type: 'on_the_way',
                 orderId: order.id,
             };
-            addNotification(notification);
+            addNotification(notification.message);
         }
         
         // Stock management logic
@@ -660,6 +677,75 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             notify(`ETA request failed: ${e.message}`, 'error');
         }
     },
+    pasteItemsForStore: async (text, store) => {
+        if (!text.trim()) return;
+
+        const isAiEnabled = state.settings.isAiEnabled !== false;
+        notify(isAiEnabled ? 'Parsing with AI...' : 'Parsing locally...', 'info');
+        
+        let parsedItems;
+        if (isAiEnabled) {
+            const geminiApiKey = state.settings.geminiApiKey;
+            if (!geminiApiKey) { notify('Gemini API key not set.', 'error'); return; }
+            const rules = state.settings.aiParsingRules || {};
+            const activeStoreRules = rules[store] || {};
+            const combinedAliases = { ...(rules.global || {}), ...activeStoreRules };
+            parsedItems = await parseItemListWithGemini(text, state.items, geminiApiKey, { aliases: combinedAliases });
+        } else {
+            parsedItems = await parseItemListLocally(text, state.items);
+        }
+        
+        const ordersBySupplier: Record<string, { supplier: Supplier, items: OrderItem[] }> = {};
+        for (const pItem of parsedItems) {
+            let supplier: Supplier | null = null;
+            let orderItem: OrderItem | null = null;
+            if (pItem.matchedItemId) {
+                const existingItem = state.items.find(i => i.id === pItem.matchedItemId);
+                if (existingItem) {
+                    supplier = state.suppliers.find(s => s.id === existingItem.supplierId) || null;
+                    orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: existingItem.unit };
+                }
+            } else if (pItem.newItemName) {
+                supplier = state.suppliers.find(s => s.name === 'MARKET') || null;
+                if (supplier) {
+                    const existingItemInDb = state.items.find(i => i.name.toLowerCase() === pItem.newItemName!.toLowerCase() && i.supplierId === supplier!.id);
+                    let finalItem: Item;
+                    if (existingItemInDb) {
+                        finalItem = existingItemInDb;
+                    } else {
+                        notify(`Creating new item: ${pItem.newItemName}`, 'info');
+                        finalItem = await actions.addItem({ name: pItem.newItemName, supplierId: supplier.id, supplierName: supplier.name, unit: normalizeUnit(pItem.unit) ?? Unit.PC });
+                    }
+                    orderItem = { itemId: finalItem.id, name: finalItem.name, quantity: pItem.quantity, unit: finalItem.unit };
+                }
+            }
+            if (supplier && orderItem) {
+                if (!ordersBySupplier[supplier.id]) ordersBySupplier[supplier.id] = { supplier, items: [] };
+                ordersBySupplier[supplier.id].items.push(orderItem);
+            }
+        }
+        
+        let createdCount = 0; let updatedCount = 0;
+        for (const { supplier, items } of Object.values(ordersBySupplier)) {
+            const existingOrderForSupplier = state.orders.find(o => o.store === store && o.supplierId === supplier.id && o.status === OrderStatus.DISPATCHING);
+            if (existingOrderForSupplier) {
+                const updatedItems = [...existingOrderForSupplier.items];
+                items.forEach(itemToAdd => {
+                    const existingItemIndex = updatedItems.findIndex(i => i.itemId === itemToAdd.itemId);
+                    if (existingItemIndex !== -1) updatedItems[existingItemIndex].quantity += itemToAdd.quantity;
+                    else updatedItems.push(itemToAdd);
+                });
+                await actions.updateOrder({ ...existingOrderForSupplier, items: updatedItems });
+                updatedCount++;
+            } else {
+                await actions.addOrder(supplier, store, items);
+                createdCount++;
+            }
+        }
+        if (createdCount > 0) notify(`${createdCount} new order(s) created.`, 'success');
+        if (updatedCount > 0) notify(`${updatedCount} existing order(s) updated.`, 'info');
+        if (createdCount === 0 && updatedCount === 0) notify('Could not parse any items.', 'info');
+    },
     syncWithSupabase,
   };
 
@@ -739,12 +825,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             try {
                 return await originalAction(...args);
             } catch (e: any) {
-                // Prevent toast from showing for user-initiated aborts or common network errors.
                 if (e.name !== 'AbortError' && !e.message.includes('Failed to fetch')) {
                     notify(`Error: ${e.message}`, 'error');
                 }
-                // Re-throw so individual callers can still catch it if needed.
-                throw e; 
             }
         };
       }

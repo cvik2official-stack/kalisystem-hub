@@ -1,3 +1,4 @@
+
 import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
@@ -16,24 +17,16 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
-  const [tableKey, setTableKey] = useState(0);
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
   const [isGrouped, setIsGrouped] = useState(false);
 
-  // State for new features
+  const [editingField, setEditingField] = useState<string | null>(null); // e.g., 'item_id-name'
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
-  const [dragOverSupplier, setDragOverSupplier] = useState<string | null>(null);
 
-  // FIX: Moved `filteredItems` declaration before its usage.
   const filteredItems = useMemo(() => {
-    const sortedItems = [...state.items].sort((a, b) => {
-        if (a.name === 'New Item' && b.name !== 'New Item') return -1;
-        if (b.name === 'New Item' && a.name !== 'New Item') return 1;
-        return a.name.localeCompare(b.name)
-    });
+    const sortedItems = [...state.items].sort((a, b) => a.name.localeCompare(b.name));
     if (!searchTerm.trim()) {
         return sortedItems;
     }
@@ -44,14 +37,13 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   }, [state.items, searchTerm]);
 
   const handleItemUpdate = async (item: Item, field: keyof Item, value: any) => {
-    if (item[field] === value) return; // No change
+    if (String(item[field] ?? '') === String(value)) return; // No change
 
     const finalName = field === 'name' ? String(value).trim() : item.name;
     const finalSupplierId = field === 'supplierId' ? value : item.supplierId;
 
     if (field === 'name' && !finalName) {
       notify('Item name cannot be empty.', 'error');
-      setTableKey(k => k + 1);
       return;
     }
 
@@ -66,7 +58,6 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
       const supplierName =
         state.suppliers.find(s => s.id === finalSupplierId)?.name || 'this supplier';
       notify(`An item named "${finalName}" from ${supplierName} already exists.`, 'error');
-      setTableKey(k => k + 1);
       return;
     }
 
@@ -161,40 +152,6 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
             return newSet;
         });
     };
-
-    const handleDragStart = (e: React.DragEvent, itemId: string) => {
-        e.dataTransfer.effectAllowed = 'move';
-        setDraggedItemId(itemId);
-    };
-
-    const handleDragEnd = () => {
-        setDraggedItemId(null);
-        setDragOverSupplier(null);
-    };
-    
-    const handleDragOver = (e: React.DragEvent, supplierName: string) => {
-        if (draggedItemId) {
-            const item = state.items.find(i => i.id === draggedItemId);
-            if (item && item.supplierName !== supplierName) {
-                e.preventDefault();
-                setDragOverSupplier(supplierName);
-            }
-        }
-    };
-
-    const handleDrop = async (e: React.DragEvent, targetSupplierName: string) => {
-        e.preventDefault();
-        if (!draggedItemId) return;
-
-        const item = state.items.find(i => i.id === draggedItemId);
-        const targetSupplier = state.suppliers.find(s => s.name === targetSupplierName);
-
-        if (item && targetSupplier && item.supplierId !== targetSupplier.id) {
-            await handleItemUpdate(item, 'supplierId', targetSupplier.id);
-        }
-
-        handleDragEnd();
-    };
     
   const handleExportItemsCsv = () => {
     let csvContent = "data:text/csv;charset=utf-8,";
@@ -254,73 +211,122 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
 
   const columns = useMemo(() => {
       const allColumns = [
+        {
+            id: 'handle', header: '',
+            cell: () => (
+              <div className="cursor-grab text-gray-500 hover:text-white flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+              </div>
+            )
+        },
         { 
           id: 'name', header: 'Name',
-          cell: (item: Item) => (
-            <div className="truncate max-w-xs">
-                <input
-                    type="text"
-                    defaultValue={item.name}
-                    onBlur={(e) => handleItemUpdate(item, 'name', e.target.value)}
-                    className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
-                />
-            </div>
-          )
+          cell: (item: Item) => {
+                const fieldId = `${item.id}-name`;
+                return editingField === fieldId ? (
+                    <input
+                        type="text"
+                        defaultValue={item.name}
+                        autoFocus
+                        onBlur={(e) => { handleItemUpdate(item, 'name', e.target.value); setEditingField(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingField(null); }}
+                        className="bg-gray-900 p-1 w-full rounded outline-none"
+                    />
+                ) : (
+                    <div className="truncate p-1 cursor-pointer w-full rounded" onClick={(e) => { e.stopPropagation(); setEditingField(fieldId); }}>
+                        {item.name}
+                    </div>
+                )
+            }
         },
         {
           id: 'supplier', header: 'Supplier',
-          cell: (item: Item) => (
-            <select
-                defaultValue={item.supplierId}
-                onChange={(e) => handleItemUpdate(item, 'supplierId', e.target.value)}
-                className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
-            >
-                {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-            </select>
-          )
+          cell: (item: Item) => {
+                const fieldId = `${item.id}-supplierId`;
+                return editingField === fieldId ? (
+                     <select
+                        defaultValue={item.supplierId}
+                        autoFocus
+                        onBlur={() => setEditingField(null)}
+                        onChange={(e) => { handleItemUpdate(item, 'supplierId', e.target.value); setEditingField(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingField(null); }}
+                        className="bg-gray-900 p-1 w-full rounded outline-none"
+                    >
+                        {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                    </select>
+                ) : (
+                    <div className="truncate p-1 cursor-pointer w-full rounded" onClick={(e) => { e.stopPropagation(); setEditingField(fieldId); }}>
+                        {item.supplierName}
+                    </div>
+                )
+            }
         },
         {
           id: 'unit', header: 'Unit',
-          cell: (item: Item) => (
-            <select
-                defaultValue={item.unit}
-                onChange={(e) => handleItemUpdate(item, 'unit', e.target.value as Unit)}
-                className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500"
-            >
-                {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          )
+          cell: (item: Item) => {
+                const fieldId = `${item.id}-unit`;
+                return editingField === fieldId ? (
+                    <select
+                        defaultValue={item.unit}
+                        autoFocus
+                        onBlur={() => setEditingField(null)}
+                        onChange={(e) => { handleItemUpdate(item, 'unit', e.target.value as Unit); setEditingField(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Escape') setEditingField(null); }}
+                        className="bg-gray-900 p-1 w-full rounded outline-none"
+                    >
+                        {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                ) : (
+                    <div className="p-1 cursor-pointer w-full rounded" onClick={(e) => { e.stopPropagation(); setEditingField(fieldId); }}>
+                        {item.unit}
+                    </div>
+                )
+            }
         },
         {
           id: 'stockQuantity', header: 'STOCK QTY',
           cell: (item: Item) => {
-            return (
+            const fieldId = `${item.id}-stockQuantity`;
+            return editingField === fieldId ? (
                 <input
                     type="text"
                     inputMode="decimal"
                     defaultValue={item.stockQuantity != null ? item.stockQuantity : ''}
-                    onBlur={(e) => handleStockQuantityUpdate(item, e.target.value)}
+                    autoFocus
+                    onBlur={(e) => { handleStockQuantityUpdate(item, e.target.value); setEditingField(null); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingField(null); }}
                     placeholder="-"
-                    className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                    className="bg-gray-900 p-1 w-full rounded outline-none text-right"
                 />
-            );
+            ) : (
+                <div className="p-1 cursor-pointer w-full rounded text-right" onClick={(e) => { e.stopPropagation(); setEditingField(fieldId); }}>
+                    {item.stockQuantity != null ? item.stockQuantity : '-'}
+                </div>
+            )
           }
         },
         {
           id: 'unitPrice', header: 'PRICE',
           cell: (item: Item) => {
+            const fieldId = `${item.id}-unitPrice`;
             const latestPrice = getLatestItemPrice(item.id, item.supplierId, state.itemPrices)?.price;
-            return (
+            return editingField === fieldId ? (
                 <input
                     type="text"
                     inputMode="decimal"
                     defaultValue={latestPrice != null ? latestPrice.toFixed(2) : ''}
-                    onBlur={(e) => handlePriceUpdate(item, e.target.value)}
+                    autoFocus
+                    onBlur={(e) => { handlePriceUpdate(item, e.target.value); setEditingField(null); }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingField(null); }}
                     placeholder="-"
-                    className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                    className="bg-gray-900 p-1 w-full rounded outline-none text-right"
                 />
+            ) : (
+                 <div className="p-1 cursor-pointer w-full rounded text-right" onClick={(e) => { e.stopPropagation(); setEditingField(fieldId); }}>
+                    {latestPrice != null ? latestPrice.toFixed(2) : '-'}
+                </div>
             );
           }
         },
@@ -344,17 +350,12 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
           return allColumns.filter(c => c.id !== 'supplier');
       }
       return allColumns;
-  }, [state.itemPrices, state.items, state.suppliers, isGrouped]);
+  }, [state.itemPrices, state.items, state.suppliers, isGrouped, editingField]);
 
   const ItemRow: React.FC<{ item: Item, columnsToRender: typeof columns}> = ({ item, columnsToRender }) => (
-        <tr 
-            draggable="true"
-            onDragStart={(e) => handleDragStart(e, item.id)}
-            onDragEnd={handleDragEnd}
-            className="hover:bg-gray-700/50 cursor-grab active:cursor-grabbing"
-        >
+        <tr className="hover:bg-gray-700/50">
             {columnsToRender.map(col => (
-                <td key={col.id} className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                <td key={col.id} className={`px-1 whitespace-nowrap text-sm text-gray-300 ${col.id === 'handle' ? 'py-2' : 'py-1'}`}>
                     {col.cell(item)}
                 </td>
             ))}
@@ -371,13 +372,13 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                     onChange={(e) => setSearchTerm(e.target.value)}
                     autoFocus
                     onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
-                    className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none"
                     placeholder="Search items..."
                 />
             </div>
         )}
       <div className="overflow-x-auto hide-scrollbar">
-          <table key={tableKey} className="min-w-full divide-y divide-gray-700">
+          <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-800">
                   <tr>
                       {columns.map(col => (
@@ -385,6 +386,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                             key={col.id}
                             scope="col" 
                             className={`px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider ${
+                                col.id === 'handle' ? 'w-[40px]' :
                                 col.id === 'name' ? 'w-[300px]' : 
                                 col.id === 'supplier' ? 'w-[150px] cursor-pointer hover:bg-gray-700' : 
                                 col.id === 'actions' ? 'w-[80px]' : 'w-[100px]'
@@ -396,19 +398,14 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                       ))}
                   </tr>
               </thead>
-              <tbody className="bg-gray-800 divide-y divide-gray-700">
+              <tbody className="bg-gray-800 divide-y divide-gray-700" onClick={() => setEditingField(null)}>
                   {isGrouped && groupedItems ? (
                       Object.keys(groupedItems).map(supplierName => {
                         const isExpanded = expandedGroups.has(supplierName);
                         return (
                           <React.Fragment key={supplierName}>
-                              <tr 
-                                className={`bg-gray-700/50 transition-colors ${dragOverSupplier === supplierName ? 'bg-indigo-900/50' : ''}`}
-                                onDragOver={(e) => handleDragOver(e, supplierName)}
-                                onDragLeave={() => setDragOverSupplier(null)}
-                                onDrop={(e) => handleDrop(e, supplierName)}
-                              >
-                                  <td colSpan={columns.length} className="px-3 py-2 text-sm font-bold text-white cursor-pointer" onClick={() => toggleGroup(supplierName)}>
+                              <tr className="bg-gray-700/50">
+                                  <td colSpan={columns.length} className="px-3 py-2 text-sm font-bold text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleGroup(supplierName);}}>
                                       <div className="flex items-center space-x-1">
                                           <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
                                             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -417,14 +414,12 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                                       </div>
                                   </td>
                               </tr>
-                              {/* FIX: Explicitly type the 'item' parameter to resolve a type inference issue. */}
                               {isExpanded && groupedItems[supplierName].map((item: Item) => (
                                   <ItemRow key={item.id} item={item} columnsToRender={columns} />
                               ))}
                           </React.Fragment>
                         )})
                   ) : (
-                      // FIX: Explicitly type the 'item' parameter to resolve a type inference issue.
                       filteredItems.map((item: Item) => (
                           <ItemRow key={item.id} item={item} columnsToRender={columns} />
                       ))

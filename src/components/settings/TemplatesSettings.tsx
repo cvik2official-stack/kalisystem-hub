@@ -46,7 +46,6 @@ const TemplatesSettings: React.FC = () => {
     const templateMetas = [
         { key: 'defaultOrder', title: 'Default Order Message' },
         { key: 'kaliOrder', title: 'KALI Order Message' },
-        { key: 'oudomOrder', title: 'OUDOM Order Message' },
         { key: 'telegramReceipt', title: 'Telegram Receipt' },
     ];
     

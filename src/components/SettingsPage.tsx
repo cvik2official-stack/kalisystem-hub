@@ -10,7 +10,7 @@ import DueReportSettings from './settings/DueReportSettings';
 
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
-  const { activeSettingsTab, previousActiveStore } = state;
+  const { activeSettingsTab } = state;
   const [menu, setMenu] = useState<{ x: number, y: number, options: any[] } | null>(null);
   const [menuOptions, setMenuOptions] = useState<any[]>([]);
 
@@ -45,7 +45,7 @@ const SettingsPage: React.FC = () => {
 
 
   return (
-    <div className="mt-6 flex flex-col flex-grow">
+    <div className="mt-2 flex flex-col flex-grow">
       <div>
         <nav className="-mb-px flex space-x-2 md:space-x-6 items-center">
           {tabs.map((tab) => (

@@ -84,8 +84,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           }
 
           const rules = state.settings.aiParsingRules || {};
-          // FIX: The initial guard clause ensures activeStore is not 'Settings', making this check redundant and causing a type error.
-          const activeStoreRules = rules[state.activeStore] || {};
+          const activeStoreRules = state.activeStore !== 'Settings' ? rules[state.activeStore] || {} : {};
           const combinedAliases = {
               ...(rules.global || {}),
               ...activeStoreRules,
@@ -142,8 +141,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
       let updatedCount = 0;
 
       for (const { supplier, items } of Object.values(ordersBySupplier)) {
-          // FIX: Removed redundant type assertion as TypeScript can infer the narrowed type.
-          const store = state.activeStore;
+          const store = state.activeStore as StoreName;
           const existingOrderForSupplier = state.orders.find(o => o.store === store && o.supplierId === supplier.id && o.status === OrderStatus.DISPATCHING);
           
           if (existingOrderForSupplier) {
@@ -191,7 +189,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
-            className="w-full h-48 bg-gray-900 text-gray-200 rounded-md p-3 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500 text-sm"
+            className="w-full h-48 bg-gray-900 text-gray-200 rounded-md p-3 outline-none text-sm"
           />
           <div className="mt-6 flex justify-between items-center min-h-[2.5rem]">
             {!isLoading ? (

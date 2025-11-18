@@ -85,13 +85,8 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     const [tempIncludeLocation, setTempIncludeLocation] = useState(false);
 
     const templates = state.settings.messageTemplates || {};
-    let defaultTemplate = templates.defaultOrder || '';
-    switch (supplier.name) {
-        case SupplierName.KALI:
-            defaultTemplate = templates.kaliOrder || defaultTemplate;
-            break;
-    }
-
+    const defaultTemplate = templates.defaultOrder || '';
+    
     useEffect(() => {
         if (isOpen) {
             const settings = supplier.botSettings || {};
@@ -134,7 +129,8 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             ...supplier,
             botSettings: {
                 ...supplier.botSettings,
-                messageTemplate: (messageTemplate.trim() === defaultTemplate.trim() || messageTemplate.trim() === '') ? undefined : messageTemplate.trim(),
+                // FIX: Save an empty string to clear the template, or the template if it's different.
+                messageTemplate: messageTemplate.trim() === defaultTemplate.trim() ? undefined : messageTemplate.trim(),
                 showAttachInvoice,
                 showMissingItems,
                 showOkButton,

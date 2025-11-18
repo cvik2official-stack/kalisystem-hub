@@ -45,7 +45,7 @@ const StoresSettings: React.FC = () => {
           type="text"
           defaultValue={store.chatId || ''}
           onBlur={(e) => handleStoreUpdate(store, 'chatId', e.target.value)}
-          className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 font-mono"
+          className="bg-transparent p-1 w-full rounded focus:bg-gray-900 outline-none font-mono"
         />
       )
     },
@@ -57,7 +57,7 @@ const StoresSettings: React.FC = () => {
               type="text"
               defaultValue={store.locationUrl || ''}
               onBlur={(e) => handleStoreUpdate(store, 'locationUrl', e.target.value)}
-              className="bg-transparent p-1 w-full rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 font-mono truncate"
+              className="bg-transparent p-1 w-full rounded focus:bg-gray-900 outline-none font-mono truncate"
             />
         </div>
       )
