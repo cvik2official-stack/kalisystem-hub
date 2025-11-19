@@ -130,7 +130,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
             const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
             if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-            return nameA.localeCompare(b.supplierName);
+            return nameA.localeCompare(nameB);
         });
     };
 
@@ -333,8 +333,13 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                     <li key={uniqueItemId} className="flex items-center group py-0.5" draggable={!isEditingName && !isEditingPrice} onDragStart={(e) => handleItemDragStart(e, item, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ITEM', payload: null })}>
                         <div className="flex-grow truncate pr-2">{itemNameContent}</div>
                         <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
-                            {isStockMovement && order.supplierName === SupplierName.STOCK && <span className="font-semibold text-yellow-400">out</span>}
-                            {isStockMovement && order.paymentMethod === PaymentMethod.STOCK && <span className="font-semibold text-green-400">in</span>}
+                            {isStockMovement ? (
+                                order.supplierName === SupplierName.STOCK ? (
+                                    <span className="font-semibold text-yellow-400">out</span>
+                                ) : ( // This implicitly means paymentMethod is STOCK if the outer condition is true
+                                    <span className="font-semibold text-green-400">in</span>
+                                )
+                            ) : null}
                             <div className="w-16 text-right">{itemQuantityContent}</div>
                             <div className="w-20 text-right">{itemPriceContent}</div>
                         </div>
@@ -414,7 +419,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             {!hideTitle && (
                 <h2 className="capitalize text-lg font-semibold px-1 py-2 flex items-center space-x-2 text-white">
                     <span>{title}</span>
-                    {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && (
+                    {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
                         <div className="flex items-center space-x-1">
                              <button onClick={() => setIsAddSupplierModalOpen(true)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="New Card">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
@@ -460,7 +465,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                                                         if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
                                                         const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
                                                         if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-                                                        return nameA.localeCompare(b.supplierName);
+                                                        return nameA.localeCompare(nameB);
                                                     });
                     
                                                     return (
@@ -508,7 +513,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                         if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
                         const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
                         if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-                        return nameA.localeCompare(b.supplierName);
+                        return nameA.localeCompare(nameB);
                     });
                     if (storeOrders.length === 0) return null;
 

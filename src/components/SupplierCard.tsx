@@ -565,8 +565,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                     </div>
                                     <div className="flex items-center space-x-2 ml-2">
                                         <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
-                                            {isStockMovement && order.supplierName === SupplierName.STOCK && <span className="font-semibold text-yellow-400 mr-1">out</span>}
-                                            {isStockMovement && order.paymentMethod === PaymentMethod.STOCK && <span className="font-semibold text-green-400 mr-1">in</span>}
+                                            {isStockMovement ? (
+                                                order.supplierName === SupplierName.STOCK ? (
+                                                    <span className="font-semibold text-yellow-400 mr-1">out</span>
+                                                ) : ( // This implicitly means paymentMethod is STOCK
+                                                    <span className="font-semibold text-green-400 mr-1">in</span>
+                                                )
+                                            ) : null}
                                             {item.quantity}{item.unit}
                                         </div>
                                         {isEditingPrice ? (

@@ -145,16 +145,21 @@ async function processRequest(req: Request) {
 async function handleMessage(message: any) {
     if (!message.text) return;
     const { chat, text } = message;
-    if (text === '/whoami') {
-        const { from } = message;
-        const responseText = `*Chat ID:* \`${chat.id}\`\n*User ID:* \`${from.id}\`\n*Name:* ${from.first_name || ''} ${from.last_name || ''}`.trim();
-        await sendMessageToChat(chat.id, responseText, 'Markdown');
-    } else if (text === '/quickorder') {
-        await handleQuickOrderList(chat.id);
-    } else if (text === '/est') {
-        await handleEstReport(chat.id);
-    } else if (text === '/due') {
-        await handleDueReport(chat.id);
+    try {
+        if (text === '/whoami') {
+            const { from } = message;
+            const responseText = `*Chat ID:* \`${chat.id}\`\n*User ID:* \`${from.id}\`\n*Name:* ${from.first_name || ''} ${from.last_name || ''}`.trim();
+            await sendMessageToChat(chat.id, responseText, 'Markdown');
+        } else if (text === '/quickorder') {
+            await handleQuickOrderList(chat.id);
+        } else if (text === '/est') {
+            await handleEstReport(chat.id);
+        } else if (text === '/due') {
+            await handleDueReport(chat.id);
+        }
+    } catch (e) {
+        console.error(`Error handling command "${text}":`, e);
+        await sendMessageToChat(chat.id, `⚠️ Error processing your command: ${e.message}`);
     }
 }
 
@@ -172,36 +177,31 @@ async function handleCallbackQuery(query: any) {
 async function handleEstReport(chatId: number) {
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     const { data: orders, error: ordersError } = await supabase.from('orders').select('*, suppliers(name)').eq('status', 'on_the_way').or('payment_method.eq.kali,suppliers.name.eq.KALI');
-    if (ordersError) { await sendMessageToChat(chatId, `Error fetching orders: ${ordersError.message}`); return; }
+    if (ordersError) throw new Error(`DB Error (Orders): ${ordersError.message}`);
     if (orders.length === 0) { await sendMessageToChat(chatId, 'No KALI orders are currently on the way.'); return; }
     const { data: itemPrices, error: pricesError } = await supabase.from('item_prices').select('*');
-    if (pricesError) { await sendMessageToChat(chatId, `Error fetching prices: ${pricesError.message}`); return; }
+    if (pricesError) throw new Error(`DB Error (Prices): ${pricesError.message}`);
     
-    // Transform orders to match frontend structure
     const mappedOrders: Order[] = orders.map((o: any) => ({ ...o, supplierName: o.suppliers.name, orderId: o.order_id }));
 
     const report = generateKaliZapReport(mappedOrders, itemPrices);
-    await sendMessageToChat("5186573916", report); // Send to KALI_ZAP_CHAT_ID
+    await sendMessageToChat(chatId, `<pre>${report}</pre>`, 'HTML');
 }
 
 async function handleDueReport(chatId: number) {
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     const todayKey = getPhnomPenhDateKey();
-    const yesterdayKey = getPhnomPenhDateKey(new Date(Date.now() - 86400000));
     
-    // Fetch orders, prices, and top-ups
     const { data: orders, error: ordersError } = await supabase.from('orders').select('*, suppliers(name)').eq('status', 'completed').or('payment_method.eq.kali,suppliers.name.eq.KALI');
-    if (ordersError) { await sendMessageToChat(chatId, `Error fetching orders: ${ordersError.message}`); return; }
+    if (ordersError) throw new Error(`DB Error (Orders): ${ordersError.message}`);
     const { data: itemPrices, error: pricesError } = await supabase.from('item_prices').select('*');
-    if (pricesError) { await sendMessageToChat(chatId, `Error fetching prices: ${pricesError.message}`); return; }
+    if (pricesError) throw new Error(`DB Error (Prices): ${pricesError.message}`);
     const { data: topUps, error: topUpsError } = await supabase.from('due_report_top_ups').select('*');
-    if (topUpsError) { await sendMessageToChat(chatId, `Error fetching top-ups: ${topUpsError.message}`); return; }
+    if (topUpsError) throw new Error(`DB Error (TopUps): ${topUpsError.message}`);
 
-    // Filter and process data
     const todaysOrders = orders.filter((o: any) => getPhnomPenhDateKey(o.completed_at) === todayKey).map((o: any) => ({ ...o, supplierName: o.suppliers.name, orderId: o.order_id }));
     const todaysTopUp = topUps.find((t: any) => t.date === todayKey)?.amount || 0;
     
-    // Calculate previous day's due amount
     const hardcodedInitialBalance = 146.26;
     let previousDue = hardcodedInitialBalance;
     const allDates = [...new Set([...orders.map((o: any) => getPhnomPenhDateKey(o.completed_at)), ...topUps.map((t: any) => t.date)])].sort();
@@ -214,7 +214,7 @@ async function handleDueReport(chatId: number) {
     }
 
     const report = generateKaliUnifyReport(todaysOrders, itemPrices, previousDue, todaysTopUp, todayKey);
-    await sendMessageToChat("-1003065576801", report); // Send to KALI_UNIFY_CHAT_ID
+    await sendMessageToChat(chatId, `<pre>${report}</pre>`, 'HTML');
 }
 
 
@@ -222,7 +222,8 @@ async function handleQuickOrderList(chatId: number) {
     if (!TELEGRAM_BOT_TOKEN) return;
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     const { data, error } = await supabase.from('quick_orders').select('*');
-    if (error || !data || data.length === 0) { await sendMessageToChat(chatId, "No quick orders found."); return; }
+    if (error) throw new Error(`DB Error (QuickOrders): ${error.message}`);
+    if (!data || data.length === 0) { await sendMessageToChat(chatId, "No quick orders found."); return; }
     const buttons = data.map((qo: any) => ([{ text: `${qo.name} (${qo.store})`, callback_data: `trigger_qo_${qo.id}` }]));
     await sendMessageToChat(chatId, "<b>Select a Quick Order:</b>", 'HTML', { inline_keyboard: buttons });
 }

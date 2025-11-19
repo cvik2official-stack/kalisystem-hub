@@ -24,21 +24,6 @@ body {
     scrollbar-width: none;
 }
 
-@keyframes bounce-once {
-  0%, 100% {
-    transform: translateY(0);
-    animation-timing-function: cubic-bezier(0.8, 0, 1, 1);
-  }
-  50% {
-    transform: translateY(-30%);
-    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
-  }
-}
-
-.bounce-once-animation {
-  animation: bounce-once 0.6s;
-}
-
 @keyframes wobble {
   0%, 100% { transform: rotate(0deg); transform-origin: center; }
   15% { transform: rotate(-15deg); }
@@ -52,56 +37,39 @@ body {
   animation: wobble 0.8s ease-in-out;
 }
 
-/* New animations for header dots */
-@keyframes spin-coin {
-  from { transform: rotateY(0deg); }
-  to { transform: rotateY(1080deg); } /* 3 full rotations */
-}
-.animate-spin-coin {
-  animation: spin-coin 1.5s ease-out;
-}
-
-/* Continuous idle pulse for green dot using scale */
-@keyframes pulse-idle {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.1);
+/* Reverted Animations */
+@keyframes ping-once {
+  75%, 100% {
+    transform: scale(2.5);
+    opacity: 0;
   }
 }
-.animate-pulse-idle {
-  animation: pulse-idle 4s infinite ease-in-out;
+.animate-ping-once {
+  animation: ping-once 1.5s cubic-bezier(0, 0, 0.2, 1);
 }
 
-/* One-shot expand pulse for green dot on click using scale */
-@keyframes pulse-expand-once {
+.sonar-emitter {
+  position: relative;
+}
+.sonar-emitter::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: sonar-pulse 2s infinite;
+  opacity: 0;
+}
+@keyframes sonar-pulse {
   0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.4);
+    transform: scale(0.75);
+    opacity: 0.5;
   }
   100% {
-    transform: scale(1);
+    transform: scale(2.5);
+    opacity: 0;
   }
-}
-.animate-pulse-expand-once {
-  animation: pulse-expand-once 1s;
-}
-
-/* Syncing pulse for green dot using scale */
-@keyframes pulse-syncing {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.25);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-.animate-pulse-syncing {
-  animation: pulse-syncing 1.5s infinite ease-in-out;
 }

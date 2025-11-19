@@ -50,7 +50,6 @@ const StoreTabs: React.FC = () => {
   });
 
   // Sort stores to ensure consistent order, with CV2 always first.
-  // FIX: Added explicit type annotations for 'a' and 'b' in the sort callback to rely on type inference.
   const sortedStores = [...allStoresWithPlaceholders].sort((a: Store, b: Store) => {
     if (a.name === StoreName.CV2) return -1;
     if (b.name === StoreName.CV2) return 1;
@@ -81,13 +80,13 @@ const StoreTabs: React.FC = () => {
   };
 
   return (
-    <div>
-      <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+    <div className="flex-grow overflow-x-auto hide-scrollbar flex justify-start md:justify-center">
+      <nav className="-mb-px flex space-x-2 px-1" aria-label="Tabs">
         <button
             key="ALL"
             onClick={() => handleClick('ALL')}
             className={`
-              whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md
+              whitespace-nowrap py-2 px-2 border-b-2 font-medium text-sm transition-colors rounded-t-md
               ${
                 activeStore === 'ALL'
                   ? 'border-purple-500 text-purple-400'
@@ -110,7 +109,7 @@ const StoreTabs: React.FC = () => {
             onDragLeave={() => setDragOverStore(null)}
             onDrop={(e) => handleDrop(e, name)}
             className={`
-              whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md
+              whitespace-nowrap py-2 px-2 border-b-2 font-medium text-sm transition-colors rounded-t-md
               ${
                 activeStore === name
                   ? 'border-indigo-500 text-indigo-400'

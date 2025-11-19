@@ -55,6 +55,7 @@ const OrderWorkspace: React.FC = () => {
   const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, isSmartView, itemPrices, initialAction } = state;
   const { notify } = useNotifier();
 
+  // ... (state definitions)
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   
@@ -123,7 +124,6 @@ const OrderWorkspace: React.FC = () => {
   
   const handleCompletedTabClick = (e: React.MouseEvent) => {
     const isHeaderClick = (e.target as HTMLElement).tagName.toLowerCase() === 'h2';
-    // FIX: Check activeStatus, not activeStore, to determine if the completed tab is already active.
     if (activeStatus === OrderStatus.COMPLETED || isHeaderClick) {
         setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card');
     } 
@@ -589,22 +589,6 @@ const OrderWorkspace: React.FC = () => {
                         />
                     </>
                 )}
-                {/* Titles */}
-                <div className="flex justify-center items-center space-x-4 px-2 pb-2">
-                    {STATUS_TABS.map((tab, index) => (
-                        <h2 key={tab.id} className={`text-lg font-semibold transition-colors ${mobileSmartViewPage === index ? 'text-white' : 'text-gray-600'}`}>
-                            {tab.label}
-                        </h2>
-                    ))}
-                </div>
-                 {/* Page indicators */}
-                 <div className="flex justify-center items-center space-x-2 pb-2">
-                    {STATUS_TABS.map((_tab, index) => (
-                        <button key={index} onClick={() => setMobileSmartViewPage(index)} className="p-1">
-                            <span className={`block w-2 h-2 rounded-full transition-colors ${mobileSmartViewPage === index ? 'bg-indigo-400' : 'bg-gray-600'}`}></span>
-                        </button>
-                    ))}
-                </div>
                 {/* Swipeable content */}
                 <div className="flex-grow flex transition-transform duration-300 ease-in-out" style={{ transform: `translateX(-${mobileSmartViewPage * 100}%)` }}>
                     {STATUS_TABS.map(tab => (
@@ -619,7 +603,7 @@ const OrderWorkspace: React.FC = () => {
                                     orders={smartViewOrders} 
                                     singleColumn={tab.id === OrderStatus.DISPATCHING ? 'dispatch' : tab.id}
                                     onItemDrop={handleItemDropOnCard}
-                                    hideTitle={true}
+                                    hideTitle={false} // Show titles like "Dispatch" inside the column
                                     showStoreName={activeStore === 'ALL'}
                                 />
                             </div>

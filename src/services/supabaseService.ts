@@ -127,7 +127,6 @@ interface ItemPriceFromDb {
     price: number;
     unit: Unit;
     created_at: string;
-    // FIX: Add is_master property to align with database schema.
     is_master?: boolean;
 }
 
@@ -227,7 +226,6 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         price: p.price,
         unit: p.unit,
         createdAt: p.created_at,
-        // FIX: Map is_master from database to isMaster in the application state.
         isMaster: p.is_master,
     }));
 
@@ -236,7 +234,6 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         amount: t.amount,
     }));
     
-    // FIX: Refactored to be type-safe. Map to an object with supplier or null, then filter out nulls.
     const quickOrders: QuickOrder[] = quickOrdersData.map(q => {
         const supplier = supplierMap.get(q.supplier_id);
         if (!supplier) {
@@ -264,13 +261,11 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
     const headers = getHeaders(key);
     const supplierMap = new Map<string, Supplier>(suppliers.map(s => [s.id, s]));
 
-    // Fetch all order data, assuming 'items' is a JSONB column.
     const ordersResponse = await fetch(`${url}/rest/v1/orders?select=*`, { headers });
     if (!ordersResponse.ok) throw new Error(`Failed to fetch orders: ${await ordersResponse.text()}`);
     
     const ordersData: OrderFromDb[] = await ordersResponse.json();
     
-    // Map the database response to the application's Order type.
     return ordersData
         .filter(Boolean)
         .reduce((acc: Order[], order) => {
@@ -293,7 +288,6 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     paymentMethod: order.payment_method,
                     isAcknowledged: order.is_acknowledged,
                     reminderSentAt: order.reminder_sent_at,
-                    // Assume 'items' column exists and is an array of OrderItem or null.
                     items: order.items || [], 
                 });
             } else {
@@ -307,7 +301,6 @@ export const getAcknowledgedOrderUpdates = async ({ orderIds, url, key }: { orde
     const headers = getHeaders(key);
     const response = await fetch(`${url}/rest/v1/orders?select=id,order_id&id=in.(${orderIds.join(',')})&is_acknowledged=eq.true`, { headers });
     if (!response.ok) {
-        // It's okay for this lightweight poll to fail, don't throw a fatal error.
         console.warn(`Failed to fetch order updates: ${await response.text()}`);
         return [];
     }
@@ -321,7 +314,6 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
     const headers = getHeaders(key);
     const { id, ...orderData } = order;
 
-    // The payload now includes the 'items' array.
     const orderPayload = {
         order_id: orderData.orderId,
         store: orderData.store,
@@ -361,10 +353,9 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
     const headers = getHeaders(key);
     const now = new Date().toISOString();
 
-    // The payload now includes the 'items' array.
     const orderPayload = {
         store: order.store,
-        supplier_id: order.supplierId, // Allow supplier changes
+        supplier_id: order.supplierId,
         status: order.status,
         is_sent: order.isSent,
         is_received: order.isReceived,
@@ -456,7 +447,6 @@ export const addSupplier = async ({ supplier, url, key }: { supplier: Partial<Su
         bot_settings: supplier.botSettings,
         contact: supplier.contact,
     };
-    // Using on_conflict with merge-duplicates will either create a new supplier or return the existing one if the name matches.
     const response = await fetch(`${url}/rest/v1/suppliers?select=*&on_conflict=name`, {
         method: 'POST',
         headers: { ...getHeaders(key), 'Prefer': 'return=representation,resolution=merge-duplicates' },
@@ -535,7 +525,6 @@ export const updateStore = async ({ store, url, key }: { store: Store; url: stri
 export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPrice: Omit<ItemPrice, 'id' | 'createdAt'>; url: string; key: string }): Promise<ItemPrice> => {
     const headers = getHeaders(key);
 
-    // 1. Check if a price entry already exists
     const selectUrl = `${url}/rest/v1/item_prices?select=id&item_id=eq.${itemPrice.itemId}&supplier_id=eq.${itemPrice.supplierId}&unit=eq.${itemPrice.unit}`;
     const selectResponse = await fetch(selectUrl, { headers });
 
@@ -547,7 +536,6 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
 
     let response;
     if (existingPrices.length > 0) {
-        // 2. If exists, UPDATE it using PATCH
         const existingId = existingPrices[0].id;
         const updateUrl = `${url}/rest/v1/item_prices?id=eq.${existingId}&select=*`;
         response = await fetch(updateUrl, {
@@ -555,12 +543,11 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
             headers: { ...headers, 'Prefer': 'return=representation' },
             body: JSON.stringify({
                 price: itemPrice.price,
-                created_at: new Date().toISOString(), // Update timestamp on every price change
+                created_at: new Date().toISOString(), 
             })
         });
         if (!response.ok) throw new Error(`Failed to update item price: ${await response.text()}`);
     } else {
-        // 3. If not, INSERT it using POST
         const insertUrl = `${url}/rest/v1/item_prices?select=*`;
         const payload = {
             item_id: itemPrice.itemId,
@@ -585,7 +572,6 @@ export const supabaseUpsertItemPrice = async ({ itemPrice, url, key }: { itemPri
         price: upsertedPrice.price,
         unit: upsertedPrice.unit,
         createdAt: upsertedPrice.created_at,
-        // FIX: Map is_master from database to isMaster in the application state.
         isMaster: upsertedPrice.is_master,
     };
 };

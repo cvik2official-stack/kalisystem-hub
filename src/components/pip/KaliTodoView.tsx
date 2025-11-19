@@ -9,7 +9,7 @@ interface KaliTodoViewProps {
 
 const KaliTodoView: React.FC<KaliTodoViewProps> = ({ shareTrigger }) => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { kaliTodoState, orders } = state;
+  const { kaliTodoState } = state;
   const { sections } = kaliTodoState;
   const { notify } = useNotifier();
 

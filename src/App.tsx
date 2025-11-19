@@ -31,7 +31,6 @@ const App: React.FC = () => {
   // Animations
   const [isRedAnimating, setIsRedAnimating] = useState(false);
   const [isYellowAnimating, setIsYellowAnimating] = useState(false);
-  const [isGreenClickAnimating, setIsGreenClickAnimating] = useState(false);
   const prevHasUnreadRef = useRef(hasUnread);
   
   // Panel Control
@@ -117,14 +116,6 @@ const App: React.FC = () => {
     return () => clearTimeout(timer);
   }, [activeStore, activeSettingsTab, activeStatus, isSmartView, state.columnCount]);
 
-
-  // Handle one-shot click animation for green dot
-  useEffect(() => {
-    if (isGreenClickAnimating) {
-        const timer = setTimeout(() => setIsGreenClickAnimating(false), 1000); // Animation duration
-        return () => clearTimeout(timer);
-    }
-  }, [isGreenClickAnimating]);
 
   useEffect(() => {
     const handleFocusLoss = () => {
@@ -315,7 +306,6 @@ const App: React.FC = () => {
   
   const handleGreenDotClick = () => {
     if (syncStatus !== 'syncing') {
-      setIsGreenClickAnimating(true);
       actions.syncWithSupabase();
     }
   };
@@ -324,6 +314,7 @@ const App: React.FC = () => {
   
   const handleDropOnDeleteZone = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation(); // Prevent main drop zone from firing
     if (draggedOrderId) {
       actions.deleteOrder(draggedOrderId);
     } else if (draggedItem) {
@@ -336,6 +327,7 @@ const App: React.FC = () => {
 
   const handleDropOnChangeSupplierZone = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     if (draggedOrderId) {
       setOrderIdToChangeSupplier(draggedOrderId);
       setChangeSupplierModalOpen(true);
@@ -345,6 +337,7 @@ const App: React.FC = () => {
 
   const handleDropOnSaveZone = (e: React.DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       if (draggedOrderId) {
           setOrderIdToSave(draggedOrderId);
           setIsSaveQuickOrderModalOpen(true);
@@ -370,10 +363,9 @@ const App: React.FC = () => {
   };
 
   const greenDotAnimationClass = useMemo(() => {
-    if (isGreenClickAnimating) return 'animate-pulse-expand-once';
-    if (syncStatus === 'syncing') return 'animate-pulse-syncing';
+    if (syncStatus === 'syncing') return 'animate-spin';
     return 'sonar-emitter';
-  }, [isGreenClickAnimating, syncStatus]);
+  }, [syncStatus]);
 
   if (!isInitialized) {
     return (
@@ -404,7 +396,7 @@ const App: React.FC = () => {
         <main className="flex flex-col flex-grow p-4 md:p-6 max-w-full mx-auto w-full">
             <header className="flex-shrink-0 flex items-center justify-between mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2">
                 <div className="flex items-center space-x-2">
-                    <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500" title="Toggle Smart View / Exit Settings">
+                    <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Toggle Smart View / Exit Settings">
                         {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
                     </button>
                     <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">
@@ -414,7 +406,7 @@ const App: React.FC = () => {
                         <span className={`absolute inset-0 rounded-full bg-green-500 ${greenDotAnimationClass}`}></span>
                     </button>
                 </div>
-                {activeStore !== 'Settings' && <StoreTabs />}
+                <StoreTabs />
                 <div className="flex items-center space-x-2">
                     <NotificationBell isControlled isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} position={{top: 50, left: yellowDotRef.current?.getBoundingClientRect().left ?? 0}} />
                     <button onClick={(e) => setHeaderMenu({ x: e.clientX - 200, y: e.clientY + 20 })} className="text-gray-400 hover:text-white p-1">
@@ -429,35 +421,35 @@ const App: React.FC = () => {
 
             {isDragging && (
                 <>
-                  {/* Save Quick Order Zone (Left) */}
-                  {draggedOrderId && (
-                      <div 
-                        className="fixed bottom-4 left-4 z-40 w-64 h-32 border-4 border-fuchsia-500 bg-gray-900/80 rounded-xl flex flex-col items-center justify-center text-fuchsia-500"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={handleDropOnSaveZone}
-                      >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
-                          <span className="mt-2 text-xs font-semibold">Save as Quick Order</span>
-                      </div>
-                  )}
-
-                  {/* Change Supplier Drop Zone (Center) */}
-                  {draggedOrderId && (
-                      <div 
-                        className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40 w-64 h-32 border-4 border-fuchsia-500 bg-gray-900/80 rounded-xl flex flex-col items-center justify-center text-fuchsia-500"
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={handleDropOnChangeSupplierZone}
-                      >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
-                          <span className="mt-2 text-xs font-semibold">Change Supplier</span>
-                      </div>
-                  )}
-
-                  {/* Delete Drop Zone (Right) */}
+                  <div className="fixed bottom-4 left-4 z-40 flex items-center space-x-2">
+                      {draggedOrderId && (
+                          <>
+                              <div 
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={handleDropOnSaveZone}
+                                className="h-24 w-40 flex flex-col items-center justify-center bg-green-900/50 border-2 border-dashed border-green-500 rounded-xl"
+                                title="Save as Quick Order"
+                              >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                                  <span className="text-xs text-green-300 font-semibold">Save as Quick Order</span>
+                              </div>
+                               <div 
+                                onDragOver={(e) => e.preventDefault()}
+                                onDrop={handleDropOnChangeSupplierZone}
+                                className="h-24 w-40 flex flex-col items-center justify-center bg-indigo-900/50 border-2 border-dashed border-indigo-500 rounded-xl"
+                                title="Change Supplier"
+                              >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" /></svg>
+                                  <span className="text-xs text-indigo-300 font-semibold">Change Supplier</span>
+                              </div>
+                          </>
+                      )}
+                  </div>
+                  
                   <div 
-                    className="fixed bottom-4 right-4 z-40 p-6 rounded-full bg-red-900/50 border-2 border-dashed border-red-500"
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDropOnDeleteZone}
+                    className="fixed bottom-4 right-4 z-40 h-24 w-24 flex items-center justify-center bg-red-900/50 border-2 border-dashed border-red-500 rounded-full"
                     title="Delete"
                   >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
