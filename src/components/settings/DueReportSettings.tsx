@@ -51,7 +51,9 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
     }, [orders, suppliers, itemPrices]);
 
     const topUpsMap = useMemo(() => {
-        return new Map(dueReportTopUps.map(t => [t.date, t.amount]));
+        const map = new Map<string, number>();
+        dueReportTopUps.forEach(t => map.set(t.date, t.amount));
+        return map;
     }, [dueReportTopUps]);
 
     const handleTopUpChange = (dateKey: string, value: string) => {

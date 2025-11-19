@@ -1,4 +1,3 @@
-
 import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
@@ -433,7 +432,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
             item={selectedItemForModal}
             isOpen={isEditModalOpen}
             onClose={() => setIsEditModalOpen(false)}
-            onSave={actions.updateItem}
+            onSave={async (i) => { await actions.updateItem(i as Item); }}
             onDelete={handleDeleteItem}
         />
       )}
