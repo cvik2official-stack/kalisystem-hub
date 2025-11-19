@@ -1,4 +1,3 @@
-
 import React, { useContext, useRef, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Store, StoreName } from '../types';
@@ -81,8 +80,8 @@ const StoreTabs: React.FC = () => {
   };
 
   return (
-    <div className="flex-grow overflow-x-auto overflow-y-hidden hide-scrollbar flex justify-start md:justify-center">
-      <nav className="flex space-x-2 px-1" aria-label="Tabs">
+    <div className="flex-grow overflow-x-auto hide-scrollbar flex justify-start md:justify-center">
+      <nav className="-mb-px flex space-x-2 px-1" aria-label="Tabs">
         <button
             key="ALL"
             onClick={() => handleClick('ALL')}
