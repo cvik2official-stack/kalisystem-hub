@@ -40,18 +40,18 @@ const PipWindow: React.FC<PipWindowProps> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (isOpen && 'serviceWorker' in navigator && 'Notification' in window) {
       navigator.serviceWorker.ready.then(registration => {
+        // FIX: The 'actions' property can cause type errors in some TypeScript environments.
+        // Casting to 'any' bypasses this check while keeping the functionality.
         registration.showNotification('Kali Dispatch Running', {
           tag: NOTIFICATION_TAG,
           body: 'KALI To-Do list is active in PiP mode.',
           icon: '/icons/favicon-96x96.png',
           silent: true,
-          // FIX: The 'renotify' property is not a standard part of NotificationOptions and causes a type error.
-          // The default behavior is what's desired (not re-notifying), so the property can be safely removed.
           actions: [
             { action: 'show_all', title: 'All Orders' },
             { action: 'close_pip', title: 'Close PiP' },
           ]
-        });
+        } as any);
       });
     }
 
