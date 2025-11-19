@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -615,7 +616,7 @@ const OrderWorkspace: React.FC = () => {
     }
     // Desktop / Landscape Smart View
     return (
-        <div className="flex-grow pt-4 h-full grid grid-cols-1 md:grid-cols-3 gap-10">
+        <div className="flex-grow pt-4 h-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-10 lg:gap-16">
             <div 
                 onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}}
                 onDragLeave={() => setDragOverColumn(null)}

@@ -1,3 +1,4 @@
+
 import React, { useContext, useEffect, useState, useRef, useMemo } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
@@ -393,7 +394,7 @@ const App: React.FC = () => {
       >
         <ToastContainer />
         
-        <main className="flex flex-col flex-grow p-4 md:p-6 max-w-full mx-auto w-full">
+        <main className="flex flex-col flex-grow p-4 md:p-6 lg:px-[10%] max-w-full mx-auto w-full">
             <header className="flex-shrink-0 flex items-center justify-between mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2">
                 <div className="flex items-center space-x-2">
                     <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Toggle Smart View / Exit Settings">
@@ -408,7 +409,6 @@ const App: React.FC = () => {
                 </div>
                 <StoreTabs />
                 <div className="flex items-center space-x-2">
-                    <NotificationBell isControlled isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} position={{top: 50, left: yellowDotRef.current?.getBoundingClientRect().left ?? 0}} />
                     <button onClick={(e) => setHeaderMenu({ x: e.clientX - 200, y: e.clientY + 20 })} className="text-gray-400 hover:text-white p-1">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                     </button>
@@ -458,6 +458,7 @@ const App: React.FC = () => {
             )}
         </main>
       </div>
+      <NotificationBell isControlled isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} position={{top: 50, left: yellowDotRef.current?.getBoundingClientRect().left ?? 0}} />
       {headerMenu && <ContextMenu x={headerMenu.x} y={headerMenu.y} options={getMenuOptions()} onClose={() => setHeaderMenu(null)} />}
       <KaliReportModal isOpen={isKaliReportModalOpen} onClose={() => setIsKaliReportModalOpen(false)} onGenerate={handleSendKaliUnifyReport} isSending={isSendingReport} orders={completedKaliOrders} itemPrices={itemPrices} />
       <TelegramWebhookModal isOpen={isTelegramWebhookModalOpen} onClose={() => setIsTelegramWebhookModalOpen(false)} />

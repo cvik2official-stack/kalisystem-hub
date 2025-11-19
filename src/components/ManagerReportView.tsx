@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useRef, useEffect } from 'react';
 import { Order, StoreName, OrderItem, Unit, PaymentMethod, OrderStatus, SupplierName, Supplier, Item } from '../types';
 import { AppContext } from '../context/AppContext';
@@ -53,8 +54,6 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
     const [isPasteItemsModalOpen, setIsPasteItemsModalOpen] = useState(false);
 
-
-    const isSmartView = !!singleColumn;
 
     const columnOrders = useMemo(() => {
         if (!singleColumn) return orders;
@@ -121,21 +120,6 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     const lastSupplier = 'PISEY';
     
     const sortedStoreNames = useMemo(() => Object.keys(groupedByStore).sort((a, b) => a.localeCompare(b)), [groupedByStore]);
-
-    const sortOrders = (ordersToSort: Order[]) => {
-        return [...ordersToSort].sort((a,b) => {
-            const storeCompare = a.store.localeCompare(b.store);
-            if(storeCompare !== 0) return storeCompare;
-            const nameA = a.supplierName; const nameB = b.supplierName;
-            if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
-            const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
-            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-            return nameA.localeCompare(nameB);
-        });
-    };
-
-    const sortedFlatOrders = isSmartView ? sortOrders(columnOrders) : [];
-
 
     const handleItemDragStart = (e: React.DragEvent, item: OrderItem, sourceOrderId: string) => {
         if (editingNameId || editingPriceId) { e.preventDefault(); return; }
@@ -433,9 +417,21 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             )}
             
             <div className="space-y-1 flex-grow pr-2 -mr-2 overflow-y-auto hide-scrollbar">
-                {isSmartView ? (
-                    // Smart View Logic
-                    singleColumn === 'completed' ? (
+                {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
+                    <div className="space-y-2 p-2 bg-gray-900/50 rounded-md mb-2">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{state.activeStore}</h4>
+                        <div className="flex flex-col items-center justify-center space-y-2 w-full">
+                            <button onClick={() => setIsAddSupplierModalOpen(true)} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-sm py-1 px-2 rounded w-full text-left">
+                                + Select Supplier
+                            </button>
+                            <button onClick={() => setIsPasteItemsModalOpen(true)} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-sm py-1 px-2 rounded w-full text-left">
+                                Paste a List
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {singleColumn === 'completed' ? (
                         <>
                             {sortedCompletedGroupKeys.map(key => {
                                 const ordersInDateGroup = groupedCompletedOrders[key] || [];
@@ -486,52 +482,34 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                             })}
                         </>
                     ) : (
-                        // Dispatch & On The Way (Flat lists)
-                        <div className="space-y-1">
-                            {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
-                                <div className="space-y-2 p-2 bg-gray-900/50 rounded-md mb-2">
-                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{state.activeStore}</h4>
-                                    <div className="flex flex-col items-center justify-center space-y-2 w-full">
-                                        <button onClick={() => setIsAddSupplierModalOpen(true)} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-sm py-1 px-2 rounded w-full text-left">
-                                            + Select Supplier
-                                        </button>
-                                        <button onClick={() => setIsPasteItemsModalOpen(true)} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-sm py-1 px-2 rounded w-full text-left">
-                                            Paste a List
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                            {sortedFlatOrders.map(order => renderOrderCard(order))}
-                        </div>
-                    )
-                ) : (
-                    // Grouped by store for other views (Manager View specifically)
                     sortedStoreNames.map(storeName => {
-                    const isStoreExpanded = expandedStores.has(storeName);
-                    const storeOrders = (groupedByStore[storeName] || []).sort((a, b) => {
-                        const nameA = a.supplierName; const nameB = b.supplierName;
-                        if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
-                        const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
-                        if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-                        return nameA.localeCompare(nameB);
-                    });
-                    if (storeOrders.length === 0) return null;
+                        const isStoreExpanded = expandedStores.has(storeName);
+                        const storeOrders = (groupedByStore[storeName] || []).sort((a, b) => {
+                            const nameA = a.supplierName; const nameB = b.supplierName;
+                            if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
+                            const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
+                            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
+                            return nameA.localeCompare(nameB);
+                        });
+                        
+                        if (storeOrders.length === 0) return null;
 
-                    return (
-                        <div key={storeName}>
-                            <button onClick={() => toggleStore(storeName)} className="flex items-center w-full text-left py-1">
-                                <h3 className="font-bold text-white text-xs uppercase ml-1">{storeName}</h3>
-                            </button>
-                            {isStoreExpanded && (
-                                <div className="space-y-1 pl-2">
-                                    {storeOrders.map(order => {
-                                        return renderOrderCard(order, { showStoreName: false });
-                                    })}
-                                </div>
-                            )}
-                        </div>
-                    );
-                }))}
+                        return (
+                            <div key={storeName}>
+                                <button onClick={() => toggleStore(storeName)} className="flex items-center w-full text-left py-1">
+                                    <h3 className="font-bold text-white text-xs uppercase ml-1">{storeName}</h3>
+                                </button>
+                                {isStoreExpanded && (
+                                    <div className="space-y-1 pl-2">
+                                        {storeOrders.map(order => {
+                                            return renderOrderCard(order, { showStoreName: false });
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
             </div>
         </div>
         {numpadItem && <NumpadModal isOpen={!!numpadItem} item={numpadItem.item} onClose={() => setNumpadItem(null)} onSave={handleSaveItemQuantity} onDelete={handleDeleteItem} />}
