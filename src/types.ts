@@ -96,6 +96,15 @@ export interface Order {
   reminderSentAt?: string;
 }
 
+export interface QuickOrder {
+    id: string;
+    name: string;
+    store: StoreName;
+    supplierId: string;
+    supplierName: SupplierName;
+    items: OrderItem[];
+}
+
 export interface ParsedItem {
   matchedItemId?: string;
   newItemName?: string;
@@ -144,13 +153,26 @@ export interface AppSettings {
     messageTemplates?: { [key: string]: string; };
 }
 
+export interface KaliTodoItem extends OrderItem {
+  uniqueId: string;
+  originalOrderId: string;
+  ticked: boolean;
+}
+
+export interface KaliTodoSection {
+  id: string;
+  title: string;
+  items: KaliTodoItem[];
+}
+
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings';
+  activeStore: StoreName | 'Settings' | 'ALL';
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
   orders: Order[];
+  quickOrders: QuickOrder[];
   dueReportTopUps: DueReportTopUp[];
   notifications: Notification[];
   activeStatus: OrderStatus;
@@ -168,10 +190,8 @@ export interface AppState {
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
-}
-
-export interface KaliTodoItem extends OrderItem {
-  uniqueId: string;
-  originalOrderId: string;
-  ticked: boolean;
+  initialAction: string | null;
+  kaliTodoState: {
+    sections: KaliTodoSection[];
+  };
 }

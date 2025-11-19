@@ -1,7 +1,7 @@
 import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Order, ItemPrice, StoreName, PaymentMethod } from '../../types';
-import { getLatestItemPrice, generateKaliUnifyReport } from '../../utils/messageFormatter';
+import { getLatestItemPrice, generateKaliUnifyReport, getPhnomPenhDateKey } from '../../utils/messageFormatter';
 import { useNotifier } from '../../context/NotificationContext';
 import { sendDueReport } from '../../services/telegramService';
 
@@ -36,8 +36,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
         });
 
         kaliOrders.forEach(order => {
-            const date = new Date(order.completedAt!);
-            const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const dateKey = getPhnomPenhDateKey(order.completedAt);
             
             if (!spendMap[dateKey]) {
                 spendMap[dateKey] = {};
@@ -113,8 +112,8 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             
             const ordersForDate = orders.filter(order => {
                 if (!order.completedAt) return false;
-                const completedDate = new Date(order.completedAt).toISOString().split('T')[0];
-                return completedDate === row.dateKey;
+                const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+                return completedDateKey === row.dateKey;
             });
             
             const message = generateKaliUnifyReport(ordersForDate, itemPrices, previousDue, topUp, row.dateKey, row.dateKey);

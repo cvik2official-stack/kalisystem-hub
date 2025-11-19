@@ -1,4 +1,4 @@
-import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
+import React, { useContext, useState, useMemo, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName } from '../types';
 import ContextMenu from './ContextMenu';
@@ -7,6 +7,7 @@ import PaymentMethodModal from './modals/PaymentMethodModal';
 import NumpadModal from './modals/NumpadModal';
 import EditItemModal from './modals/EditItemModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
+import AddItemModal from './modals/AddItemModal';
 import { generateOrderMessage } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
@@ -19,165 +20,7 @@ interface SupplierCardProps {
   showStoreName?: boolean;
 }
 
-const AutocompleteAddItem: React.FC<{ order: Order }> = ({ order }) => {
-    const { state, actions } = useContext(AppContext);
-    const { notify } = useNotifier();
-    const [isEditing, setIsEditing] = useState(false);
-
-    const handleAddItem = async (item: Item) => {
-        const orderItem: OrderItem = {
-            itemId: item.id,
-            name: item.name,
-            quantity: 1,
-            unit: item.unit,
-        };
-        const newItems = [...order.items, orderItem];
-        await actions.updateOrder({ ...order, items: newItems });
-    };
-
-    const handleCreateAndAddItem = async (newName: string) => {
-        try {
-            const newItem = await actions.addItem({
-                name: newName,
-                unit: Unit.PC,
-                supplierId: order.supplierId,
-                supplierName: order.supplierName,
-            });
-            handleAddItem(newItem);
-        } catch (e: any) {
-            notify(`Error creating item: ${e.message}`, 'error');
-        }
-    };
-    
-    if (!isEditing) {
-        return (
-            <button 
-                onClick={() => setIsEditing(true)} 
-                className="text-left text-gray-500 hover:text-white hover:bg-gray-700/50 text-sm p-2 rounded-md w-full transition-colors"
-            >
-                + Add item
-            </button>
-        );
-    }
-
-    const itemsInOrder = new Set(order.items.map(i => i.itemId));
-    const suggestions = state.items
-        .filter(item => item.supplierId === order.supplierId && !itemsInOrder.has(item.id))
-        .map(item => ({ id: item.id, name: item.name }));
-
-    return (
-        <AutocompleteInput
-            placeholder="+ Add item"
-            suggestions={suggestions}
-            onSelect={(selected) => {
-                const item = state.items.find(i => i.id === selected.id);
-                if (item) handleAddItem(item);
-                setIsEditing(false);
-            }}
-            onCreate={(newName) => {
-                handleCreateAndAddItem(newName);
-                setIsEditing(false);
-            }}
-            onBlur={() => setIsEditing(false)}
-        />
-    );
-};
-
-const AutocompleteInput: React.FC<{
-    placeholder: string;
-    suggestions: { id: string, name: string }[];
-    onSelect: (selected: { id: string, name: string }) => void;
-    onCreate?: (newName: string) => void;
-    onBlur?: () => void;
-}> = ({ placeholder, suggestions, onSelect, onCreate, onBlur }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isFocused, setIsFocused] = useState(true);
-    const [activeIndex, setActiveIndex] = useState(-1);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
-    
-    const handleBlur = () => {
-        setTimeout(() => {
-            if (onBlur) onBlur();
-            setIsFocused(false);
-        }, 150);
-    };
-
-    const filteredSuggestions = useMemo(() => {
-        if (!searchTerm) return suggestions;
-        return suggestions.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [searchTerm, suggestions]);
-
-    const handleSelect = (item: { id: string, name: string }) => {
-        onSelect(item);
-        setSearchTerm('');
-        setIsFocused(false);
-    };
-
-    const handleCreate = () => {
-        if (onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase())) {
-            onCreate(searchTerm.trim());
-            setSearchTerm('');
-            setIsFocused(false);
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setActiveIndex(prev => Math.min(prev + 1, filteredSuggestions.length - 1));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setActiveIndex(prev => Math.max(prev - 1, 0));
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (activeIndex > -1 && filteredSuggestions[activeIndex]) {
-                handleSelect(filteredSuggestions[activeIndex]);
-            } else {
-                handleCreate();
-            }
-        } else if (e.key === 'Escape') {
-            setIsFocused(false);
-            if (onBlur) onBlur();
-            (e.target as HTMLInputElement).blur();
-        }
-    };
-    
-    return (
-        <div className="relative">
-            <input
-                ref={inputRef}
-                type="text"
-                value={searchTerm}
-                onChange={e => { setSearchTerm(e.target.value); setActiveIndex(-1); }}
-                onFocus={() => setIsFocused(true)}
-                onBlur={handleBlur}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                className="bg-transparent p-1 w-full rounded outline-none text-sm placeholder-gray-500"
-            />
-            {isFocused && (
-                <ul className="absolute bottom-full left-0 right-0 mb-1 bg-gray-700 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
-                    {filteredSuggestions.map((item, index) => (
-                        <li key={item.id}>
-                            <button onMouseDown={() => handleSelect(item)} className={`w-full text-left p-2 text-sm ${activeIndex === index ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}>
-                                <span className="text-white">{item.name}</span>
-                            </button>
-                        </li>
-                    ))}
-                    {onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase()) && (
-                         <li><button onMouseDown={handleCreate} className={`w-full text-left p-2 text-sm ${activeIndex === -1 ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}><span className="text-indigo-300">+ Create "{searchTerm.trim()}"</span></button></li>
-                    )}
-                </ul>
-            )}
-        </div>
-    );
-};
-
-const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
+const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStoreName }) => {
     const { state, dispatch, actions } = useContext(AppContext);
     const { notify } = useNotifier();
     const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
@@ -200,6 +43,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
     const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
     const [editingPriceUniqueId, setEditingPriceUniqueId] = useState<string | null>(null);
+    const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
 
     const handleBlur = (event: React.FocusEvent<HTMLDivElement>) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node)) {
@@ -451,6 +295,29 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
             setIsProcessing(false);
         }
     };
+    
+    const handleAddItemFromModal = async (item: Item) => {
+        const existingItemIndex = order.items.findIndex(i => i.itemId === item.id && !i.isSpoiled);
+        
+        let newItems;
+        if (existingItemIndex > -1) {
+            newItems = [...order.items];
+            newItems[existingItemIndex] = {
+                ...newItems[existingItemIndex],
+                quantity: newItems[existingItemIndex].quantity + 1
+            };
+        } else {
+            const newItem: OrderItem = {
+                itemId: item.id,
+                name: item.name,
+                quantity: 1,
+                unit: item.unit,
+                isNew: order.status === OrderStatus.ON_THE_WAY,
+            };
+            newItems = [...order.items, newItem];
+        }
+        await actions.updateOrder({ ...order, items: newItems });
+    };
 
     const handleSaveUnitPrice = async (price: number, unit: Unit) => {
         if (!selectedItem) return;
@@ -594,6 +461,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                         <h3 
                             className="font-bold text-white text-xs select-none truncate"
                         >
+                            {showStoreName && <span className="font-semibold text-gray-500 mr-2">{order.store}</span>}
                             {order.supplierName}
                         </h3>
                         {displayPaymentMethod && (
@@ -696,8 +564,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                                         )}
                                     </div>
                                     <div className="flex items-center space-x-2 ml-2">
-                                        {isStockMovement && <div className="text-yellow-400 font-semibold w-12 text-center">{order.supplierName === SupplierName.STOCK ? 'out' : 'in'}</div>}
                                         <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
+                                            {isStockMovement && order.supplierName === SupplierName.STOCK && <span className="font-semibold text-yellow-400 mr-1">out</span>}
+                                            {isStockMovement && order.paymentMethod === PaymentMethod.STOCK && <span className="font-semibold text-green-400 mr-1">in</span>}
                                             {item.quantity}{item.unit}
                                         </div>
                                         {isEditingPrice ? (
@@ -716,8 +585,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                                             />
                                         ) : (
                                             <div 
-                                                onClick={() => { if(order.status !== OrderStatus.DISPATCHING) setEditingPriceUniqueId(uniqueItemId); }} 
-                                                className={`font-mono w-20 text-right p-1 -m-1 rounded-md ${order.status !== OrderStatus.DISPATCHING ? 'hover:bg-gray-700 cursor-pointer' : ''} ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
+                                                onClick={() => setEditingPriceUniqueId(uniqueItemId)} 
+                                                className={`font-mono w-20 text-right p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
                                             >
                                                 {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
                                             </div>
@@ -734,7 +603,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
                         })}
                         {(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && !isEffectivelyCollapsed && (
                             <li className="px-1 pt-2">
-                                <AutocompleteAddItem order={order} />
+                                <button 
+                                    onClick={() => setIsAddItemModalOpen(true)} 
+                                    className="text-left text-gray-500 hover:text-white hover:bg-gray-700/50 text-sm p-2 rounded-md w-full transition-colors"
+                                >
+                                    + Add item
+                                </button>
                             </li>
                         )}
                         </ul>
@@ -748,6 +622,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop }) => {
             {isNumpadOpen && selectedItem && <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={handleSaveItemQuantity} onDelete={() => handleDeleteItem(selectedItem)} onToggle={handleToggleToPriceNumpad} />}
             {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setIsEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
             {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} onToggle={handleToggleToQuantityNumpad} />}
+            <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onItemSelect={handleAddItemFromModal} order={order} />
         </>
     );
 };

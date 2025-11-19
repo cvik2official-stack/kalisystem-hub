@@ -22,3 +22,9 @@
 20. Implement a save zone for dragging cards to create quick orders.
 21. Add a `/quickorder` command for the Telegram bot.
 22. Ensure quick order messages are sent to both the supplier and the store via Telegram.
+23. Fix KALI PiP to-do list persistence (ticked items, sections).
+24. Fix KALI PiP section drag-and-drop functionality.
+25. Add a "Share" button to the KALI PiP window.
+26. Implement new Telegram bot commands: `/est` and `/due`.
+27. Implement PWA "app running" notification with "All Orders" and "Close PiP" actions.
+28. Verify all PWA features (Tiles, Share Target, PiP) are correctly configured.

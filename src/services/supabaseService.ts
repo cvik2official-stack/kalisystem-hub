@@ -55,8 +55,18 @@
       ('2025-11-13', 110.00), ('2025-11-14', 100.00)
   ON CONFLICT (date) DO NOTHING;
 
+  -- Add table for Quick Orders
+  CREATE TABLE IF NOT EXISTS public.quick_orders (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    store TEXT NOT NULL,
+    supplier_id UUID NOT NULL REFERENCES public.suppliers(id) ON DELETE CASCADE,
+    items JSONB NOT NULL DEFAULT '[]',
+    created_at TIMESTAMPTZ DEFAULT now()
+  );
+
 */
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp, QuickOrder } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -126,6 +136,14 @@ interface DueReportTopUpFromDb {
   amount: number;
 }
 
+interface QuickOrderFromDb {
+    id: string;
+    name: string;
+    store: StoreName;
+    supplier_id: string;
+    items: OrderItem[];
+}
+
 
 const getHeaders = (key: string) => ({
     'apikey': key,
@@ -136,16 +154,17 @@ const getHeaders = (key: string) => ({
 
 // --- READ OPERATIONS ---
 
-export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[] }> => {
+export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCredentials): Promise<{ items: Item[], suppliers: Supplier[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[], quickOrders: QuickOrder[] }> => {
   const headers = getHeaders(key);
 
   try {
-    const [suppliersResponse, itemsResponse, storesResponse, itemPricesResponse, dueReportTopUpsResponse] = await Promise.all([
+    const [suppliersResponse, itemsResponse, storesResponse, itemPricesResponse, dueReportTopUpsResponse, quickOrdersResponse] = await Promise.all([
         fetch(`${url}/rest/v1/suppliers?select=*`, { headers }),
         fetch(`${url}/rest/v1/items?select=*`, { headers }),
         fetch(`${url}/rest/v1/stores?select=*`, { headers }),
         fetch(`${url}/rest/v1/item_prices?select=*`, { headers }),
         fetch(`${url}/rest/v1/due_report_top_ups?select=*`, { headers }),
+        fetch(`${url}/rest/v1/quick_orders?select=*`, { headers }),
     ]);
 
     if (!suppliersResponse.ok) throw new Error(`Failed to fetch suppliers: ${await suppliersResponse.text()}`);
@@ -153,6 +172,13 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
     if (!storesResponse.ok) throw new Error(`Failed to fetch stores: ${await storesResponse.text()}`);
     if (!itemPricesResponse.ok) throw new Error(`Failed to fetch item prices: ${await itemPricesResponse.text()}`);
     if (!dueReportTopUpsResponse.ok) throw new Error(`Failed to fetch due report top ups: ${await dueReportTopUpsResponse.text()}`);
+    
+    let quickOrdersData: QuickOrderFromDb[] = [];
+    if (quickOrdersResponse.ok) {
+        quickOrdersData = await quickOrdersResponse.json();
+    } else {
+        console.warn("Quick orders table might not exist yet.");
+    }
 
     const suppliersData: SupplierFromDb[] = await suppliersResponse.json();
     const itemsData: ItemFromDb[] = await itemsResponse.json();
@@ -209,8 +235,24 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
         date: t.date,
         amount: t.amount,
     }));
+    
+    // FIX: Refactored to be type-safe. Map to an object with supplier or null, then filter out nulls.
+    const quickOrders: QuickOrder[] = quickOrdersData.map(q => {
+        const supplier = supplierMap.get(q.supplier_id);
+        if (!supplier) {
+            return null;
+        }
+        return {
+            id: q.id,
+            name: q.name,
+            store: q.store,
+            supplierId: q.supplier_id,
+            supplierName: supplier.name,
+            items: q.items || [],
+        };
+    }).filter((q): q is QuickOrder => q !== null);
 
-    return { items, suppliers: Array.from(supplierMap.values()), stores, itemPrices, dueReportTopUps };
+    return { items, suppliers: Array.from(supplierMap.values()), stores, itemPrices, dueReportTopUps, quickOrders };
 
   } catch (error) {
     console.error("Error fetching from Supabase:", error);
@@ -562,6 +604,39 @@ export const upsertDueReportTopUp = async ({ topUp, url, key }: { topUp: DueRepo
     
     const [data] = await response.json();
     return { date: data.date, amount: data.amount };
+};
+
+export const addQuickOrder = async ({ quickOrder, url, key }: { quickOrder: Omit<QuickOrder, 'id'>, url: string, key: string }): Promise<QuickOrder> => {
+    const payload = {
+        name: quickOrder.name,
+        store: quickOrder.store,
+        supplier_id: quickOrder.supplierId,
+        items: quickOrder.items
+    };
+    const response = await fetch(`${url}/rest/v1/quick_orders?select=*`, {
+        method: 'POST',
+        headers: { ...getHeaders(key), 'Prefer': 'return=representation' },
+        body: JSON.stringify(payload)
+    });
+    if (!response.ok) throw new Error(`Failed to add quick order: ${await response.text()}`);
+    const data = await response.json();
+    const newQO = data[0];
+    return {
+        id: newQO.id,
+        name: newQO.name,
+        store: newQO.store,
+        supplierId: newQO.supplier_id,
+        supplierName: quickOrder.supplierName,
+        items: newQO.items
+    };
+};
+
+export const deleteQuickOrder = async ({ id, url, key }: { id: string, url: string, key: string }): Promise<void> => {
+    const response = await fetch(`${url}/rest/v1/quick_orders?id=eq.${id}`, {
+        method: 'DELETE',
+        headers: getHeaders(key)
+    });
+    if (!response.ok) throw new Error(`Failed to delete quick order: ${await response.text()}`);
 };
 
 

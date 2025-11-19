@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { generateKaliUnifyReport, getLatestItemPrice } from '../../utils/messageFormatter';
+import { generateKaliUnifyReport, getLatestItemPrice, getPhnomPenhDateKey } from '../../utils/messageFormatter';
 import { Order, ItemPrice } from '../../types';
 
 interface KaliReportModalProps {
@@ -77,8 +77,8 @@ const KaliReportModal: React.FC<KaliReportModalProps> = ({ isOpen, onClose, onGe
 
             const ordersForDate = orders.filter(order => {
                 if (!order.completedAt) return false;
-                const completedDate = new Date(order.completedAt);
-                return completedDate.toDateString() === date.toDateString();
+                const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+                return completedDateKey === dateKey;
             });
 
             const calculateOrderTotal = (order: Order): number => {

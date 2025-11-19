@@ -1,6 +1,6 @@
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp } from '../services/supabaseService';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, KaliTodoSection, KaliTodoItem } from '../types';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
 import { parseItemListLocally } from '../services/localParsingService';
@@ -23,11 +23,12 @@ const normalizeUnit = (unit?: string): Unit | undefined => {
 
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings';
+  activeStore: StoreName | 'Settings' | 'ALL';
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
   orders: Order[];
+  quickOrders: QuickOrder[];
   dueReportTopUps: DueReportTopUp[];
   notifications: Notification[];
   activeStatus: OrderStatus;
@@ -45,10 +46,14 @@ export interface AppState {
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
+  initialAction: string | null;
+  kaliTodoState: {
+    sections: KaliTodoSection[];
+  };
 }
 
 export type Action =
-  | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' }
+  | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' | 'ALL' }
   | { type: 'SET_ACTIVE_STATUS'; payload: OrderStatus }
   | { type: 'SET_ACTIVE_SETTINGS_TAB'; payload: SettingsTab }
   | { type: 'NAVIGATE_TO_SETTINGS'; payload: SettingsTab }
@@ -65,7 +70,7 @@ export type Action =
   | { type: 'SAVE_SETTINGS'; payload: Partial<AppState['settings']> }
   | { type: 'REPLACE_ITEM_DATABASE'; payload: { items: Item[], suppliers: Supplier[], rawCsv: string } }
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
-  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[] } }
+  | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[], quickOrders: QuickOrder[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
   | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
   | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
@@ -77,7 +82,16 @@ export type Action =
   | { type: 'SET_CARD_WIDTH'; payload: number | null }
   | { type: 'UPSERT_DUE_REPORT_TOP_UP'; payload: DueReportTopUp }
   | { type: 'SET_SMART_VIEW'; payload: boolean }
-  | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] };
+  | { type: 'SET_INITIAL_ACTION'; payload: string | null }
+  | { type: 'CLEAR_INITIAL_ACTION' }
+  | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] }
+  | { type: 'ADD_QUICK_ORDER'; payload: QuickOrder }
+  | { type: 'DELETE_QUICK_ORDER'; payload: string }
+  | { type: 'SYNC_KALI_TODO' }
+  | { type: 'TICK_KALI_TODO_ITEM'; payload: { uniqueId: string } }
+  | { type: 'MOVE_KALI_TODO_ITEM'; payload: { item: KaliTodoItem, sourceSectionId: string, destinationSectionId: string } }
+  | { type: 'ADD_KALI_TODO_SECTION'; payload: { title: string } };
+
 
 export interface AppContextActions {
     addItem: (item: Omit<Item, 'id'>) => Promise<Item>;
@@ -87,7 +101,7 @@ export interface AppContextActions {
     updateSupplier: (supplier: Supplier) => Promise<void>;
     deleteSupplier: (supplierId: string) => Promise<void>;
     updateStore: (store: Store) => Promise<void>;
-    addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[], status?: OrderStatus) => Promise<void>;
+    addOrder: (supplier: Supplier, store: StoreName, items?: OrderItem[], status?: OrderStatus) => Promise<Order>;
     updateOrder: (order: Order) => Promise<void>;
     deleteOrder: (orderId: string) => Promise<void>;
     deleteItemFromOrder: (item: OrderItem, sourceOrderId: string) => Promise<void>;
@@ -98,6 +112,8 @@ export interface AppContextActions {
     upsertDueReportTopUp: (topUp: DueReportTopUp) => Promise<void>;
     sendEtaRequest: (order: Order) => Promise<void>;
     pasteItemsForStore: (text: string, store: StoreName) => Promise<void>;
+    addQuickOrder: (quickOrder: Omit<QuickOrder, 'id'>) => Promise<void>;
+    deleteQuickOrder: (id: string) => Promise<void>;
 }
 
 
@@ -131,6 +147,10 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, draggedOrderId: action.payload };
     case 'SET_DRAGGED_ITEM':
         return { ...state, draggedItem: action.payload };
+    case 'SET_INITIAL_ACTION':
+        return { ...state, initialAction: action.payload };
+    case 'CLEAR_INITIAL_ACTION':
+        return { ...state, initialAction: null };
     case '_ADD_ITEM':
         return { ...state, items: [...state.items, action.payload] };
     case '_UPDATE_ITEM': {
@@ -188,7 +208,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
     case '_SET_SYNC_STATUS':
       return { ...state, syncStatus: action.payload, isLoading: action.payload === 'syncing' };
     case '_MERGE_DATABASE': {
-        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores, itemPrices: remoteItemPrices, dueReportTopUps: remoteTopUps } = action.payload;
+        const { items: remoteItems, suppliers: remoteSuppliers, orders: remoteOrders, stores: remoteStores, itemPrices: remoteItemPrices, dueReportTopUps: remoteTopUps, quickOrders: remoteQuickOrders } = action.payload;
         
         const mergedItemsMap = new Map(remoteItems.map(i => [i.id, i]));
         state.items.forEach(localItem => !mergedItemsMap.has(localItem.id) && mergedItemsMap.set(localItem.id, localItem));
@@ -214,6 +234,8 @@ const appReducer = (state: AppState, action: Action): AppState => {
 
         const mergedItemPricesMap = new Map(remoteItemPrices.map(p => [p.id, p]));
         state.itemPrices.forEach(localPrice => !mergedItemPricesMap.has(localPrice.id) && mergedItemPricesMap.set(localPrice.id, localPrice));
+        
+        const mergedQuickOrders = remoteQuickOrders || [];
 
         return { 
             ...state, 
@@ -223,6 +245,7 @@ const appReducer = (state: AppState, action: Action): AppState => {
             orders: mergedOrders,
             itemPrices: Array.from(mergedItemPricesMap.values()),
             dueReportTopUps: remoteTopUps,
+            quickOrders: mergedQuickOrders,
         };
     }
     case 'INITIALIZATION_COMPLETE':
@@ -275,6 +298,80 @@ const appReducer = (state: AppState, action: Action): AppState => {
             )
         };
     }
+    case 'ADD_QUICK_ORDER':
+        return { ...state, quickOrders: [...state.quickOrders, action.payload] };
+    case 'DELETE_QUICK_ORDER':
+        return { ...state, quickOrders: state.quickOrders.filter(q => q.id !== action.payload) };
+    case 'SYNC_KALI_TODO': {
+      const { orders, suppliers, kaliTodoState } = state;
+      const onTheWayKaliOrders = orders.filter(order => {
+        if (order.status !== OrderStatus.ON_THE_WAY) return false;
+        const supplier = suppliers.find(s => s.id === order.supplierId);
+        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+        return paymentMethod === PaymentMethod.KALI;
+      });
+
+      const allCurrentTodoItems = new Map(kaliTodoState.sections.flatMap(s => s.items).map(i => [i.uniqueId, i]));
+      const onTheWayItemIds = new Set<string>();
+
+      const newItems: KaliTodoItem[] = [];
+      onTheWayKaliOrders.forEach(order => {
+        order.items.forEach(item => {
+          const uniqueId = `${order.id}-${item.itemId}-${item.isSpoiled ? 's' : 'c'}`;
+          onTheWayItemIds.add(uniqueId);
+          if (!allCurrentTodoItems.has(uniqueId)) {
+            newItems.push({
+              ...item,
+              uniqueId,
+              originalOrderId: order.id,
+              ticked: false,
+            });
+          }
+        });
+      });
+
+      const updatedSections = kaliTodoState.sections.map(section => ({
+        ...section,
+        items: section.items.filter(item => onTheWayItemIds.has(item.uniqueId)),
+      }));
+
+      const uncategorizedSection = updatedSections.find(s => s.id === 'uncategorized');
+      if (uncategorizedSection) {
+        uncategorizedSection.items.push(...newItems);
+      } else {
+        updatedSections.push({ id: 'uncategorized', title: 'Uncategorized', items: newItems });
+      }
+
+      return { ...state, kaliTodoState: { sections: updatedSections } };
+    }
+    case 'TICK_KALI_TODO_ITEM': {
+      const { uniqueId } = action.payload;
+      const newSections = state.kaliTodoState.sections.map(section => ({
+        ...section,
+        items: section.items.map(item =>
+          item.uniqueId === uniqueId ? { ...item, ticked: !item.ticked } : item
+        ),
+      }));
+      return { ...state, kaliTodoState: { sections: newSections } };
+    }
+    case 'MOVE_KALI_TODO_ITEM': {
+      const { item, sourceSectionId, destinationSectionId } = action.payload;
+      const newSections = state.kaliTodoState.sections.map(section => {
+        if (section.id === sourceSectionId) {
+          return { ...section, items: section.items.filter(i => i.uniqueId !== item.uniqueId) };
+        }
+        if (section.id === destinationSectionId) {
+          return { ...section, items: [...section.items, item] };
+        }
+        return section;
+      });
+      return { ...state, kaliTodoState: { sections: newSections } };
+    }
+    case 'ADD_KALI_TODO_SECTION': {
+      const { title } = action.payload;
+      const newSection: KaliTodoSection = { id: Date.now().toString(), title, items: [] };
+      return { ...state, kaliTodoState: { sections: [...state.kaliTodoState.sections, newSection] } };
+    }
     default:
       return state;
   }
@@ -307,6 +404,7 @@ const getInitialState = (): AppState => {
     items: [],
     itemPrices: [],
     orders: [],
+    quickOrders: [],
     notifications: [],
     dueReportTopUps: [],
     activeStatus: OrderStatus.DISPATCHING,
@@ -353,10 +451,17 @@ const getInitialState = (): AppState => {
     draggedItem: null,
     cardWidth: null,
     columnCount: 3,
+    initialAction: null,
+    kaliTodoState: {
+        sections: [{ id: 'uncategorized', title: 'Uncategorized', items: [] }],
+    },
   };
 
   const finalState = { ...initialState, ...loadedState };
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
+  if ((finalState as any).quickOrders === undefined) finalState.quickOrders = [];
+  // Initialize kaliTodoState if not present in loaded state
+  finalState.kaliTodoState = loadedState.kaliTodoState || initialState.kaliTodoState;
   // Remove legacy properties that are now managed differently
   if ((finalState as any).dueReportTopUps) delete (finalState as any).dueReportTopUps;
   if ((finalState as any).notifications) delete (finalState as any).notifications;
@@ -393,7 +498,8 @@ export const AppContext = createContext<{
       addItem: async () => { throw new Error('addItem not implemented'); },
       updateItem: async () => {}, deleteItem: async () => {},
       addSupplier: async () => { throw new Error('addSupplier not implemented'); },
-      updateSupplier: async () => {}, deleteSupplier: async () => {}, updateStore: async () => {}, addOrder: async () => {},
+      updateSupplier: async () => {}, deleteSupplier: async () => {}, updateStore: async () => {}, 
+      addOrder: async () => { throw new Error('addOrder not implemented'); },
       updateOrder: async () => {}, deleteOrder: async () => {},
       deleteItemFromOrder: async () => {},
       syncWithSupabase: async () => {},
@@ -403,6 +509,8 @@ export const AppContext = createContext<{
       upsertDueReportTopUp: async () => {},
       sendEtaRequest: async () => {},
       pasteItemsForStore: async () => {},
+      addQuickOrder: async () => {},
+      deleteQuickOrder: async () => {},
   }
 });
 
@@ -440,10 +548,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const { supabaseUrl, supabaseKey } = state.settings;
         if (!options?.isInitialSync) notify('Syncing with database...', 'info');
 
-        const { items, suppliers, stores, itemPrices, dueReportTopUps } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
+        const { items, suppliers, stores, itemPrices, dueReportTopUps, quickOrders } = await getItemsAndSuppliersFromSupabase({ url: supabaseUrl, key: supabaseKey });
         const orders = await getOrdersFromSupabase({ url: supabaseUrl, key: supabaseKey, suppliers });
         
-        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices, dueReportTopUps } }); 
+        dispatch({ type: '_MERGE_DATABASE', payload: { items, suppliers, orders, stores, itemPrices, dueReportTopUps, quickOrders } }); 
         
         if (!options?.isInitialSync) notify('Sync complete.', 'success');
         dispatch({ type: '_SET_SYNC_STATUS', payload: 'idle' });
@@ -521,6 +629,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const savedOrder = await supabaseAddOrder({ order: newOrder, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'ADD_ORDERS', payload: [savedOrder] });
         notify(`Order for ${supplierToUse.name} created.`, 'success');
+        return savedOrder;
     },
     updateOrder: async (order) => {
         const previousOrder = state.orders.find(o => o.id === order.id);
@@ -593,8 +702,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     },
     addItemToDispatch: async (item) => {
         const { activeStore, orders, suppliers } = state;
-        if (activeStore === 'Settings') {
-            notify('Cannot add items to dispatch from this view.', 'info');
+        if (activeStore === 'Settings' || activeStore === 'ALL') {
+            notify('Please select a specific store to add items.', 'info');
             return;
         }
         
@@ -695,13 +804,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             parsedItems = await parseItemListLocally(text, state.items);
         }
         
+        const stockSupplier = state.suppliers.find(s => s.name === SupplierName.STOCK);
         const ordersBySupplier: Record<string, { supplier: Supplier, items: OrderItem[] }> = {};
+
         for (const pItem of parsedItems) {
             let supplier: Supplier | null = null;
             let orderItem: OrderItem | null = null;
+            let masterItem: Item | null = null;
+
             if (pItem.matchedItemId) {
                 const existingItem = state.items.find(i => i.id === pItem.matchedItemId);
                 if (existingItem) {
+                    masterItem = existingItem;
                     supplier = state.suppliers.find(s => s.id === existingItem.supplierId) || null;
                     orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: existingItem.unit };
                 }
@@ -719,6 +833,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                     orderItem = { itemId: finalItem.id, name: finalItem.name, quantity: pItem.quantity, unit: finalItem.unit };
                 }
             }
+
+            // Stock availability check
+            if (masterItem && stockSupplier && supplier?.id === stockSupplier.id) {
+                if ((masterItem.stockQuantity ?? 0) < orderItem!.quantity) {
+                    const primarySupplier = state.suppliers.find(s => s.id === masterItem!.supplierId);
+                    if (primarySupplier) {
+                        supplier = primarySupplier; // Re-assign supplier for grouping
+                        notify(`Insufficient stock for "${masterItem.name}". Rerouting to ${primarySupplier.name}.`, 'info');
+                    } else {
+                        notify(`Could not find primary supplier for "${masterItem.name}". Item skipped.`, 'error');
+                        continue; // Skip this item
+                    }
+                }
+            }
+
             if (supplier && orderItem) {
                 if (!ordersBySupplier[supplier.id]) ordersBySupplier[supplier.id] = { supplier, items: [] };
                 ordersBySupplier[supplier.id].items.push(orderItem);
@@ -745,6 +874,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (createdCount > 0) notify(`${createdCount} new order(s) created.`, 'success');
         if (updatedCount > 0) notify(`${updatedCount} existing order(s) updated.`, 'info');
         if (createdCount === 0 && updatedCount === 0) notify('Could not parse any items.', 'info');
+    },
+    addQuickOrder: async (quickOrder) => {
+        const newQO = await supabaseAddQuickOrder({ quickOrder, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: 'ADD_QUICK_ORDER', payload: newQO });
+        notify('Quick Order saved.', 'success');
+    },
+    deleteQuickOrder: async (id) => {
+        await supabaseDeleteQuickOrder({ id, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
+        dispatch({ type: 'DELETE_QUICK_ORDER', payload: id });
+        notify('Quick Order deleted.', 'success');
     },
     syncWithSupabase,
   };

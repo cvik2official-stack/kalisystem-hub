@@ -1,5 +1,29 @@
 import { Order, OrderItem, ItemPrice, Supplier, Store, AppSettings, StoreName, PaymentMethod, SupplierName, Unit } from '../types';
 
+// Timezone offset for Asia/Phnom_Penh (UTC+7) in minutes
+const PHNOM_PENH_OFFSET = 7 * 60;
+// Business day starts at 6:00 AM
+const BUSINESS_DAY_START_HOUR = 6;
+
+// Helper to get a Date object adjusted for Phnom Penh timezone
+// The resulting Date object, when methods like .getUTCHours() or .toISOString() are used,
+// reflects the wall-clock time in Phnom Penh.
+export const getPhnomPenhDate = (date?: Date | string): Date => {
+    const d = date ? new Date(date) : new Date();
+    // Get the time in UTC milliseconds
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    // Return a new Date object for Phnom Penh time
+    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
+};
+
+// Helper to get the YYYY-MM-DD key for a given date, adjusted for Phnom Penh timezone AND business day offset
+// Any time before 6:00 AM belongs to the PREVIOUS date.
+export const getPhnomPenhDateKey = (date?: Date | string): string => {
+    const ppDate = getPhnomPenhDate(date);
+    ppDate.setHours(ppDate.getHours() - BUSINESS_DAY_START_HOUR);
+    return ppDate.toISOString().split('T')[0];
+};
+
 // Simple HTML escaper
 export const escapeHtml = (unsafe: string): string => {
     if (typeof unsafe !== 'string') return '';

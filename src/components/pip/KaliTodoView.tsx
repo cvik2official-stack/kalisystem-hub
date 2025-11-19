@@ -1,82 +1,76 @@
-import React, { useState, useContext, useEffect, useMemo } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { OrderStatus, PaymentMethod, SupplierName, OrderItem, KaliTodoItem } from '../../types';
+import { OrderStatus, KaliTodoItem, KaliTodoSection } from '../../types';
+import { useNotifier } from '../../context/NotificationContext';
 
-interface Section {
-  id: string;
-  title: string;
-  items: KaliTodoItem[];
+interface KaliTodoViewProps {
+  shareTrigger: number;
 }
 
-const KaliTodoView: React.FC = () => {
-  const { state, actions } = useContext(AppContext);
-  const { orders, suppliers } = state;
+const KaliTodoView: React.FC<KaliTodoViewProps> = ({ shareTrigger }) => {
+  const { state, dispatch, actions } = useContext(AppContext);
+  const { kaliTodoState, orders } = state;
+  const { sections } = kaliTodoState;
+  const { notify } = useNotifier();
 
-  const [sections, setSections] = useState<Section[]>([]);
   const [isAddingSection, setIsAddingSection] = useState(false);
   const [newSectionTitle, setNewSectionTitle] = useState('');
   
   const [draggedItem, setDraggedItem] = useState<{ item: KaliTodoItem; sourceSectionId: string } | null>(null);
 
-  const initialKaliItems = useMemo((): KaliTodoItem[] => {
-    const kaliOrders = orders.filter(order => {
-      if (order.status !== OrderStatus.ON_THE_WAY) return false;
-      const supplier = suppliers.find(s => s.id === order.supplierId);
-      const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-      return paymentMethod === PaymentMethod.KALI;
-    });
-
-    const items: KaliTodoItem[] = [];
-    kaliOrders.forEach(order => {
-      order.items.forEach(item => {
-        items.push({
-          ...item,
-          uniqueId: `${order.id}-${item.itemId}-${item.isSpoiled ? 's' : 'c'}`,
-          originalOrderId: order.id,
-          ticked: false,
-        });
-      });
-    });
-    return items;
-  }, [orders, suppliers]);
-
+  // Handle Share Trigger
   useEffect(() => {
-    setSections([{ id: 'uncategorized', title: 'Uncategorized', items: initialKaliItems }]);
-  }, [initialKaliItems]);
+    if (shareTrigger > 0) {
+      handleShare();
+    }
+  }, [shareTrigger]);
 
-  const handleToggleTick = (itemId: string) => {
-    let originalOrderId = '';
-    const newSections = sections.map(section => ({
-      ...section,
-      items: section.items.map(item => {
-        if (item.uniqueId === itemId) {
-          if (!item.ticked) { // Only store orderId when ticking
-            originalOrderId = item.originalOrderId;
-          }
-          return { ...item, ticked: !item.ticked };
+  const handleShare = () => {
+    let shareText = 'KALI TO-DO LIST:\n\n';
+    sections.forEach(section => {
+        shareText += `--- ${section.title.toUpperCase()} ---\n`;
+        if (section.items.length === 0) {
+            shareText += '(empty)\n';
+        } else {
+            section.items.forEach(item => {
+                const status = item.ticked ? '[x]' : '[ ]';
+                shareText += `${status} ${item.name} (${item.quantity}${item.unit})\n`;
+            });
         }
-        return item;
-      }),
-    }));
-    setSections(newSections);
-    
-    // Check for order completion
-    if (originalOrderId) {
-      const allItemsForOrder = newSections.flatMap(s => s.items).filter(i => i.originalOrderId === originalOrderId);
-      const allTicked = allItemsForOrder.every(i => i.ticked);
-      
-      if (allTicked) {
-        const orderToComplete = orders.find(o => o.id === originalOrderId);
-        if (orderToComplete) {
-          actions.updateOrder({ ...orderToComplete, status: OrderStatus.COMPLETED, completedAt: new Date().toISOString() });
+        shareText += '\n';
+    });
+    navigator.clipboard.writeText(shareText).then(() => {
+        notify('To-Do list copied to clipboard!', 'success');
+    }).catch(err => {
+        notify('Failed to copy list.', 'error');
+    });
+  };
+
+  const handleToggleTick = (uniqueId: string) => {
+    dispatch({ type: 'TICK_KALI_TODO_ITEM', payload: { uniqueId } });
+
+    // Check for order completion after state updates
+    setTimeout(() => {
+      const allItems = state.kaliTodoState.sections.flatMap(s => s.items);
+      const item = allItems.find(i => i.uniqueId === uniqueId);
+      if (item) {
+        const allItemsForOrder = allItems.filter(i => i.originalOrderId === item.originalOrderId);
+        const allTicked = allItemsForOrder.every(i => i.ticked);
+        
+        if (allTicked) {
+          const orderToComplete = state.orders.find(o => o.id === item.originalOrderId);
+          if (orderToComplete && orderToComplete.status !== OrderStatus.COMPLETED) {
+            actions.updateOrder({ ...orderToComplete, status: OrderStatus.COMPLETED, completedAt: new Date().toISOString() });
+            notify(`Order ${orderToComplete.orderId} completed!`, 'success');
+          }
         }
       }
-    }
+    }, 100);
   };
 
   const handleAddSection = () => {
     if (newSectionTitle.trim()) {
-      setSections([...sections, { id: Date.now().toString(), title: newSectionTitle.trim(), items: [] }]);
+      dispatch({ type: 'ADD_KALI_TODO_SECTION', payload: { title: newSectionTitle.trim() } });
       setNewSectionTitle('');
       setIsAddingSection(false);
     }
@@ -91,28 +85,14 @@ const KaliTodoView: React.FC = () => {
   };
 
   const handleDrop = (destinationSectionId: string) => {
-    if (!draggedItem) return;
-    
-    const { item, sourceSectionId } = draggedItem;
-    
-    if (sourceSectionId === destinationSectionId) {
+    if (!draggedItem || draggedItem.sourceSectionId === destinationSectionId) {
       setDraggedItem(null);
       return;
     }
-
-    const newSections = sections.map(section => {
-      // Remove from source
-      if (section.id === sourceSectionId) {
-        return { ...section, items: section.items.filter(i => i.uniqueId !== item.uniqueId) };
-      }
-      // Add to destination
-      if (section.id === destinationSectionId) {
-        return { ...section, items: [...section.items, item] };
-      }
-      return section;
+    dispatch({
+      type: 'MOVE_KALI_TODO_ITEM',
+      payload: { ...draggedItem, destinationSectionId },
     });
-
-    setSections(newSections);
     setDraggedItem(null);
   };
 
@@ -139,6 +119,7 @@ const KaliTodoView: React.FC = () => {
                 <span className="text-sm font-mono">{item.quantity}{item.unit}</span>
               </li>
             ))}
+             {section.items.length === 0 && <p className="text-xs text-gray-600 text-center py-2">Drop items here</p>}
           </ul>
         </div>
       ))}

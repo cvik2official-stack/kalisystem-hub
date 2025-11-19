@@ -8,9 +8,9 @@ const StoreTabs: React.FC = () => {
   const { stores, activeStore, draggedOrderId, orders } = state;
   const { notify } = useNotifier();
   const longPressTimer = useRef<number | null>(null);
-  const [dragOverStore, setDragOverStore] = useState<StoreName | null>(null);
+  const [dragOverStore, setDragOverStore] = useState<StoreName | 'ALL' | null>(null);
 
-  const handleClick = (tabName: StoreName) => {
+  const handleClick = (tabName: StoreName | 'ALL') => {
     // Prevent long-press action on a normal click
     if (longPressTimer.current) {
       clearTimeout(longPressTimer.current);
@@ -45,7 +45,7 @@ const StoreTabs: React.FC = () => {
   // Create a comprehensive list of all stores from the enum.
   const allStoreNames = Object.values(StoreName) as StoreName[];
   const storesFromStateMap = new Map(stores.map(s => [s.name, s]));
-  const allStoresWithPlaceholders: Store[] = allStoreNames.map(name => {
+  const allStoresWithPlaceholders: Store[] = allStoreNames.map((name): Store => {
       return storesFromStateMap.get(name) || { id: `enum_store_${name}`, name: name };
   });
 
@@ -83,6 +83,20 @@ const StoreTabs: React.FC = () => {
   return (
     <div>
       <nav className="-mb-px flex space-x-6" aria-label="Tabs">
+        <button
+            key="ALL"
+            onClick={() => handleClick('ALL')}
+            className={`
+              whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm transition-colors rounded-t-md
+              ${
+                activeStore === 'ALL'
+                  ? 'border-purple-500 text-purple-400'
+                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+              }
+            `}
+          >
+            ALL
+          </button>
         {sortedStores.map(({ name }) => (
           <button
             key={name}

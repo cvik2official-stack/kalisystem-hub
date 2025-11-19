@@ -1,36 +1,26 @@
-
-
 import React, { useContext, useMemo, useState, useRef, useEffect } from 'react';
 import { Order, StoreName, OrderItem, Unit, PaymentMethod, OrderStatus, SupplierName, Supplier, Item } from '../types';
 import { AppContext } from '../context/AppContext';
-import { getLatestItemPrice, generateOrderMessage } from '../utils/messageFormatter';
+import { getLatestItemPrice, generateOrderMessage, getPhnomPenhDateKey } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
 import NumpadModal from './modals/NumpadModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
+import AddItemModal from './modals/AddItemModal';
+import AddSupplierModal from './modals/AddSupplierModal';
+import PasteItemsModal from './modals/PasteItemsModal';
 
-// Timezone helpers duplicated from OrderWorkspace to ensure consistency without circular deps or complex refactoring
-const PHNOM_PENH_OFFSET = 7 * 60;
-const getPhnomPenhDate = (date?: Date | string): Date => {
-    const d = date ? new Date(date) : new Date();
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
-};
-const getPhnomPenhDateKey = (date?: Date | string): string => {
-    return getPhnomPenhDate(date).toISOString().split('T')[0];
-};
 
 const formatDateGroupHeader = (key: string): string => {
     if (key === 'Today') return 'Today';
     
-    const todayPhnomPenh = getPhnomPenhDate();
-    const todayKey = todayPhnomPenh.toISOString().split('T')[0];
+    const todayKey = getPhnomPenhDateKey();
   
-    const yesterdayPhnomPenh = getPhnomPenhDate();
-    yesterdayPhnomPenh.setDate(yesterdayPhnomPenh.getDate() - 1);
-    const yesterdayKey = yesterdayPhnomPenh.toISOString().split('T')[0];
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
     
-    if (key === todayKey) return 'Today';
+    if (key === todayKey) return 'Today'; 
     if (key === yesterdayKey) return 'Yesterday';
   
     const [year, month, day] = key.split('-').map(Number);
@@ -42,273 +32,27 @@ interface ManagerReportViewProps {
     singleColumn?: 'dispatch' | 'on_the_way' | 'completed';
     onItemDrop: (destinationOrderId: string) => void;
     hideTitle?: boolean;
+    showStoreName?: boolean;
 }
-
-const AutocompleteInput: React.FC<{
-    placeholder: string;
-    suggestions: { id: string, name: string, lastQty?: string }[];
-    onSelect: (selected: { id: string, name: string, lastQty?: string }) => void;
-    onCreate?: (newName: string) => void;
-    onBlur?: () => void;
-}> = ({ placeholder, suggestions, onSelect, onCreate, onBlur }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isFocused, setIsFocused] = useState(true);
-    const [activeIndex, setActiveIndex] = useState(-1);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
-    
-    const handleBlur = () => {
-        setTimeout(() => {
-            if (onBlur) onBlur();
-            setIsFocused(false);
-        }, 150);
-    };
-
-    const filteredSuggestions = useMemo(() => {
-        if (!searchTerm) return suggestions;
-        return suggestions.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [searchTerm, suggestions]);
-
-    const handleSelect = (item: { id: string, name: string, lastQty?: string }) => {
-        onSelect(item);
-        setSearchTerm('');
-        setIsFocused(false);
-    };
-
-    const handleCreate = () => {
-        if (onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase())) {
-            onCreate(searchTerm.trim());
-            setSearchTerm('');
-            setIsFocused(false);
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setActiveIndex(prev => Math.min(prev + 1, filteredSuggestions.length - 1));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setActiveIndex(prev => Math.max(prev - 1, 0));
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (activeIndex > -1 && filteredSuggestions[activeIndex]) {
-                handleSelect(filteredSuggestions[activeIndex]);
-            } else {
-                handleCreate();
-            }
-        } else if (e.key === 'Escape') {
-            setIsFocused(false);
-            if (onBlur) onBlur();
-            (e.target as HTMLInputElement).blur();
-        }
-    };
-    
-    return (
-        <div className="relative">
-            <input
-                ref={inputRef}
-                type="text"
-                value={searchTerm}
-                onChange={e => { setSearchTerm(e.target.value); setActiveIndex(-1); }}
-                onFocus={() => setIsFocused(true)}
-                onBlur={handleBlur}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                className="bg-transparent p-1 w-full rounded outline-none text-sm placeholder-gray-500 text-gray-300 focus:bg-gray-800"
-            />
-            {isFocused && (
-                <ul className="absolute bottom-full left-0 right-0 mb-1 bg-gray-700 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
-                    {filteredSuggestions.map((item, index) => (
-                        <li key={item.id}>
-                            <button onMouseDown={() => handleSelect(item)} className={`w-full text-left p-2 text-sm flex justify-between items-center ${activeIndex === index ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}>
-                                <span className="text-white truncate pr-2">{item.name}</span>
-                                {item.lastQty && <span className="text-gray-400 ml-2 flex-shrink-0">{item.lastQty}</span>}
-                            </button>
-                        </li>
-                    ))}
-                    {onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase()) && (
-                         <li><button onMouseDown={handleCreate} className={`w-full text-left p-2 text-sm ${activeIndex === -1 ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}><span className="text-indigo-300">+ Create "{searchTerm.trim()}"</span></button></li>
-                    )}
-                </ul>
-            )}
-        </div>
-    );
-};
-
-const getLastQuantity = (itemId: string, orders: Order[]): number => {
-    const relevantOrders = orders
-        .filter(o => o.status === OrderStatus.COMPLETED && o.completedAt && o.items.some(i => i.itemId === itemId))
-        .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime());
-    
-    if (relevantOrders.length > 0) {
-        const item = relevantOrders[0].items.find(i => i.itemId === itemId);
-        return item ? item.quantity : 1;
-    }
-    return 1;
-};
-
-const AutocompleteAddItem: React.FC<{ order: Order }> = ({ order }) => {
-    const { state, actions } = useContext(AppContext);
-    const { notify } = useNotifier();
-    const [isEditing, setIsEditing] = useState(false);
-
-    const handleAddItem = async (item: Item) => {
-        const lastQty = getLastQuantity(item.id, state.orders);
-        const orderItem: OrderItem = {
-            itemId: item.id,
-            name: item.name,
-            quantity: lastQty,
-            unit: item.unit,
-        };
-        const newItems = [...order.items, orderItem];
-        await actions.updateOrder({ ...order, items: newItems });
-        notify(`Added ${item.name} x${lastQty}`, 'success');
-    };
-
-    const handleCreateAndAddItem = async (newName: string) => {
-        try {
-            const newItem = await actions.addItem({
-                name: newName,
-                unit: Unit.PC,
-                supplierId: order.supplierId,
-                supplierName: order.supplierName,
-            });
-            handleAddItem(newItem);
-        } catch (e: any) {
-            notify(`Error creating item: ${e.message}`, 'error');
-        }
-    };
-    
-    if (!isEditing) {
-        return (
-            <button 
-                onClick={() => setIsEditing(true)} 
-                className="text-left text-gray-500 hover:text-white hover:bg-gray-700/50 text-sm p-1 pl-2 rounded-md w-full transition-colors flex items-center"
-            >
-                <span className="mr-1">+</span> Add item
-            </button>
-        );
-    }
-    
-    const itemsInOrder = new Set(order.items.map(i => i.itemId));
-    
-    const suggestions = state.items
-        .filter(item => !itemsInOrder.has(item.id))
-        .map(item => {
-            const lastQty = getLastQuantity(item.id, state.orders);
-            return {
-                id: item.id,
-                name: item.name,
-                lastQty: `${lastQty}${item.unit}`,
-            };
-        });
-
-    return (
-        <AutocompleteInput
-            placeholder="Search item..."
-            suggestions={suggestions}
-            onSelect={(selected) => {
-                const item = state.items.find(i => i.id === selected.id);
-                if (item) handleAddItem(item);
-                setIsEditing(false);
-            }}
-            onCreate={(newName) => {
-                handleCreateAndAddItem(newName);
-                setIsEditing(false);
-            }}
-            onBlur={() => setIsEditing(false)}
-        />
-    );
-};
-
-const DispatchQuickAdd: React.FC<{}> = () => {
-    const { state, actions } = useContext(AppContext);
-    const [selectedStore, setSelectedStore] = useState<StoreName | null>(null);
-    const [mode, setMode] = useState<'store' | 'action'>('store');
-    const [action, setAction] = useState<'supplier' | 'paste' | null>(null);
-
-    const storeSuggestions = state.stores.map(s => ({ id: s.id, name: s.name }));
-    const supplierSuggestions = state.suppliers.map(s => ({ id: s.id, name: s.name }));
-
-    const handleSelectStore = (store: { name: string }) => {
-        setSelectedStore(store.name as StoreName);
-        setMode('action');
-    };
-
-    const handleSelectSupplier = async (supplierInfo: { id: string, name: string }) => {
-        if (!selectedStore) return;
-        const supplier = state.suppliers.find(s => s.id === supplierInfo.id);
-        if (supplier) {
-            await actions.addOrder(supplier, selectedStore);
-        }
-        setAction(null); 
-    };
-
-    const handleCreateSupplier = async (name: string) => {
-        if (selectedStore) {
-            const newSupplier = await actions.addSupplier({ name: name as SupplierName });
-            await actions.addOrder(newSupplier, selectedStore);
-        }
-        setAction(null);
-    };
-
-    const handlePaste = async (e: React.FocusEvent<HTMLTextAreaElement>) => {
-        const text = e.target.value;
-        if (text.trim() && selectedStore) {
-            await actions.pasteItemsForStore(text, selectedStore);
-        }
-        e.target.value = '';
-        setAction(null); 
-    };
-    
-    const reset = () => {
-        setSelectedStore(null);
-        setMode('store');
-        setAction(null);
-    }
-
-    if (mode === 'store') {
-        return <div className="p-2 bg-gray-900/50 rounded-md"><AutocompleteInput placeholder="+ select store" suggestions={storeSuggestions} onSelect={handleSelectStore} onBlur={() => { if(!selectedStore) reset()}} /></div>;
-    }
-
-    return (
-        <div className="space-y-2 p-2 bg-gray-900/50 rounded-md">
-            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider cursor-pointer" onClick={reset}>{selectedStore}</h4>
-            {action === 'supplier' ? (
-                <AutocompleteInput placeholder="+ select supplier" suggestions={supplierSuggestions} onSelect={handleSelectSupplier} onCreate={handleCreateSupplier} onBlur={() => setAction(null)} />
-            ) : action === 'paste' ? (
-                <textarea
-                    autoFocus
-                    onBlur={handlePaste}
-                    placeholder="Paste items here and click away..."
-                    className="w-full h-24 bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none"
-                />
-            ) : (
-                <div className="space-y-1">
-                    <button onClick={() => setAction('supplier')} className="text-left text-indigo-400 hover:text-indigo-300 text-sm p-1 rounded w-full">+ select supplier</button>
-                    <div className="text-center"><span className="text-gray-600 text-xs">or</span></div>
-                    <button onClick={() => setAction('paste')} className="text-left text-indigo-400 hover:text-indigo-300 text-sm p-1 rounded w-full">paste a list</button>
-                </div>
-            )}
-        </div>
-    );
-};
 
 
 const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     const { state, dispatch, actions } = useContext(AppContext);
     const { suppliers, itemPrices, draggedItem, draggedOrderId } = state;
     const { notify } = useNotifier();
-    const { orders, singleColumn, onItemDrop, hideTitle } = props;
+    const { orders, singleColumn, onItemDrop, hideTitle, showStoreName } = props;
     
     const [editingNameId, setEditingNameId] = useState<string | null>(null);
     const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
     const [paymentModalOrder, setPaymentModalOrder] = useState<Order | null>(null);
     const [numpadItem, setNumpadItem] = useState<{ order: Order, item: OrderItem } | null>(null);
+    
+    // Modal States
+    const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+    const [orderForAddItem, setOrderForAddItem] = useState<Order | null>(null);
+    const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
+    const [isPasteItemsModalOpen, setIsPasteItemsModalOpen] = useState(false);
+
 
     const isSmartView = !!singleColumn;
 
@@ -324,6 +68,9 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         
         const groups: Record<string, Order[]> = {};
         const todayKey = getPhnomPenhDateKey();
+        const yesterdayDate = new Date();
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
         
         columnOrders.forEach(order => {
             const completedDateKey = getPhnomPenhDateKey(order.completedAt);
@@ -335,7 +82,6 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         });
 
         // Also ensure "Today" and "Yesterday" groups exist, even if empty.
-        const yesterdayKey = getPhnomPenhDateKey(new Date(Date.now() - 86400000));
         if (!groups['Today']) {
             groups['Today'] = [];
         }
@@ -499,6 +245,43 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         }
     };
 
+    const handleOpenAddItemModal = (order: Order) => {
+        setOrderForAddItem(order);
+        setIsAddItemModalOpen(true);
+    };
+
+    const handleAddItemFromModal = async (item: Item) => {
+        if (!orderForAddItem) return;
+        
+        const existingItemIndex = orderForAddItem.items.findIndex(i => i.itemId === item.id && !i.isSpoiled);
+        
+        let newItems;
+        if (existingItemIndex > -1) {
+            newItems = [...orderForAddItem.items];
+            newItems[existingItemIndex] = {
+                ...newItems[existingItemIndex],
+                quantity: newItems[existingItemIndex].quantity + 1
+            };
+        } else {
+            const newItem: OrderItem = {
+                itemId: item.id,
+                name: item.name,
+                quantity: 1,
+                unit: item.unit,
+                isNew: orderForAddItem.status === OrderStatus.ON_THE_WAY,
+            };
+            newItems = [...orderForAddItem.items, newItem];
+        }
+        await actions.updateOrder({ ...orderForAddItem, items: newItems });
+        notify(`Added ${item.name}`, 'success');
+    };
+
+    const handleAddSupplier = async (supplier: Supplier) => {
+        if (state.activeStore === 'Settings' || state.activeStore === 'ALL' || !state.activeStore) return;
+        await actions.addOrder(supplier, state.activeStore, [], OrderStatus.DISPATCHING);
+        setIsAddSupplierModalOpen(false);
+    };
+
     const renderItemsForSupplier = (order: Order) => (
         <ul className="text-sm">
             {order.items.map(item => {
@@ -550,7 +333,8 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                     <li key={uniqueItemId} className="flex items-center group py-0.5" draggable={!isEditingName && !isEditingPrice} onDragStart={(e) => handleItemDragStart(e, item, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ITEM', payload: null })}>
                         <div className="flex-grow truncate pr-2">{itemNameContent}</div>
                         <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
-                            {isStockMovement && <div className="w-12 text-right font-semibold text-yellow-400">{order.supplierName === SupplierName.STOCK ? 'out' : 'in'}</div>}
+                            {isStockMovement && order.supplierName === SupplierName.STOCK && <span className="font-semibold text-yellow-400">out</span>}
+                            {isStockMovement && order.paymentMethod === PaymentMethod.STOCK && <span className="font-semibold text-green-400">in</span>}
                             <div className="w-16 text-right">{itemQuantityContent}</div>
                             <div className="w-20 text-right">{itemPriceContent}</div>
                         </div>
@@ -559,7 +343,12 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             })}
              {(singleColumn === 'dispatch' || singleColumn === 'on_the_way') && (
                  <li className="mt-2">
-                    <AutocompleteAddItem order={order} />
+                    <button 
+                        onClick={() => handleOpenAddItemModal(order)} 
+                        className="text-left text-gray-500 hover:text-white hover:bg-gray-700/50 text-sm p-1 pl-2 rounded-md w-full transition-colors flex items-center"
+                    >
+                        <span className="mr-1">+</span> Add item
+                    </button>
                  </li>
              )}
         </ul>
@@ -580,7 +369,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     };
 
     const renderOrderCard = (order: Order, options: { showStoreName?: boolean } = {}) => {
-        const { showStoreName = true } = options;
+        const { showStoreName: showStoreNameProp = showStoreName } = options;
         const supplier = suppliers.find(s => s.id === order.supplierId);
         const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
         const cardTotal = order.items.reduce((total, item) => {
@@ -598,7 +387,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
              <div key={order.id} draggable={!editingNameId && !editingPriceId} onDragStart={(e) => handleCardDragStart(e, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null })} onDragOver={(e) => { if(draggedItem) e.preventDefault(); }} onDrop={(e) => handleDropOnSupplier(e, order.id)} className={`py-1 ${(!editingNameId && !editingPriceId) ? 'cursor-grab active:cursor-grabbing' : ''} ${isDraggingThis ? 'opacity-50' : ''}`}>
                 <div onClick={() => toggleSupplier(order.id)} className="flex items-center justify-between text-xs font-bold uppercase space-x-2 cursor-pointer">
                     <div className="flex items-center space-x-2 overflow-hidden">
-                        {showStoreName && <span className="font-semibold text-gray-500 whitespace-nowrap">{order.store}</span>}
+                        {showStoreNameProp && <span className="font-semibold text-gray-500 whitespace-nowrap">{order.store}</span>}
                         <span className={`whitespace-nowrap ${isKaliOrder ? 'text-purple-300' : 'text-gray-300'}`}>{order.supplierName}</span>
                         <button 
                             onClick={(e) => { e.stopPropagation(); setPaymentModalOrder(order); }}
@@ -625,6 +414,16 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             {!hideTitle && (
                 <h2 className="capitalize text-lg font-semibold px-1 py-2 flex items-center space-x-2 text-white">
                     <span>{title}</span>
+                    {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && (
+                        <div className="flex items-center space-x-1">
+                             <button onClick={() => setIsAddSupplierModalOpen(true)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="New Card">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                             </button>
+                             <button onClick={() => setIsPasteItemsModalOpen(true)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Paste List">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                             </button>
+                        </div>
+                    )}
                 </h2>
             )}
             
@@ -684,7 +483,19 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                     ) : (
                         // Dispatch & On The Way (Flat lists)
                         <div className="space-y-1">
-                            {singleColumn === 'dispatch' && <DispatchQuickAdd />}
+                            {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
+                                <div className="space-y-2 p-2 bg-gray-900/50 rounded-md mb-2">
+                                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{state.activeStore}</h4>
+                                    <div className="flex flex-col items-center justify-center space-y-2 w-full">
+                                        <button onClick={() => setIsAddSupplierModalOpen(true)} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-sm py-1 px-2 rounded w-full text-left">
+                                            + Select Supplier
+                                        </button>
+                                        <button onClick={() => setIsPasteItemsModalOpen(true)} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-sm py-1 px-2 rounded w-full text-left">
+                                            Paste a List
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                             {sortedFlatOrders.map(order => renderOrderCard(order))}
                         </div>
                     )
@@ -709,10 +520,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                             {isStoreExpanded && (
                                 <div className="space-y-1 pl-2">
                                     {storeOrders.map(order => {
-                                        // Reuse render logic logic but slightly different context (store group)
-                                        // The main difference is the store name display, but in Manager View we show it anyway
-                                        // So we can actually just call renderOrderCard here too.
-                                        return renderOrderCard(order);
+                                        return renderOrderCard(order, { showStoreName: false });
                                     })}
                                 </div>
                             )}
@@ -722,7 +530,10 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             </div>
         </div>
         {numpadItem && <NumpadModal isOpen={!!numpadItem} item={numpadItem.item} onClose={() => setNumpadItem(null)} onSave={handleSaveItemQuantity} onDelete={handleDeleteItem} />}
-        <PaymentMethodModal isOpen={!!paymentModalOrder} onClose={() => setPaymentModalOrder(null)} onSelect={handlePaymentMethodSelect} order={paymentModalOrder!} />
+        {paymentModalOrder && <PaymentMethodModal isOpen={!!paymentModalOrder} onClose={() => setPaymentModalOrder(null)} onSelect={handlePaymentMethodSelect} order={paymentModalOrder} />}
+        {orderForAddItem && isAddItemModalOpen && <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onItemSelect={handleAddItemFromModal} order={orderForAddItem} />}
+        <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => setIsAddSupplierModalOpen(false)} onSelect={handleAddSupplier} title="Add Card" />
+        <PasteItemsModal isOpen={isPasteItemsModalOpen} onClose={() => setIsPasteItemsModalOpen(false)} />
         </>
     );
 };

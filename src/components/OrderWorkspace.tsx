@@ -6,209 +6,43 @@ import AddSupplierModal from './modals/AddSupplierModal';
 import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice } from '../types';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
-import { generateStoreReport } from '../utils/messageFormatter';
+import { generateStoreReport, getPhnomPenhDateKey } from '../utils/messageFormatter';
 import DueReportModal from './modals/DueReportModal';
 import ReceiptModal from './modals/ReceiptModal';
 import ManagerReportView from './ManagerReportView';
-
-// Timezone offset for Asia/Phnom_Penh (UTC+7) in minutes
-const PHNOM_PENH_OFFSET = 7 * 60;
-
-// Helper to get a Date object adjusted for Phnom Penh timezone from a local or UTC timestamp
-const getPhnomPenhDate = (date?: Date | string): Date => {
-    const d = date ? new Date(date) : new Date();
-    // Get the time in UTC milliseconds
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    // Return a new Date object for Phnom Penh time
-    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
-};
-
-// Helper to get the YYYY-MM-DD key for a given date, adjusted for Phnom Penh timezone
-const getPhnomPenhDateKey = (date?: Date | string): string => {
-    return getPhnomPenhDate(date).toISOString().split('T')[0];
-};
-
-const AutocompleteInput: React.FC<{
-    placeholder: string;
-    suggestions: { id: string, name: string }[];
-    onSelect: (selected: { id: string, name: string }) => void;
-    onCreate?: (newName: string) => void;
-    onBlur?: () => void;
-}> = ({ placeholder, suggestions, onSelect, onCreate, onBlur }) => {
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isFocused, setIsFocused] = useState(true);
-    const [activeIndex, setActiveIndex] = useState(-1);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
-    
-    const handleBlur = () => {
-        setTimeout(() => {
-            if (onBlur) onBlur();
-            setIsFocused(false);
-        }, 150);
-    };
-
-    const filteredSuggestions = useMemo(() => {
-        if (!searchTerm) return suggestions;
-        return suggestions.filter(s => s.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [searchTerm, suggestions]);
-
-    const handleSelect = (item: { id: string, name: string }) => {
-        onSelect(item);
-        setSearchTerm('');
-        setIsFocused(false);
-    };
-
-    const handleCreate = () => {
-        if (onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase())) {
-            onCreate(searchTerm.trim());
-            setSearchTerm('');
-            setIsFocused(false);
-        }
-    };
-
-    const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            setActiveIndex(prev => Math.min(prev + 1, filteredSuggestions.length - 1));
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            setActiveIndex(prev => Math.max(prev - 1, 0));
-        } else if (e.key === 'Enter') {
-            e.preventDefault();
-            if (activeIndex > -1 && filteredSuggestions[activeIndex]) {
-                handleSelect(filteredSuggestions[activeIndex]);
-            } else {
-                handleCreate();
-            }
-        } else if (e.key === 'Escape') {
-            setIsFocused(false);
-            if (onBlur) onBlur();
-            (e.target as HTMLInputElement).blur();
-        }
-    };
-    
-    return (
-        <div className="relative">
-            <input
-                ref={inputRef}
-                type="text"
-                value={searchTerm}
-                onChange={e => { setSearchTerm(e.target.value); setActiveIndex(-1); }}
-                onFocus={() => setIsFocused(true)}
-                onBlur={handleBlur}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                className="bg-transparent p-1 w-full rounded outline-none text-sm placeholder-gray-500"
-            />
-            {isFocused && (filteredSuggestions.length > 0 || (onCreate && searchTerm.trim())) && (
-                <ul className="absolute bottom-full left-0 right-0 mb-1 bg-gray-700 rounded-md shadow-lg z-20 max-h-48 overflow-y-auto">
-                    {filteredSuggestions.map((item, index) => (
-                        <li key={item.id}>
-                            <button onMouseDown={() => handleSelect(item)} className={`w-full text-left p-2 text-sm ${activeIndex === index ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}>
-                                <span className="text-white">{item.name}</span>
-                            </button>
-                        </li>
-                    ))}
-                    {onCreate && searchTerm.trim() && !filteredSuggestions.some(s => s.name.toLowerCase() === searchTerm.trim().toLowerCase()) && (
-                         <li><button onMouseDown={handleCreate} className={`w-full text-left p-2 text-sm ${activeIndex === -1 ? 'bg-indigo-600' : 'hover:bg-indigo-500/50'}`}><span className="text-indigo-300">+ Create "{searchTerm.trim()}"</span></button></li>
-                    )}
-                </ul>
-            )}
-        </div>
-    );
-};
+import PasteItemsModal from './modals/PasteItemsModal';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
   
-  const todayPhnomPenh = getPhnomPenhDate();
-  const todayKey = todayPhnomPenh.toISOString().split('T')[0];
-
-  const yesterdayPhnomPenh = getPhnomPenhDate();
-  yesterdayPhnomPenh.setDate(yesterdayPhnomPenh.getDate() - 1);
-  const yesterdayKey = yesterdayPhnomPenh.toISOString().split('T')[0];
+  const todayKey = getPhnomPenhDateKey();
   
-  if (key === todayKey) return 'Today'; // Should not happen if key is 'Today' already but good for safety
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
+  
+  if (key === todayKey) return 'Today'; 
   if (key === yesterdayKey) return 'Yesterday';
 
   const [year, month, day] = key.split('-').map(Number);
   return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
 };
 
-const InlineAddOrder: React.FC = () => {
-    const { state, actions } = useContext(AppContext);
+const InlineAddOrder: React.FC<{ onAddSupplier: () => void, onPasteList: () => void }> = ({ onAddSupplier, onPasteList }) => {
+    const { state } = useContext(AppContext);
     const { activeStore } = state;
-    const [mode, setMode] = useState<'buttons' | 'supplier' | 'paste'>('buttons');
 
-    if (activeStore === 'Settings') { return null; }
+    if (activeStore === 'Settings' || activeStore === 'ALL') { return null; }
 
-    const handleSelectSupplier = async (supplierInfo: { id: string, name: string }) => {
-        const supplier = state.suppliers.find(s => s.id === supplierInfo.id);
-        if (supplier) {
-            await actions.addOrder(supplier, activeStore);
-        }
-        setMode('buttons'); 
-    };
-
-    const handleCreateSupplier = async (name: string) => {
-        const newSupplier = await actions.addSupplier({ name: name as SupplierName });
-        await actions.addOrder(newSupplier, activeStore);
-        setMode('buttons');
-    };
-
-    const handlePaste = async (e: React.FocusEvent<HTMLTextAreaElement>) => {
-        const text = e.target.value;
-        if (text.trim()) {
-            await actions.pasteItemsForStore(text, activeStore);
-        }
-        e.target.value = '';
-        setMode('buttons'); 
-    };
-
-    if (mode === 'supplier') {
-        const supplierSuggestions = state.suppliers.map(s => ({ id: s.id, name: s.name }));
-        return (
-            <div className="bg-gray-800 rounded-xl shadow-lg border-2 border-dashed border-gray-700 p-4 min-h-[10rem] w-full max-w-sm flex items-center justify-center">
-                <div className="w-full">
-                    <AutocompleteInput 
-                        placeholder="+ select supplier" 
-                        suggestions={supplierSuggestions} 
-                        onSelect={handleSelectSupplier} 
-                        onCreate={handleCreateSupplier} 
-                        onBlur={() => setMode('buttons')} 
-                    />
-                </div>
-            </div>
-        );
-    }
-    
-    if (mode === 'paste') {
-         return (
-             <div className="bg-gray-800 rounded-xl shadow-lg border-2 border-dashed border-gray-700 p-4 min-h-[10rem] w-full max-w-sm flex items-center justify-center">
-                <textarea
-                    autoFocus
-                    onBlur={handlePaste}
-                    placeholder="Paste items here and click away..."
-                    className="w-full h-24 bg-gray-900 text-gray-200 rounded-md p-2 font-mono text-xs outline-none"
-                />
-            </div>
-         );
-    }
-
-    // Default 'buttons' mode
     return (
         <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[10rem] w-full max-w-sm">
-            <div className="flex flex-col items-center justify-center space-y-2">
-                <button onClick={() => setMode('supplier')} className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg">
-                    + select supplier
+            <div className="flex flex-col items-center justify-center space-y-4 w-full">
+                <button onClick={onAddSupplier} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
+                    + Select Supplier
                 </button>
                 <span className="text-gray-500 text-xs">or</span>
-                <button onClick={() => setMode('paste')} className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors text-lg">
-                    paste a list
+                <button onClick={onPasteList} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
+                    Paste a List
                 </button>
             </div>
         </div>
@@ -218,10 +52,11 @@ const InlineAddOrder: React.FC = () => {
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, isSmartView, itemPrices } = state;
+  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, isSmartView, itemPrices, initialAction } = state;
   const { notify } = useNotifier();
 
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
+  const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
@@ -243,6 +78,17 @@ const OrderWorkspace: React.FC = () => {
   const [completedViewMode, setCompletedViewMode] = useState<'card' | 'report'>('card');
   
   const [mobileSmartViewPage, setMobileSmartViewPage] = useState(1); // 0: Dispatch, 1: On The Way, 2: Completed
+
+  useEffect(() => {
+      if (initialAction && activeStore !== 'Settings' && activeStore !== 'ALL') {
+          if (initialAction === 'paste-list') {
+              setIsPasteModalOpen(true);
+          } else if (initialAction === 'add-card') {
+              setSupplierSelectModalOpen(true);
+          }
+          dispatch({ type: 'CLEAR_INITIAL_ACTION' });
+      }
+  }, [initialAction, activeStore, dispatch]);
 
   const handleTouchStart = (e: React.TouchEvent) => {
     touchStartX.current = e.targetTouches[0].clientX;
@@ -277,6 +123,7 @@ const OrderWorkspace: React.FC = () => {
   
   const handleCompletedTabClick = (e: React.MouseEvent) => {
     const isHeaderClick = (e.target as HTMLElement).tagName.toLowerCase() === 'h2';
+    // FIX: Check activeStatus, not activeStore, to determine if the completed tab is already active.
     if (activeStatus === OrderStatus.COMPLETED || isHeaderClick) {
         setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card');
     } 
@@ -287,7 +134,7 @@ const OrderWorkspace: React.FC = () => {
   };
 
   const handleAddOrder = async (supplier: Supplier) => {
-    if (activeStore === 'Settings' || !activeStore) return;
+    if (activeStore === 'Settings' || activeStore === 'ALL' || !activeStore) return;
     await actions.addOrder(supplier, activeStore, [], OrderStatus.DISPATCHING);
     setSupplierSelectModalOpen(false);
   };
@@ -344,7 +191,7 @@ const OrderWorkspace: React.FC = () => {
 };
   
   const handleCreateOrderFromDrop = async (supplier: Supplier) => {
-    if (!itemForNewOrder || activeStore === 'Settings') return;
+    if (!itemForNewOrder || activeStore === 'Settings' || activeStore === 'ALL') return;
 
     const sourceOrder = orders.find(o => o.id === itemForNewOrder.sourceOrderId);
     if (sourceOrder) {
@@ -372,6 +219,8 @@ const OrderWorkspace: React.FC = () => {
   };
   
   const handleGenerateStoreReport = () => {
+    if (activeStore === 'Settings' || activeStore === 'ALL') return;
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -400,7 +249,9 @@ const OrderWorkspace: React.FC = () => {
   
       let filtered: Order[];
   
-      if (activeStore === StoreName.KALI) {
+      if (activeStore === 'ALL') {
+          filtered = orders.filter(order => order.status === status);
+      } else if (activeStore === StoreName.KALI) {
           filtered = orders.filter(order => {
               const supplier = suppliers.find(s => s.id === order.supplierId);
               const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
@@ -435,12 +286,10 @@ const OrderWorkspace: React.FC = () => {
     const ordersToGroup = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
     const groups: Record<string, Order[]> = {};
 
-    const todayPhnomPenh = getPhnomPenhDate();
-    const todayKey = todayPhnomPenh.toISOString().split('T')[0];
-
-    const yesterdayPhnomPenh = getPhnomPenhDate();
-    yesterdayPhnomPenh.setDate(yesterdayPhnomPenh.getDate() - 1);
-    const yesterdayKey = yesterdayPhnomPenh.toISOString().split('T')[0];
+    const todayKey = getPhnomPenhDateKey();
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
 
     // Ensure Today and Yesterday groups always exist
     groups['Today'] = [];
@@ -503,7 +352,7 @@ const OrderWorkspace: React.FC = () => {
   const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
     const options = [];
     
-    if (dateGroupKey === 'Today') {
+    if (dateGroupKey === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings') {
         options.push(
             { label: 'New Card...', action: () => setSupplierSelectModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
@@ -586,10 +435,10 @@ const OrderWorkspace: React.FC = () => {
               key={order.id} 
               order={order} 
               onItemDrop={handleItemDropOnCard}
-              showStoreName={activeStore === StoreName.KALI}
+              showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
           />
         ))}
-        <InlineAddOrder />
+        <InlineAddOrder onAddSupplier={() => setSupplierSelectModalOpen(true)} onPasteList={() => setIsPasteModalOpen(true)} />
       </>
     );
   };
@@ -603,7 +452,7 @@ const OrderWorkspace: React.FC = () => {
               key={order.id} 
               order={order} 
               onItemDrop={handleItemDropOnCard}
-              showStoreName={activeStore === StoreName.KALI}
+              showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
           />
         ))}
         {onTheWayOrders.length === 0 && (
@@ -616,7 +465,7 @@ const OrderWorkspace: React.FC = () => {
   };
   
   const renderCompletedColumn = () => {
-    if (completedViewMode === 'report' && activeStore !== 'Settings') {
+    if (completedViewMode === 'report' && (activeStore !== 'Settings' && activeStore !== 'ALL')) {
         const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
         return <ManagerReportView orders={todaysCompletedOrders} onItemDrop={handleItemDropOnCard} singleColumn="completed" />;
     }
@@ -634,6 +483,7 @@ const OrderWorkspace: React.FC = () => {
                     onDragOver={(e) => handleDragOverDateGroup(e, key)}
                     onDragLeave={() => setDragOverDateGroup(null)}
                     onDrop={(e) => { e.preventDefault(); handleDropOnDateGroup(key); }}
+                    className="w-full max-w-sm"
                 >
                     <div className={`bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl transition-colors ${dragOverDateGroup === key ? 'bg-indigo-900/50' : ''}`}>
                     <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
@@ -653,7 +503,7 @@ const OrderWorkspace: React.FC = () => {
                             key={order.id} 
                             order={order}
                             onItemDrop={handleItemDropOnCard}
-                            showStoreName={activeStore === StoreName.KALI} 
+                            showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'} 
                         />
                         )) : (
                             <div className="text-center text-gray-500 text-sm py-4 px-2">
@@ -700,7 +550,9 @@ const OrderWorkspace: React.FC = () => {
   
   const smartViewOrders = useMemo(() => {
     const todayKey = getPhnomPenhDateKey();
-    const yesterdayKey = getPhnomPenhDateKey(new Date(Date.now() - 86400000));
+    const yesterdayDate = new Date();
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
 
     return orders.filter(order => {
         if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
@@ -768,6 +620,7 @@ const OrderWorkspace: React.FC = () => {
                                     singleColumn={tab.id === OrderStatus.DISPATCHING ? 'dispatch' : tab.id}
                                     onItemDrop={handleItemDropOnCard}
                                     hideTitle={true}
+                                    showStoreName={activeStore === 'ALL'}
                                 />
                             </div>
                         </div>
@@ -789,6 +642,7 @@ const OrderWorkspace: React.FC = () => {
                     orders={smartViewOrders} 
                     singleColumn="dispatch"
                     onItemDrop={handleItemDropOnCard}
+                    showStoreName={activeStore === 'ALL'}
                 />
             </div>
              <div 
@@ -801,18 +655,20 @@ const OrderWorkspace: React.FC = () => {
                     orders={smartViewOrders} 
                     singleColumn="on_the_way"
                     onItemDrop={handleItemDropOnCard}
+                    showStoreName={activeStore === 'ALL'}
                 />
             </div>
              <div 
                 onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.COMPLETED); }}}
                 onDragLeave={() => setDragOverColumn(null)}
                 onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.COMPLETED); }}
-                className={`rounded-lg transition-colors duration-200 ${dragOverColumn === OrderStatus.COMPLETED ? 'bg-indigo-900/20' : ''}`}
+                className={`rounded-lg transition-colors duration-200 w-full max-w-sm ${dragOverColumn === OrderStatus.COMPLETED ? 'bg-indigo-900/20' : ''}`}
             >
                 <ManagerReportView 
                     orders={smartViewOrders} 
                     singleColumn="completed"
                     onItemDrop={handleItemDropOnCard}
+                    showStoreName={activeStore === 'ALL'}
                 />
             </div>
         </div>
@@ -850,6 +706,7 @@ const OrderWorkspace: React.FC = () => {
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
+          {activeStore === 'ALL' && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
           {renderStatusContent(activeStatus)}
         </div>
       </div>
@@ -869,9 +726,10 @@ const OrderWorkspace: React.FC = () => {
               onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
             >
                 <h2 className="text-lg font-semibold text-white px-1 cursor-pointer" onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}>
-                    {tab.label}
+                    {tab.label}{activeStore === 'ALL' && ` (${getFilteredOrdersForStatus(tab.id).length})`}
                 </h2>
                 <div className="flex-grow overflow-y-auto space-y-4 hide-scrollbar pr-2 -mr-2">
+                    {activeStore === 'ALL' && tab.id === OrderStatus.DISPATCHING && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
                     {renderStatusContent(tab.id)}
                 </div>
             </div>
@@ -888,6 +746,7 @@ const OrderWorkspace: React.FC = () => {
         onSelect={itemForNewOrder ? handleCreateOrderFromDrop : (orderToChange ? handleChangeSupplierForOrder : handleAddOrder)}
         title={itemForNewOrder ? "Create New Order For..." : (orderToChange ? "Change Supplier To..." : "Select Supplier")}
       />
+      <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setIsPasteModalOpen(false)} />
       {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
       <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
       <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />

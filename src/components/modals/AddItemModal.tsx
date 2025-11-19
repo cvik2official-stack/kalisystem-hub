@@ -18,7 +18,8 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
 
   const filteredItems = useMemo(() => {
     const itemsInOrder = new Set(order.items.map(i => i.itemId));
-    const availableItems = state.items.filter(i => !itemsInOrder.has(i.id));
+    // Filter items specifically for this supplier
+    const availableItems = state.items.filter(i => !itemsInOrder.has(i.id) && i.supplierId === order.supplierId);
 
     const searchFiltered = !search
       ? availableItems
@@ -27,7 +28,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
         );
         
     return searchFiltered.sort((a, b) => a.name.localeCompare(b.name));
-  }, [search, state.items, order.items]);
+  }, [search, state.items, order.items, order.supplierId]);
 
   const handleItemClick = (item: Item) => {
     onItemSelect(item);
@@ -47,7 +48,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
             return;
         }
 
-        const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase());
+        const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase() && i.supplierId === supplier.id);
         
         let itemToAdd: Item;
 
@@ -67,12 +68,25 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
         
         setSearch('');
         onClose();
-    } catch (e) {
+    } catch (e: any) {
         console.error("Failed to create and add new item:", e);
+        notify(`Failed to create item: ${e.message}`, 'error');
     } finally {
         setIsCreating(false);
     }
   };
+  
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+          if (filteredItems.length === 1) {
+               handleItemClick(filteredItems[0]);
+          } else {
+               handleAddNewItem();
+          }
+      } else if (e.key === 'Escape') {
+          onClose();
+      }
+  }
 
   if (!isOpen) return null;
 
@@ -105,8 +119,10 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
                 name="add-item-search-input"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={handleKeyDown}
                 autoFocus
-                className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none"
+                className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Search or type to create..."
             />
           </div>
 
@@ -114,24 +130,25 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
               {filteredItems.length === 0 ? (
                 search.trim() ? (
                     <div className="text-center py-4">
-                        <p className="text-gray-500 mb-4">No item named "{search}".</p>
+                        <p className="text-gray-500 mb-4">No existing item named "{search}".</p>
                         <button
                             onClick={handleAddNewItem}
                             disabled={isCreating}
                             className="w-full text-center p-3 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 disabled:cursor-wait transition-colors duration-150 outline-none"
                         >
-                            {isCreating ? 'Creating...' : `+ Add "${search.trim()}"`}
+                            {isCreating ? 'Creating...' : `+ Create "${search.trim()}"`}
                         </button>
                     </div>
                 ) : (
                     <p className="text-gray-500 text-center py-4">
-                        {state.items.length > 0 ? "No items found." : "No items configured in the system."}
+                        Type to search or add items.
                     </p>
                 )
               ) : (
                 filteredItems.map(item => (
-                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none">
-                      <p className="text-gray-300">{item.name}</p>
+                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none flex justify-between items-center group">
+                      <p className="text-gray-300 group-hover:text-white">{item.name}</p>
+                      <span className="text-gray-500 text-xs group-hover:text-gray-300">{item.unit}</span>
                   </button>
                 ))
               )}

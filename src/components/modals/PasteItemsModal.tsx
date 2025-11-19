@@ -68,7 +68,17 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   };
 
   const handleSubmit = async () => {
-    if (!text.trim() || state.activeStore === 'Settings' || state.activeStore === 'KALI') return;
+    if (!text.trim()) return;
+
+    // FIX: Refactored guard clauses for type safety. This prevents pasting into special views.
+    if (state.activeStore === 'Settings' || state.activeStore === 'KALI' || state.activeStore === 'ALL') {
+        notify(`Pasting items is not available for the "${state.activeStore}" view.`, 'info');
+        return;
+    }
+    
+    // After the guard, TypeScript knows activeStore is a valid StoreName.
+    const store = state.activeStore;
+
     setIsLoading(true);
     try {
       const isAiEnabled = state.settings.isAiEnabled !== false;
@@ -84,7 +94,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
           }
 
           const rules = state.settings.aiParsingRules || {};
-          const activeStoreRules = state.activeStore !== 'Settings' ? rules[state.activeStore] || {} : {};
+          const activeStoreRules = rules[store] || {};
           const combinedAliases = {
               ...(rules.global || {}),
               ...activeStoreRules,
@@ -141,7 +151,6 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
       let updatedCount = 0;
 
       for (const { supplier, items } of Object.values(ordersBySupplier)) {
-          const store = state.activeStore as StoreName;
           const existingOrderForSupplier = state.orders.find(o => o.store === store && o.supplierId === supplier.id && o.status === OrderStatus.DISPATCHING);
           
           if (existingOrderForSupplier) {

@@ -52,6 +52,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
     }
 
     // FIX: Access state and props directly from `this` to avoid potential type inference issues.
+    // Explicitly cast children if necessary, but normal React.Component behavior should work.
     return this.props.children;
   }
 }
