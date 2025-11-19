@@ -1,3 +1,4 @@
+
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, KaliTodoSection, KaliTodoItem } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
@@ -399,7 +400,7 @@ const getInitialState = (): AppState => {
 
   const initialState: AppState = {
     stores: [],
-    activeStore: StoreName.CV2,
+    activeStore: 'ALL', // Changed default to 'ALL'
     suppliers: [],
     items: [],
     itemPrices: [],

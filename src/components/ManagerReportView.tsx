@@ -107,6 +107,9 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         return new Set(columnOrders.map(o => o.id));
     });
 
+    // Added state for expanded date groups in completed column
+    const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(new Set(['Today']));
+
     const groupedByStore = useMemo(() => {
         const storeGroups: Record<string, Order[]> = {};
         columnOrders.forEach(order => {
@@ -345,6 +348,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
 
     const toggleStore = (storeName: string) => setExpandedStores(prev => { const newSet = new Set(prev); if (newSet.has(storeName)) newSet.delete(storeName); else newSet.add(storeName); return newSet; });
     const toggleSupplier = (orderId: string) => setExpandedSuppliers(prev => { const newSet = new Set(prev); if (newSet.has(orderId)) newSet.delete(orderId); else newSet.add(orderId); return newSet; });
+    const toggleDateGroup = (dateKey: string) => setExpandedDateGroups(prev => { const newSet = new Set(prev); if (newSet.has(dateKey)) newSet.delete(dateKey); else newSet.add(dateKey); return newSet; });
     
     const title = singleColumn ? singleColumn.replace(/_/g, ' ') : '';
     
@@ -435,6 +439,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                         <>
                             {sortedCompletedGroupKeys.map(key => {
                                 const ordersInDateGroup = groupedCompletedOrders[key] || [];
+                                const isDateExpanded = expandedDateGroups.has(key);
 
                                 const ordersByStore = ordersInDateGroup.reduce((acc, order) => {
                                     if (!acc[order.store]) {
@@ -452,31 +457,41 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
 
                                 return (
                                     <div key={key}>
-                                        <div className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 mt-1 pl-1">{formatDateGroupHeader(key)}</div>
-                                        <div className="space-y-3 mb-6">
-                                            {ordersInDateGroup.length > 0 ? (
-                                                sortedStoresInGroup.map(storeName => {
-                                                    const storeOrders = ordersByStore[storeName].sort((a, b) => {
-                                                        const nameA = a.supplierName; const nameB = b.supplierName;
-                                                        if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
-                                                        const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
-                                                        if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-                                                        return nameA.localeCompare(nameB);
-                                                    });
-                    
-                                                    return (
-                                                        <div key={storeName}>
-                                                            <h4 className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1 pl-1">{storeName}</h4>
-                                                            <div className="space-y-1 pl-2 border-l-2 border-gray-700/50">
-                                                                {storeOrders.map(order => renderOrderCard(order, { showStoreName: false }))}
+                                        <button 
+                                            onClick={() => toggleDateGroup(key)}
+                                            className="w-full flex items-center text-gray-400 text-xs font-bold uppercase tracking-wider mb-2 mt-1 pl-1 hover:text-white transition-colors"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 mr-1 transform transition-transform ${isDateExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                            </svg>
+                                            {formatDateGroupHeader(key)}
+                                        </button>
+                                        {isDateExpanded && (
+                                            <div className="space-y-3 mb-6 ml-2">
+                                                {ordersInDateGroup.length > 0 ? (
+                                                    sortedStoresInGroup.map(storeName => {
+                                                        const storeOrders = ordersByStore[storeName].sort((a, b) => {
+                                                            const nameA = a.supplierName; const nameB = b.supplierName;
+                                                            if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
+                                                            const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
+                                                            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
+                                                            return nameA.localeCompare(nameB);
+                                                        });
+                        
+                                                        return (
+                                                            <div key={storeName}>
+                                                                <h4 className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1 pl-1">{storeName}</h4>
+                                                                <div className="space-y-1 pl-2 border-l-2 border-gray-700/50">
+                                                                    {storeOrders.map(order => renderOrderCard(order, { showStoreName: false }))}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })
-                                            ) : (
-                                                <div className="text-gray-600 text-xs pl-2 italic">No completed orders.</div>
-                                            )}
-                                        </div>
+                                                        );
+                                                    })
+                                                ) : (
+                                                    <div className="text-gray-600 text-xs pl-2 italic">No completed orders.</div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -496,11 +511,14 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
 
                         return (
                             <div key={storeName}>
-                                <button onClick={() => toggleStore(storeName)} className="flex items-center w-full text-left py-1">
-                                    <h3 className="font-bold text-white text-xs uppercase ml-1">{storeName}</h3>
+                                <button onClick={() => toggleStore(storeName)} className="flex items-center w-full text-left py-1 hover:bg-gray-800/50 rounded">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-white mr-1 transform transition-transform ${isStoreExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
+                                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                    </svg>
+                                    <h3 className="font-bold text-white text-xs uppercase">{storeName}</h3>
                                 </button>
                                 {isStoreExpanded && (
-                                    <div className="space-y-1 pl-2">
+                                    <div className="space-y-1 pl-2 mt-1">
                                         {storeOrders.map(order => {
                                             return renderOrderCard(order, { showStoreName: false });
                                         })}

@@ -247,44 +247,9 @@ const App: React.FC = () => {
     }
   };
   
-  const getMenuOptions = () => {
-      const options = [
-        { label: 'Reports', isHeader: true },
-        { label: '  KALI est.', action: handleSendKaliZapReport },
-        { label: '  KALI due', action: () => setIsKaliReportModalOpen(true) },
-        { label: 'TABLES', isHeader: true },
-        { label: '  Items', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' as SettingsTab }) },
-        { label: '  Suppliers', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'suppliers' as SettingsTab }) },
-        { label: '  Stores', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'stores' as SettingsTab }) },
-        { label: '  Due Report', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'due-report' as SettingsTab }) },
-      ];
-      
-      const viewOptions = [];
-
-      if (state.isSmartView) {
-        viewOptions.push({ label: '  Exit Smart View', action: () => dispatch({ type: 'SET_SMART_VIEW', payload: false }) });
-      } else {
-        viewOptions.push({ label: '  Smart View', action: () => dispatch({ type: 'SET_SMART_VIEW', payload: true }) });
-      }
-      
-      viewOptions.push({ label: '  Quick Orders', action: () => setIsQuickOrderListModalOpen(true) });
-
-      // Always allow switching to Manager View, unless already in it.
-      if (activeStore !== 'Settings' && !isManagerView) {
-          viewOptions.push({ label: '  Manager View', action: handleEnterManagerView });
-      }
-
-      viewOptions.push({ label: '  KALI PiP', action: () => setIsKaliPipOpen(true) });
-      
-      options.push({ label: 'View', isHeader: true }, ...viewOptions);
-
-      options.push(
-        { label: 'SETTINGS', isHeader: true },
-        { label: '  Templates', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'templates' as SettingsTab }) },
-        { label: '  Telegram Bot', action: () => setIsTelegramWebhookModalOpen(true) },
-      )
-      
-      return options;
+  const handleHeaderMenuClick = (e: React.MouseEvent) => {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setHeaderMenu({ x: rect.right - 150, y: rect.bottom + 5 });
   };
 
   const handleRedDotClick = () => {
@@ -395,23 +360,35 @@ const App: React.FC = () => {
         <ToastContainer />
         
         <main className="flex flex-col flex-grow p-4 md:p-6 lg:px-[10%] max-w-full mx-auto w-full">
-            <header className="flex-shrink-0 flex items-center justify-between mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2">
-                <div className="flex items-center space-x-2">
-                    <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Toggle Smart View / Exit Settings">
-                        {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
-                    </button>
-                    <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">
-                        {hasUnread && <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full ${isYellowAnimating ? 'animate-wobble' : ''}`}></span>}
-                    </button>
-                    <button onClick={handleGreenDotClick} className="relative w-4 h-4 bg-green-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-500" title="Sync with Database">
-                        <span className={`absolute inset-0 rounded-full bg-green-500 ${greenDotAnimationClass}`}></span>
-                    </button>
+            <header className="flex-shrink-0 mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2 flex flex-col md:flex-row md:items-center md:justify-between md:flex-nowrap">
+                {/* Mobile Top Row Wrapper / Desktop 'Contents' to unwrap children into parent flex container */}
+                <div className="flex items-center justify-between w-full md:w-auto md:contents">
+                    {/* Left: Status Dots (Order 1 on Desktop) */}
+                    <div className="flex items-center space-x-2 md:order-1">
+                        <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Toggle Smart View / Exit Settings">
+                            {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
+                        </button>
+                        <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">
+                            {hasUnread && <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full ${isYellowAnimating ? 'animate-wobble' : ''}`}></span>}
+                        </button>
+                        <button onClick={handleGreenDotClick} className="relative w-4 h-4 bg-green-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-500" title="Sync with Database">
+                            <span className={`absolute inset-0 rounded-full bg-green-500 ${greenDotAnimationClass}`}></span>
+                        </button>
+                    </div>
+
+                    {/* Right: Menu Button (Order 3 on Desktop) */}
+                    <div className="flex items-center space-x-2 md:order-3">
+                        <button onClick={handleHeaderMenuClick} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white rounded-full hover:bg-gray-800 focus:outline-none transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
-                <StoreTabs />
-                <div className="flex items-center space-x-2">
-                    <button onClick={(e) => setHeaderMenu({ x: e.clientX - 200, y: e.clientY + 20 })} className="text-gray-400 hover:text-white p-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                    </button>
+
+                {/* Store Tabs (Order 2 on Desktop) - Will wrap to new line on mobile because parent is flex-col */}
+                <div className="w-full mt-2 md:mt-0 md:w-auto md:flex-grow md:px-4 md:order-2">
+                    <StoreTabs />
                 </div>
             </header>
 
@@ -459,7 +436,20 @@ const App: React.FC = () => {
         </main>
       </div>
       <NotificationBell isControlled isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} position={{top: 50, left: yellowDotRef.current?.getBoundingClientRect().left ?? 0}} />
-      {headerMenu && <ContextMenu x={headerMenu.x} y={headerMenu.y} options={getMenuOptions()} onClose={() => setHeaderMenu(null)} />}
+      {headerMenu && (
+          <ContextMenu
+              x={headerMenu.x}
+              y={headerMenu.y}
+              options={[
+                  { label: 'Quick Orders', action: () => setIsQuickOrderListModalOpen(true) },
+                  { label: 'KALI Report', action: () => setIsKaliReportModalOpen(true) },
+                  { label: 'Open To-Do PiP', action: () => setIsKaliPipOpen(true) },
+                  { label: 'Settings', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' }) },
+                  { label: 'Telegram Webhook', action: () => setIsTelegramWebhookModalOpen(true) },
+              ]}
+              onClose={() => setHeaderMenu(null)}
+          />
+      )}
       <KaliReportModal isOpen={isKaliReportModalOpen} onClose={() => setIsKaliReportModalOpen(false)} onGenerate={handleSendKaliUnifyReport} isSending={isSendingReport} orders={completedKaliOrders} itemPrices={itemPrices} />
       <TelegramWebhookModal isOpen={isTelegramWebhookModalOpen} onClose={() => setIsTelegramWebhookModalOpen(false)} />
       <PipWindow isOpen={isKaliPipOpen} onClose={() => setIsKaliPipOpen(false)} />

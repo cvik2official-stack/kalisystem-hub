@@ -1,4 +1,3 @@
-
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -556,6 +555,11 @@ const OrderWorkspace: React.FC = () => {
     const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
 
     return orders.filter(order => {
+        // Fix: Respect activeStore filter in Smart View
+        if (activeStore !== 'ALL' && order.store !== activeStore) {
+            return false;
+        }
+
         if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
             return true;
         }
@@ -565,7 +569,7 @@ const OrderWorkspace: React.FC = () => {
         }
         return false;
     });
-  }, [orders]);
+  }, [orders, activeStore]);
 
 
   if (isSmartView) {
@@ -711,7 +715,7 @@ const OrderWorkspace: React.FC = () => {
               onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
             >
                 <h2 className="text-lg font-semibold text-white px-1 cursor-pointer" onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}>
-                    {tab.label}{activeStore === 'ALL' && ` (${getFilteredOrdersForStatus(tab.id).length})`}
+                    {tab.label}
                 </h2>
                 <div className="flex-grow overflow-y-auto space-y-4 hide-scrollbar pr-2 -mr-2">
                     {activeStore === 'ALL' && tab.id === OrderStatus.DISPATCHING && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
