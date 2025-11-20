@@ -1,4 +1,5 @@
 
+
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -77,6 +78,7 @@ const OrderWorkspace: React.FC = () => {
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [isGlobalAddItemModalOpen, setIsGlobalAddItemModalOpen] = useState(false);
   const [isQuickOrderListModalOpen, setIsQuickOrderListModalOpen] = useState(false);
+  const [isKaliOnTheWayListView, setIsKaliOnTheWayListView] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
@@ -432,6 +434,43 @@ const OrderWorkspace: React.FC = () => {
     }
   };
 
+  const renderKaliAggregatedList = (orders: Order[]) => {
+    const itemMap = new Map<string, { name: string; quantity: number; unit: string }>();
+    orders.forEach(order => {
+        order.items.forEach(item => {
+            if(!item.isSpoiled) {
+                const key = item.itemId;
+                if (itemMap.has(key)) {
+                    const entry = itemMap.get(key)!;
+                    entry.quantity += item.quantity;
+                } else {
+                    itemMap.set(key, { name: item.name, quantity: item.quantity, unit: item.unit || '' });
+                }
+            }
+        });
+    });
+    
+    const sortedItems = Array.from(itemMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+
+    return (
+        <div className="bg-gray-800 rounded-xl p-4 shadow-lg">
+             <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
+                 <h3 className="text-lg font-bold text-white">Consolidated List</h3>
+                 <span className="text-xs text-gray-500">{sortedItems.length} items</span>
+             </div>
+             <ul className="space-y-2">
+                 {sortedItems.map((item, i) => (
+                     <li key={i} className="flex justify-between items-center text-sm">
+                         <span className="text-gray-200">{item.name}</span>
+                         <span className="text-indigo-300 font-mono font-bold bg-gray-900/50 px-2 py-1 rounded">{item.quantity}{item.unit}</span>
+                     </li>
+                 ))}
+                 {sortedItems.length === 0 && <li className="text-gray-500 text-center italic">No items.</li>}
+             </ul>
+        </div>
+    );
+  };
+
   const DispatchingColumnContent = () => {
     const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
     return (
@@ -456,22 +495,43 @@ const OrderWorkspace: React.FC = () => {
   
   const OnTheWayColumnContent = () => {
     const onTheWayOrders = getFilteredOrdersForStatus(OrderStatus.ON_THE_WAY);
+    
     return (
-      <>
-        {onTheWayOrders.map(order => (
-          <SupplierCard 
-              key={order.id} 
-              order={order} 
-              onItemDrop={handleItemDropOnCard}
-              showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
-          />
-        ))}
-        {onTheWayOrders.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No orders on the way.</p>
-            </div>
-        )}
-      </>
+      <div className="flex flex-col space-y-2">
+         {activeStore === StoreName.KALI && (
+             <div className="flex justify-end px-2">
+                 <button 
+                    onClick={() => setIsKaliOnTheWayListView(!isKaliOnTheWayListView)}
+                    className={`p-2 rounded-full transition-colors ${isKaliOnTheWayListView ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-800'}`}
+                    title="Toggle List View"
+                 >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                    </svg>
+                 </button>
+             </div>
+         )}
+
+         {activeStore === StoreName.KALI && isKaliOnTheWayListView ? (
+             renderKaliAggregatedList(onTheWayOrders)
+         ) : (
+              <>
+                {onTheWayOrders.map(order => (
+                  <SupplierCard 
+                      key={order.id} 
+                      order={order} 
+                      onItemDrop={handleItemDropOnCard}
+                      showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
+                  />
+                ))}
+                {onTheWayOrders.length === 0 && (
+                    <div className="text-center py-12">
+                      <p className="text-gray-500">No orders on the way.</p>
+                    </div>
+                )}
+              </>
+         )}
+      </div>
     );
   };
   
@@ -784,3 +844,4 @@ const OrderWorkspace: React.FC = () => {
 };
 
 export default OrderWorkspace;
+
