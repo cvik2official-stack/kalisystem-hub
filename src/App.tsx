@@ -1,4 +1,3 @@
-
 import React, { useContext, useEffect, useState, useRef, useMemo } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
@@ -6,17 +5,13 @@ import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod, Order, Supplier } from './types';
-import ManagerView from './components/ManagerView';
-import { generateKaliUnifyReport, generateKaliZapReport } from './utils/messageFormatter';
-import { sendKaliUnifyReport, sendKaliZapReport } from './services/telegramService';
+import { generateKaliZapReport } from './utils/messageFormatter';
+import { sendKaliZapReport } from './services/telegramService';
 import { useNotifier } from './context/NotificationContext';
 import ContextMenu from './components/ContextMenu';
 import NotificationBell from './components/NotificationBell';
-import KaliReportModal from './components/modals/KaliReportModal';
 import TelegramWebhookModal from './components/modals/TelegramWebhookModal';
 import { useNotificationState, useNotificationDispatch } from './context/NotificationContext';
-import PipWindow from './components/pip/PipWindow';
-import SelectStoreForShareModal from './components/modals/SelectStoreForShareModal';
 import AddSupplierModal from './components/modals/AddSupplierModal';
 import SaveQuickOrderModal from './components/modals/SaveQuickOrderModal';
 import QuickOrderListModal from './components/modals/QuickOrderListModal';
@@ -24,7 +19,7 @@ import QuickOrderListModal from './components/modals/QuickOrderListModal';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, isManagerView, managerStoreFilter, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView } = state;
+  const { activeStore, isInitialized, syncStatus, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -38,18 +33,10 @@ const App: React.FC = () => {
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
   const yellowDotRef = useRef<HTMLButtonElement>(null);
 
-
-  const [isSendingReport, setIsSendingReport] = useState(false);
   const [isSendingZapReport, setIsSendingZapReport] = useState(false);
   const [headerMenu, setHeaderMenu] = useState<{ x: number, y: number } | null>(null);
-  const [isKaliReportModalOpen, setIsKaliReportModalOpen] = useState(false);
   const [isTelegramWebhookModalOpen, setIsTelegramWebhookModalOpen] = useState(false);
-  const [isKaliPipOpen, setIsKaliPipOpen] = useState(false);
   
-  // State for share target
-  const [isSelectStoreForShareModalOpen, setIsSelectStoreForShareModalOpen] = useState(false);
-  const [sharedText, setSharedText] = useState<string | null>(null);
-
   // State for Drag-to-Change Supplier
   const [isChangeSupplierModalOpen, setChangeSupplierModalOpen] = useState(false);
   const [orderIdToChangeSupplier, setOrderIdToChangeSupplier] = useState<string | null>(null);
@@ -58,34 +45,12 @@ const App: React.FC = () => {
   const [isSaveQuickOrderModalOpen, setIsSaveQuickOrderModalOpen] = useState(false);
   const [isQuickOrderListModalOpen, setIsQuickOrderListModalOpen] = useState(false);
   const [orderIdToSave, setOrderIdToSave] = useState<string | null>(null);
-
-
-  const completedKaliOrders = React.useMemo(() => {
-    return orders.filter(order => {
-        if (order.status !== OrderStatus.COMPLETED) return false;
-
-        const supplier = suppliers.find(s => s.id === order.supplierId);
-        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-
-        return paymentMethod === PaymentMethod.KALI;
-    });
-  }, [orders, suppliers]);
-
-  // Sync KALI To-Do list whenever orders or suppliers change
-  useEffect(() => {
-    if (isInitialized) {
-      dispatch({ type: 'SYNC_KALI_TODO' });
-    }
-  }, [orders, suppliers, isInitialized, dispatch]);
   
   // Listen for messages from the service worker (for notification actions)
   useEffect(() => {
     const handleServiceWorkerMessage = (event: MessageEvent) => {
         if (event.data && event.data.action) {
             switch (event.data.action) {
-                case 'CLOSE_PIP':
-                    setIsKaliPipOpen(false);
-                    break;
                 case 'SHOW_ALL':
                     dispatch({ type: 'SET_ACTIVE_STORE', payload: 'ALL' });
                     break;
@@ -139,84 +104,15 @@ const App: React.FC = () => {
 
     const params = new URLSearchParams(window.location.search);
     const action = params.get('action');
-    const text = params.get('text');
 
     if (action) {
-      if (action === 'kali-report') {
-        setIsKaliReportModalOpen(true);
-      } else if (action === 'paste-list' || action === 'add-card') {
-         setIsSelectStoreForShareModalOpen(true);
-         dispatch({ type: 'SET_INITIAL_ACTION', payload: action });
-      } else if (action === 'show_all') {
+      if (action === 'show_all') {
         dispatch({ type: 'SET_ACTIVE_STORE', payload: 'ALL' });
       }
-      window.history.replaceState({}, '', window.location.pathname);
-    } else if (text) { // From share_target
-      setSharedText(text);
-      setIsSelectStoreForShareModalOpen(true);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, [isInitialized, dispatch]);
 
-  const handleStoreSelectedForShare = (store: StoreName) => {
-    setIsSelectStoreForShareModalOpen(false);
-    dispatch({ type: 'SET_ACTIVE_STORE', payload: store });
-    if (sharedText) {
-      actions.pasteItemsForStore(sharedText, store);
-      setSharedText(null);
-    }
-    // The initialAction will be handled by OrderWorkspace once the store is active
-  };
-
-
-  useEffect(() => {
-    const hash = window.location.hash;
-    const queryString = hash.includes('?') ? hash.substring(hash.indexOf('?') + 1) : '';
-    const urlParams = new URLSearchParams(queryString);
-    const view = urlParams.get('view');
-    const storeParam = urlParams.get('store');
-
-    if (view === 'manager' && storeParam) {
-        const isValidStore = Object.values(StoreName).includes(storeParam as StoreName);
-        if (isValidStore) {
-            const managerStore = storeParam as StoreName;
-            dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: true, store: managerStore } });
-            dispatch({ type: 'SET_ACTIVE_STORE', payload: managerStore });
-            dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.ON_THE_WAY });
-
-            // Clean the URL hash so a refresh doesn't re-trigger this in a confusing way
-            const newUrl = window.location.pathname + window.location.search;
-            window.history.replaceState({}, '', newUrl);
-        }
-    }
-  }, [dispatch]);
-
-  const handleEnterManagerView = () => {
-    // FIX: Manager view must be for a specific store, not 'ALL' or 'Settings'.
-    if (activeStore !== 'Settings' && activeStore !== 'ALL') {
-        dispatch({ type: 'SET_MANAGER_VIEW', payload: { isManager: true, store: activeStore } });
-        dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.ON_THE_WAY });
-    }
-  };
-
-  const handleSendKaliUnifyReport = async (message: string) => {
-    setIsSendingReport(true);
-    try {
-        if (!settings.telegramBotToken) {
-            notify('Telegram Bot Token is not set in Options.', 'error');
-            return;
-        }
-
-        await sendKaliUnifyReport(message, settings.telegramBotToken);
-        notify('Kali Unify Report sent successfully!', 'success');
-        setIsKaliReportModalOpen(false);
-
-    } catch (error: any) {
-        notify(`Failed to send report: ${error.message}`, 'error');
-    } finally {
-        setIsSendingReport(false);
-    }
-  };
   
   const handleSendKaliZapReport = async () => {
     setIsSendingZapReport(true);
@@ -347,10 +243,6 @@ const App: React.FC = () => {
     );
   }
 
-  if (isManagerView) {
-    return <ManagerView />;
-  }
-
   return (
     <>
       <div 
@@ -359,7 +251,7 @@ const App: React.FC = () => {
       >
         <ToastContainer />
         
-        <main className="flex flex-col flex-grow p-4 md:p-6 lg:px-[10%] max-w-full mx-auto w-full">
+        <main className="flex flex-col flex-grow p-2 lg:px-[10%] max-w-full mx-auto w-full">
             <header className="flex-shrink-0 mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2 flex flex-col md:flex-row md:items-center md:justify-between md:flex-nowrap">
                 {/* Mobile Top Row Wrapper / Desktop 'Contents' to unwrap children into parent flex container */}
                 <div className="flex items-center justify-between w-full md:w-auto md:contents">
@@ -393,7 +285,11 @@ const App: React.FC = () => {
             </header>
 
             <div className="flex-grow flex flex-col">
-                {activeStore === 'Settings' ? <SettingsPage /> : <OrderWorkspace />}
+                {activeStore === 'Settings' ? (
+                    <SettingsPage /> 
+                ) : (
+                    <OrderWorkspace />
+                )}
             </div>
 
             {isDragging && (
@@ -441,25 +337,15 @@ const App: React.FC = () => {
               x={headerMenu.x}
               y={headerMenu.y}
               options={[
+                  { label: 'Kali Est', action: handleSendKaliZapReport },
                   { label: 'Quick Orders', action: () => setIsQuickOrderListModalOpen(true) },
-                  { label: 'KALI Report', action: () => setIsKaliReportModalOpen(true) },
-                  { label: 'Open To-Do PiP', action: () => setIsKaliPipOpen(true) },
                   { label: 'Settings', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' }) },
                   { label: 'Telegram Webhook', action: () => setIsTelegramWebhookModalOpen(true) },
               ]}
               onClose={() => setHeaderMenu(null)}
           />
       )}
-      <KaliReportModal isOpen={isKaliReportModalOpen} onClose={() => setIsKaliReportModalOpen(false)} onGenerate={handleSendKaliUnifyReport} isSending={isSendingReport} orders={completedKaliOrders} itemPrices={itemPrices} />
       <TelegramWebhookModal isOpen={isTelegramWebhookModalOpen} onClose={() => setIsTelegramWebhookModalOpen(false)} />
-      <PipWindow isOpen={isKaliPipOpen} onClose={() => setIsKaliPipOpen(false)} />
-      {isSelectStoreForShareModalOpen && (
-        <SelectStoreForShareModal
-          isOpen={isSelectStoreForShareModalOpen}
-          onClose={() => { setIsSelectStoreForShareModalOpen(false); setSharedText(null); dispatch({ type: 'CLEAR_INITIAL_ACTION' }); }}
-          onStoreSelect={handleStoreSelectedForShare}
-        />
-      )}
       <AddSupplierModal 
           isOpen={isChangeSupplierModalOpen} 
           onClose={() => { setChangeSupplierModalOpen(false); setOrderIdToChangeSupplier(null); }} 

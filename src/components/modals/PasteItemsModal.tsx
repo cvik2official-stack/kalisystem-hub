@@ -1,3 +1,4 @@
+
 import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import parseItemListWithGemini from '../../services/geminiService';
@@ -71,7 +72,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
     if (!text.trim()) return;
 
     // FIX: Refactored guard clauses for type safety. This prevents pasting into special views.
-    if (state.activeStore === 'Settings' || state.activeStore === 'KALI' || state.activeStore === 'ALL') {
+    if (state.activeStore === 'Settings' || state.activeStore === 'ALL' || state.activeStore === 'TODO') {
         notify(`Pasting items is not available for the "${state.activeStore}" view.`, 'info');
         return;
     }

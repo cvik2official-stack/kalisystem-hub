@@ -1,3 +1,6 @@
+
+
+
 import React, { useContext, useState, useMemo, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName } from '../types';
@@ -238,6 +241,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                   : i
           );
           await actions.updateOrder({ ...order, items: updatedItems });
+
+          // Persist the price for future orders
+          await actions.upsertItemPrice({
+              itemId: itemToUpdate.itemId,
+              supplierId: order.supplierId,
+              price: newUnitPrice,
+              unit: itemToUpdate.unit || Unit.PC
+          });
       } else {
           notify('Invalid price.', 'error');
       }
@@ -280,6 +291,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                     : i
             );
             await actions.updateOrder({ ...order, items: newItems });
+
+            // Update the master item's default quantity
+            const masterItem = state.items.find(i => i.id === selectedItem.itemId);
+            if (masterItem) {
+                await actions.updateItem({ ...masterItem, defaultQuantity: quantity });
+            }
         } finally {
             setIsProcessing(false);
             setNumpadOpen(false);
@@ -299,18 +316,20 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     const handleAddItemFromModal = async (item: Item) => {
         const existingItemIndex = order.items.findIndex(i => i.itemId === item.id && !i.isSpoiled);
         
+        const quantityToAdd = item.defaultQuantity || 1;
+
         let newItems;
         if (existingItemIndex > -1) {
             newItems = [...order.items];
             newItems[existingItemIndex] = {
                 ...newItems[existingItemIndex],
-                quantity: newItems[existingItemIndex].quantity + 1
+                quantity: newItems[existingItemIndex].quantity + quantityToAdd
             };
         } else {
             const newItem: OrderItem = {
                 itemId: item.id,
                 name: item.name,
-                quantity: 1,
+                quantity: quantityToAdd,
                 unit: item.unit,
                 isNew: order.status === OrderStatus.ON_THE_WAY,
             };
@@ -454,7 +473,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                 >
                     <div className="flex items-center gap-2 flex-grow min-w-0">
                         {!isEffectivelyCollapsed && (
-                            <button onClick={(e) => { e.stopPropagation(); handleHeaderActionsClick(e); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Order Actions">
+                            <button onClick={(e) => { e.stopPropagation(); handleHeaderActionsClick(e); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white flex-shrink-0" aria-label="Order Actions">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                             </button>
                         )}
@@ -489,7 +508,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                     onTouchStart={(e) => { e.stopPropagation(); handleTelegramPressStart(); }}
                                     onTouchEnd={(e) => { e.stopPropagation(); handleTelegramPressEnd(); }}
                                     disabled={!supplier?.chatId || isProcessing}
-                                    className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors duration-200 ${(order.isSent || !supplier?.chatId) ? 'bg-gray-600' : 'bg-blue-500'}`}
+                                    className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors duration-200 flex-shrink-0 ${(order.isSent || !supplier?.chatId) ? 'bg-gray-600' : 'bg-blue-500'}`}
                                     aria-label="Send to Telegram"
                                     title="Click: Send & Move | Long-press: Move & Copy"
                                 >
@@ -503,7 +522,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-600 hover:bg-gray-500 transition-colors"
+                                className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-600 hover:bg-gray-500 transition-colors flex-shrink-0"
                                 title="Open Telegram Chat"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
@@ -563,8 +582,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                             </span>
                                         )}
                                     </div>
-                                    <div className="flex items-center space-x-2 ml-2">
-                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-16 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
+                                    <div className="flex items-center space-x-1 ml-1 flex-shrink-0">
+                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-12 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
                                             {isStockMovement ? (
                                                 order.supplierName === SupplierName.STOCK ? (
                                                     <span className="font-semibold text-yellow-400 mr-1">out</span>
@@ -585,13 +604,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                                     if (e.key === 'Enter') e.currentTarget.blur();
                                                     if (e.key === 'Escape') setEditingPriceUniqueId(null);
                                                 }}
-                                                className={`bg-gray-700 font-mono rounded px-1 py-0.5 w-20 text-right ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'} outline-none`}
+                                                className={`bg-gray-700 font-mono rounded px-1 py-0.5 w-16 text-right ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'} outline-none`}
                                                 onClick={(e) => e.stopPropagation()}
                                             />
                                         ) : (
                                             <div 
                                                 onClick={() => setEditingPriceUniqueId(uniqueItemId)} 
-                                                className={`font-mono w-20 text-right p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
+                                                className={`font-mono w-16 text-right p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
                                             >
                                                 {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
                                             </div>

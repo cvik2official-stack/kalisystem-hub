@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Order, ItemPrice, StoreName, PaymentMethod } from '../../types';
@@ -113,7 +114,11 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             const ordersForDate = orders.filter(order => {
                 if (!order.completedAt) return false;
                 const completedDateKey = getPhnomPenhDateKey(order.completedAt);
-                return completedDateKey === row.dateKey;
+                if (completedDateKey !== row.dateKey) return false;
+                
+                const supplier = suppliers.find(s => s.id === order.supplierId);
+                const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
+                return paymentMethod === PaymentMethod.KALI;
             });
             
             const message = generateKaliUnifyReport(ordersForDate, itemPrices, previousDue, topUp, row.dateKey, row.dateKey);

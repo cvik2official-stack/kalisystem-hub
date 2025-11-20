@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -7,10 +8,10 @@ import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, Supp
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport, getPhnomPenhDateKey } from '../utils/messageFormatter';
-import DueReportModal from './modals/DueReportModal';
-import ReceiptModal from './modals/ReceiptModal';
 import ManagerReportView from './ManagerReportView';
 import PasteItemsModal from './modals/PasteItemsModal';
+import AddItemModal from './modals/AddItemModal';
+import QuickOrderListModal from './modals/QuickOrderListModal';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -28,22 +29,38 @@ const formatDateGroupHeader = (key: string): string => {
   return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
 };
 
-const InlineAddOrder: React.FC<{ onAddSupplier: () => void, onPasteList: () => void }> = ({ onAddSupplier, onPasteList }) => {
+const DispatchActions: React.FC<{ onAddSupplier: () => void, onPasteList: () => void, onGlobalAddItem: () => void, onQuickOrder: () => void }> = ({ onAddSupplier, onPasteList, onGlobalAddItem, onQuickOrder }) => {
     const { state } = useContext(AppContext);
     const { activeStore } = state;
 
-    if (activeStore === 'Settings' || activeStore === 'ALL') { return null; }
+    if (activeStore === 'Settings' || activeStore === 'ALL' || activeStore === 'TODO') { return null; }
 
     return (
-        <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[10rem] w-full max-w-sm">
-            <div className="flex flex-col items-center justify-center space-y-4 w-full">
-                <button onClick={onAddSupplier} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
-                    + Select Supplier
-                </button>
-                <span className="text-gray-500 text-xs">or</span>
-                <button onClick={onPasteList} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
-                    Paste a List
-                </button>
+        <div className="flex flex-col space-y-4 w-full max-w-sm">
+            <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[8rem]">
+                <div className="flex flex-col items-center justify-center space-y-4 w-full">
+                    <button onClick={onAddSupplier} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
+                        + Select Supplier
+                    </button>
+                    <span className="text-gray-500 text-xs">or</span>
+                    <button onClick={onPasteList} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
+                        Paste a List
+                    </button>
+                </div>
+            </div>
+            <div className="flex flex-col space-y-2">
+                 <button 
+                    onClick={onGlobalAddItem}
+                    className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg border border-gray-600 transition-colors uppercase tracking-wider text-sm"
+                 >
+                    + Add Item
+                 </button>
+                 <button 
+                    onClick={onQuickOrder}
+                    className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg border border-gray-600 transition-colors uppercase tracking-wider text-sm"
+                 >
+                    Quick Order
+                 </button>
             </div>
         </div>
     );
@@ -58,6 +75,8 @@ const OrderWorkspace: React.FC = () => {
   // ... (state definitions)
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
+  const [isGlobalAddItemModalOpen, setIsGlobalAddItemModalOpen] = useState(false);
+  const [isQuickOrderListModalOpen, setIsQuickOrderListModalOpen] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
@@ -67,10 +86,6 @@ const OrderWorkspace: React.FC = () => {
   const [showAllCompleted, setShowAllCompleted] = useState(false);
 
   const [headerContextMenu, setHeaderContextMenu] = useState<{ x: number, y: number, dateGroupKey: string } | null>(null);
-  const [isDueReportModalOpen, setIsDueReportModalOpen] = useState(false);
-  const [ordersForDueReport, setOrdersForDueReport] = useState<Order[]>([]);
-  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
-  const [ordersForReceipt, setOrdersForReceipt] = useState<Order[]>([]);
   const [dragOverColumn, setDragOverColumn] = useState<OrderStatus | null>(null);
   const [dragOverStatusTab, setDragOverStatusTab] = useState<OrderStatus | null>(null);
   const [dragOverDateGroup, setDragOverDateGroup] = useState<string | null>(null);
@@ -86,6 +101,8 @@ const OrderWorkspace: React.FC = () => {
               setIsPasteModalOpen(true);
           } else if (initialAction === 'add-card') {
               setSupplierSelectModalOpen(true);
+          } else if (initialAction === 'quick-order') {
+              setIsQuickOrderListModalOpen(true);
           }
           dispatch({ type: 'CLEAR_INITIAL_ACTION' });
       }
@@ -134,9 +151,19 @@ const OrderWorkspace: React.FC = () => {
   };
 
   const handleAddOrder = async (supplier: Supplier) => {
-    if (activeStore === 'Settings' || activeStore === 'ALL' || !activeStore) return;
+    if (activeStore === 'Settings' || activeStore === 'ALL' || activeStore === 'TODO' || !activeStore) return;
     await actions.addOrder(supplier, activeStore, [], OrderStatus.DISPATCHING);
     setSupplierSelectModalOpen(false);
+  };
+
+  const handleAddItemFromModal = async (item: any) => {
+      if (itemForNewOrder) {
+         await actions.addItemToDispatch(item);
+         setIsGlobalAddItemModalOpen(false);
+      } else {
+         await actions.addItemToDispatch(item);
+         setIsGlobalAddItemModalOpen(false);
+      }
   };
   
   const handleItemDropOnCard = async (destinationOrderId: string) => {
@@ -191,7 +218,7 @@ const OrderWorkspace: React.FC = () => {
 };
   
   const handleCreateOrderFromDrop = async (supplier: Supplier) => {
-    if (!itemForNewOrder || activeStore === 'Settings' || activeStore === 'ALL') return;
+    if (!itemForNewOrder || activeStore === 'Settings' || activeStore === 'ALL' || activeStore === 'TODO') return;
 
     const sourceOrder = orders.find(o => o.id === itemForNewOrder.sourceOrderId);
     if (sourceOrder) {
@@ -255,8 +282,11 @@ const OrderWorkspace: React.FC = () => {
           filtered = orders.filter(order => {
               const supplier = suppliers.find(s => s.id === order.supplierId);
               const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
-              return effectivePaymentMethod === PaymentMethod.KALI && order.status === status;
+              const isKali = order.supplierName === SupplierName.KALI || effectivePaymentMethod === PaymentMethod.KALI;
+              return isKali && order.status === status;
           });
+      } else if (activeStore === 'TODO') {
+          return [];
       } else {
           filtered = orders.filter(order => order.store === activeStore && order.status === status);
       }
@@ -329,39 +359,15 @@ const OrderWorkspace: React.FC = () => {
     });
   };
   
-  const handleGenerateDueReportForGroup = (dateGroupKey: string) => {
-    const ordersForGroup = groupedCompletedOrders[dateGroupKey] || [];
-    if (ordersForGroup.length === 0) {
-        notify(`No completed orders for ${formatDateGroupHeader(dateGroupKey)} to generate a report.`, 'info');
-        return;
-    }
-    setOrdersForDueReport(ordersForGroup);
-    setIsDueReportModalOpen(true);
-  };
-  
-  const handleGenerateReceiptForGroup = (dateGroupKey: string) => {
-    const ordersForGroup = groupedCompletedOrders[dateGroupKey] || [];
-     if (ordersForGroup.length === 0) {
-        notify(`No completed orders for ${formatDateGroupHeader(dateGroupKey)} to generate a receipt.`, 'info');
-        return;
-    }
-    setOrdersForReceipt(ordersForGroup);
-    setIsReceiptModalOpen(true);
-  };
-
   const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
     const options = [];
     
-    if (dateGroupKey === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings') {
+    if (dateGroupKey === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings' && activeStore !== 'TODO') {
         options.push(
             { label: 'New Card...', action: () => setSupplierSelectModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
         );
     }
-    
-    options.push({ label: 'Due Report...', action: () => handleGenerateDueReportForGroup(dateGroupKey) });
-    options.push({ label: 'Receipt...', action: () => handleGenerateReceiptForGroup(dateGroupKey) });
-
     return options;
   };
 
@@ -438,7 +444,12 @@ const OrderWorkspace: React.FC = () => {
               showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
           />
         ))}
-        <InlineAddOrder onAddSupplier={() => setSupplierSelectModalOpen(true)} onPasteList={() => setIsPasteModalOpen(true)} />
+        <DispatchActions 
+            onAddSupplier={() => setSupplierSelectModalOpen(true)} 
+            onPasteList={() => setIsPasteModalOpen(true)}
+            onGlobalAddItem={() => setIsGlobalAddItemModalOpen(true)}
+            onQuickOrder={() => setIsQuickOrderListModalOpen(true)}
+        />
       </>
     );
   };
@@ -465,7 +476,7 @@ const OrderWorkspace: React.FC = () => {
   };
   
   const renderCompletedColumn = () => {
-    if (completedViewMode === 'report' && (activeStore !== 'Settings' && activeStore !== 'ALL')) {
+    if (completedViewMode === 'report' && (activeStore !== 'Settings' && activeStore !== 'ALL' && activeStore !== 'TODO')) {
         const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
         return <ManagerReportView orders={todaysCompletedOrders} onItemDrop={handleItemDropOnCard} singleColumn="completed" />;
     }
@@ -555,9 +566,19 @@ const OrderWorkspace: React.FC = () => {
     const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
 
     return orders.filter(order => {
+        if (activeStore === 'TODO') return false;
+        if (activeStore === 'Settings') return false;
+
         // Fix: Respect activeStore filter in Smart View
-        if (activeStore !== 'ALL' && order.store !== activeStore) {
-            return false;
+        if (activeStore !== 'ALL') {
+             if (activeStore === StoreName.KALI) {
+                  const supplier = suppliers.find(s => s.id === order.supplierId);
+                  const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
+                  const isKali = order.supplierName === SupplierName.KALI || effectivePaymentMethod === PaymentMethod.KALI;
+                  if (!isKali) return false;
+             } else if (order.store !== activeStore) {
+                return false;
+            }
         }
 
         if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
@@ -569,7 +590,7 @@ const OrderWorkspace: React.FC = () => {
         }
         return false;
     });
-  }, [orders, activeStore]);
+  }, [orders, activeStore, suppliers]);
 
 
   if (isSmartView) {
@@ -587,10 +608,29 @@ const OrderWorkspace: React.FC = () => {
                         <div 
                             className="fixed top-0 left-0 h-full w-[15vw] z-20"
                             onDragEnter={() => setMobileSmartViewPage(p => Math.max(0, p - 1))}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                // Drop on left zone: attempt to move order to the previous status column
+                                // If we navigated to it, use current view. If not, use implied view.
+                                const targetIndex = mobileSmartViewPage; // The view should have updated onDragEnter
+                                if (targetIndex >= 0 && targetIndex < STATUS_TABS.length) {
+                                    handleDropOnStatus(STATUS_TABS[targetIndex].id);
+                                }
+                            }}
                         />
                         <div 
                             className="fixed top-0 right-0 h-full w-[15vw] z-20"
                             onDragEnter={() => setMobileSmartViewPage(p => Math.min(2, p + 1))}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                                e.preventDefault();
+                                // Drop on right zone: attempt to move order to the next status column
+                                const targetIndex = mobileSmartViewPage; // The view should have updated onDragEnter
+                                if (targetIndex >= 0 && targetIndex < STATUS_TABS.length) {
+                                    handleDropOnStatus(STATUS_TABS[targetIndex].id);
+                                }
+                            }}
                         />
                     </>
                 )}
@@ -609,7 +649,7 @@ const OrderWorkspace: React.FC = () => {
                                     singleColumn={tab.id === OrderStatus.DISPATCHING ? 'dispatch' : tab.id}
                                     onItemDrop={handleItemDropOnCard}
                                     hideTitle={false} // Show titles like "Dispatch" inside the column
-                                    showStoreName={activeStore === 'ALL'}
+                                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
                                 />
                             </div>
                         </div>
@@ -620,7 +660,7 @@ const OrderWorkspace: React.FC = () => {
     }
     // Desktop / Landscape Smart View
     return (
-        <div className="flex-grow pt-4 h-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-10 lg:gap-16">
+        <div className="flex-grow pt-2 h-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8">
             <div 
                 onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}}
                 onDragLeave={() => setDragOverColumn(null)}
@@ -631,7 +671,7 @@ const OrderWorkspace: React.FC = () => {
                     orders={smartViewOrders} 
                     singleColumn="dispatch"
                     onItemDrop={handleItemDropOnCard}
-                    showStoreName={activeStore === 'ALL'}
+                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
                 />
             </div>
              <div 
@@ -644,7 +684,7 @@ const OrderWorkspace: React.FC = () => {
                     orders={smartViewOrders} 
                     singleColumn="on_the_way"
                     onItemDrop={handleItemDropOnCard}
-                    showStoreName={activeStore === 'ALL'}
+                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
                 />
             </div>
              <div 
@@ -657,7 +697,7 @@ const OrderWorkspace: React.FC = () => {
                     orders={smartViewOrders} 
                     singleColumn="completed"
                     onItemDrop={handleItemDropOnCard}
-                    showStoreName={activeStore === 'ALL'}
+                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
                 />
             </div>
         </div>
@@ -668,7 +708,7 @@ const OrderWorkspace: React.FC = () => {
 
   if (columnCount === 1) {
     return (
-      <div className="flex-grow pt-4 flex flex-col">
+      <div className="flex-grow pt-2 flex flex-col">
         <nav className="-mb-px flex space-x-6 px-3">
           {STATUS_TABS.map((tab) => (
             <button
@@ -690,12 +730,12 @@ const OrderWorkspace: React.FC = () => {
           ))}
         </nav>
         <div
-          className="flex-grow overflow-y-auto pt-4 space-y-4 hide-scrollbar px-1"
+          className="flex-grow overflow-y-auto pt-2 space-y-2 hide-scrollbar px-1"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
           onTouchEnd={handleTouchEnd}
         >
-          {activeStore === 'ALL' && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
+          {(activeStore === 'ALL') && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
           {renderStatusContent(activeStatus)}
         </div>
       </div>
@@ -705,7 +745,7 @@ const OrderWorkspace: React.FC = () => {
   // Multi-column view
   return (
     <>
-      <div className={`flex-grow pt-4 grid gap-4 grid-cols-1 md:grid-cols-3`}>
+      <div className={`flex-grow pt-2 grid gap-8 grid-cols-1 md:grid-cols-3`}>
         {STATUS_TABS.map(tab => (
             <div 
               key={tab.id} 
@@ -717,8 +757,8 @@ const OrderWorkspace: React.FC = () => {
                 <h2 className="text-lg font-semibold text-white px-1 cursor-pointer" onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}>
                     {tab.label}
                 </h2>
-                <div className="flex-grow overflow-y-auto space-y-4 hide-scrollbar pr-2 -mr-2">
-                    {activeStore === 'ALL' && tab.id === OrderStatus.DISPATCHING && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
+                <div className="flex-grow overflow-y-auto space-y-2 hide-scrollbar pr-2 -mr-2">
+                    {(activeStore === 'ALL') && tab.id === OrderStatus.DISPATCHING && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
                     {renderStatusContent(tab.id)}
                 </div>
             </div>
@@ -736,9 +776,9 @@ const OrderWorkspace: React.FC = () => {
         title={itemForNewOrder ? "Create New Order For..." : (orderToChange ? "Change Supplier To..." : "Select Supplier")}
       />
       <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setIsPasteModalOpen(false)} />
+      <AddItemModal isOpen={isGlobalAddItemModalOpen} onClose={() => setIsGlobalAddItemModalOpen(false)} onItemSelect={handleAddItemFromModal} />
+      <QuickOrderListModal isOpen={isQuickOrderListModalOpen} onClose={() => setIsQuickOrderListModalOpen(false)} />
       {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
-      <DueReportModal isOpen={isDueReportModalOpen} onClose={() => setIsDueReportModalOpen(false)} orders={ordersForDueReport} />
-      <ReceiptModal isOpen={isReceiptModalOpen} onClose={() => setIsReceiptModalOpen(false)} orders={ordersForReceipt} />
     </>
   );
 };

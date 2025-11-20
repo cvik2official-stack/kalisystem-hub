@@ -1,46 +1,15 @@
 
-import React, { useContext, useRef, useState } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Store, StoreName } from '../types';
-import { useNotifier } from '../context/NotificationContext';
 
 const StoreTabs: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
   const { stores, activeStore, draggedOrderId, orders } = state;
-  const { notify } = useNotifier();
-  const longPressTimer = useRef<number | null>(null);
   const [dragOverStore, setDragOverStore] = useState<StoreName | 'ALL' | null>(null);
 
   const handleClick = (tabName: StoreName | 'ALL') => {
-    // Prevent long-press action on a normal click
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
     dispatch({ type: 'SET_ACTIVE_STORE', payload: tabName });
-  };
-
-  const copyManagerUrl = (storeName: StoreName) => {
-    const url = `${window.location.origin}${window.location.pathname}#/?view=manager&store=${storeName}`;
-    navigator.clipboard.writeText(url).then(() => {
-        notify(`Manager URL for ${storeName} copied!`, 'success');
-    }).catch(err => {
-        notify(`Failed to copy URL: ${err}`, 'error');
-    });
-  };
-
-  const handlePressStart = (storeName: StoreName) => {
-    // Clear any existing timer to avoid conflicts
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    
-    longPressTimer.current = window.setTimeout(() => {
-        copyManagerUrl(storeName);
-    }, 500); // 500ms for a long press
-  };
-
-  const handlePressEnd = () => {
-    if (longPressTimer.current) {
-      clearTimeout(longPressTimer.current);
-    }
   };
 
   // Create a comprehensive list of all stores from the enum.
@@ -101,11 +70,6 @@ const StoreTabs: React.FC = () => {
           <button
             key={name}
             onClick={() => handleClick(name)}
-            onMouseDown={() => handlePressStart(name)}
-            onMouseUp={handlePressEnd}
-            onMouseLeave={handlePressEnd}
-            onTouchStart={() => handlePressStart(name)}
-            onTouchEnd={handlePressEnd}
             onDragOver={(e) => handleDragOver(e, name)}
             onDragLeave={() => setDragOverStore(null)}
             onDrop={(e) => handleDrop(e, name)}

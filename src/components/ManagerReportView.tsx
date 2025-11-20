@@ -1,6 +1,8 @@
 
+
+
 import React, { useContext, useMemo, useState, useRef, useEffect } from 'react';
-import { Order, StoreName, OrderItem, Unit, PaymentMethod, OrderStatus, SupplierName, Supplier, Item } from '../types';
+import { Order, StoreName, OrderItem, Unit, PaymentMethod, OrderStatus, SupplierName, Supplier, Item, ItemPrice } from '../types';
 import { AppContext } from '../context/AppContext';
 import { getLatestItemPrice, generateOrderMessage, getPhnomPenhDateKey } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
@@ -184,6 +186,14 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         const newUnitPrice = newTotalPrice / itemToUpdate.quantity;
         const updatedItems = order.items.map(i => (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, price: newUnitPrice } : i);
         await actions.updateOrder({ ...order, items: updatedItems });
+
+        // Persist the price for future orders
+        await actions.upsertItemPrice({
+            itemId: itemToUpdate.itemId,
+            supplierId: order.supplierId,
+            price: newUnitPrice,
+            unit: itemToUpdate.unit || Unit.PC
+        });
       } else {
         notify('Invalid price.', 'error');
       }
@@ -214,6 +224,13 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         const { order, item } = numpadItem;
         const newItems = order.items.map(i => (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) ? { ...i, quantity, unit: unit || i.unit } : i);
         await actions.updateOrder({ ...order, items: newItems });
+
+        // Update the master item's default quantity
+        const masterItem = state.items.find(i => i.id === item.itemId);
+        if (masterItem) {
+            await actions.updateItem({ ...masterItem, defaultQuantity: quantity });
+        }
+
         setNumpadItem(null);
     };
 
@@ -242,18 +259,20 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         
         const existingItemIndex = orderForAddItem.items.findIndex(i => i.itemId === item.id && !i.isSpoiled);
         
+        const quantityToAdd = item.defaultQuantity || 1;
+
         let newItems;
         if (existingItemIndex > -1) {
             newItems = [...orderForAddItem.items];
             newItems[existingItemIndex] = {
                 ...newItems[existingItemIndex],
-                quantity: newItems[existingItemIndex].quantity + 1
+                quantity: newItems[existingItemIndex].quantity + quantityToAdd
             };
         } else {
             const newItem: OrderItem = {
                 itemId: item.id,
                 name: item.name,
-                quantity: 1,
+                quantity: quantityToAdd,
                 unit: item.unit,
                 isNew: orderForAddItem.status === OrderStatus.ON_THE_WAY,
             };
@@ -264,7 +283,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     };
 
     const handleAddSupplier = async (supplier: Supplier) => {
-        if (state.activeStore === 'Settings' || state.activeStore === 'ALL' || !state.activeStore) return;
+        if (state.activeStore === 'Settings' || state.activeStore === 'ALL' || state.activeStore === 'TODO' || !state.activeStore) return;
         await actions.addOrder(supplier, state.activeStore, [], OrderStatus.DISPATCHING);
         setIsAddSupplierModalOpen(false);
     };
@@ -295,7 +314,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                 );
 
                 const itemQuantityContent = (
-                     <span className="text-right w-16 cursor-pointer hover:bg-gray-700 p-1 -m-1 rounded-md" onClick={() => handleQuantityClick(order, item)}>
+                     <span className="text-right w-12 cursor-pointer hover:bg-gray-700 p-1 -m-1 rounded-md" onClick={() => handleQuantityClick(order, item)}>
                         {item.quantity}{item.unit}
                     </span>
                 );
@@ -308,10 +327,10 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                         autoFocus 
                         onBlur={(e) => handleSaveInlinePrice(order, item, e.target.value)} 
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} 
-                        className={`bg-gray-700 p-0 w-20 text-right rounded outline-none font-mono ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
+                        className={`bg-gray-700 p-0 w-16 text-right rounded outline-none font-mono ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
                     />
                 ) : (
-                    <span onClick={() => setEditingPriceId(uniqueItemId)} className={`font-mono text-right w-20 cursor-pointer hover:bg-gray-700 p-1 -m-1 rounded-md ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}>
+                    <span onClick={() => setEditingPriceId(uniqueItemId)} className={`font-mono text-right w-16 cursor-pointer hover:bg-gray-700 p-1 -m-1 rounded-md ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}>
                         {totalPrice > 0 ? totalPrice.toFixed(2) : '-'}
                     </span>
                 );
@@ -319,7 +338,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                 return (
                     <li key={uniqueItemId} className="flex items-center group py-0.5" draggable={!isEditingName && !isEditingPrice} onDragStart={(e) => handleItemDragStart(e, item, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ITEM', payload: null })}>
                         <div className="flex-grow truncate pr-2">{itemNameContent}</div>
-                        <div className="flex items-center space-x-2 ml-2 flex-shrink-0">
+                        <div className="flex items-center space-x-1 ml-1 flex-shrink-0">
                             {isStockMovement ? (
                                 order.supplierName === SupplierName.STOCK ? (
                                     <span className="font-semibold text-yellow-400">out</span>
@@ -327,8 +346,8 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                                     <span className="font-semibold text-green-400">in</span>
                                 )
                             ) : null}
-                            <div className="w-16 text-right">{itemQuantityContent}</div>
-                            <div className="w-20 text-right">{itemPriceContent}</div>
+                            <div className="w-12 text-right">{itemQuantityContent}</div>
+                            <div className="w-16 text-right">{itemPriceContent}</div>
                         </div>
                     </li>
                 );
@@ -379,16 +398,16 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         return (
              <div key={order.id} draggable={!editingNameId && !editingPriceId} onDragStart={(e) => handleCardDragStart(e, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null })} onDragOver={(e) => { if(draggedItem) e.preventDefault(); }} onDrop={(e) => handleDropOnSupplier(e, order.id)} className={`py-1 ${(!editingNameId && !editingPriceId) ? 'cursor-grab active:cursor-grabbing' : ''} ${isDraggingThis ? 'opacity-50' : ''}`}>
                 <div onClick={() => toggleSupplier(order.id)} className="flex items-center justify-between text-xs font-bold uppercase space-x-2 cursor-pointer">
-                    <div className="flex items-center space-x-2 overflow-hidden">
+                    <div className="flex items-center space-x-2 overflow-hidden flex-grow min-w-0">
                         {showStoreNameProp && <span className="font-semibold text-gray-500 whitespace-nowrap">{order.store}</span>}
-                        <span className={`whitespace-nowrap ${isKaliOrder ? 'text-purple-300' : 'text-gray-300'}`}>{order.supplierName}</span>
+                        <span className={`whitespace-nowrap truncate ${isKaliOrder ? 'text-purple-300' : 'text-gray-300'}`}>{order.supplierName}</span>
                         <button 
                             onClick={(e) => { e.stopPropagation(); setPaymentModalOrder(order); }}
-                            className={`font-semibold whitespace-nowrap hover:underline ${paymentColorClass}`}
+                            className={`font-semibold whitespace-nowrap hover:underline flex-shrink-0 ${paymentColorClass}`}
                         >
                             {paymentMethod || 'PAYMENT'}
                         </button>
-                        {singleColumn !== 'dispatch' && cardTotal > 0 && <span className={`whitespace-nowrap ${paymentColorClass}`}>{cardTotal.toFixed(2)}</span>}
+                        {singleColumn !== 'dispatch' && cardTotal > 0 && <span className={`whitespace-nowrap flex-shrink-0 ${paymentColorClass}`}>{cardTotal.toFixed(2)}</span>}
                     </div>
                     {canSendTelegram && (
                         <button onClick={(e) => {e.stopPropagation(); handleSendToTelegram(order);}} className="text-blue-400 hover:text-white p-1 flex-shrink-0" title="Send to Telegram">
@@ -407,21 +426,11 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             {!hideTitle && (
                 <h2 className="capitalize text-lg font-semibold px-1 py-2 flex items-center space-x-2 text-white">
                     <span>{title}</span>
-                    {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
-                        <div className="flex items-center space-x-1">
-                             <button onClick={() => setIsAddSupplierModalOpen(true)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="New Card">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
-                             </button>
-                             <button onClick={() => setIsPasteItemsModalOpen(true)} className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white" title="Paste List">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
-                             </button>
-                        </div>
-                    )}
                 </h2>
             )}
             
             <div className="space-y-1 flex-grow pr-2 -mr-2 overflow-y-auto hide-scrollbar">
-                {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
+                {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && state.activeStore !== 'TODO' && (
                     <div className="space-y-2 p-2 bg-gray-900/50 rounded-md mb-2">
                         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">{state.activeStore}</h4>
                         <div className="flex flex-col items-center justify-center space-y-2 w-full">

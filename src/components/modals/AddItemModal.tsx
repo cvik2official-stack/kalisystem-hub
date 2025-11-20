@@ -7,7 +7,7 @@ interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   onItemSelect: (item: Item) => void;
-  order: Order;
+  order?: Order;
 }
 
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSelect, order }) => {
@@ -17,9 +17,13 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
   const [isCreating, setIsCreating] = useState(false);
 
   const filteredItems = useMemo(() => {
-    const itemsInOrder = new Set(order.items.map(i => i.itemId));
-    // Filter items specifically for this supplier
-    const availableItems = state.items.filter(i => !itemsInOrder.has(i.id) && i.supplierId === order.supplierId);
+    let availableItems = state.items;
+
+    if (order) {
+        const itemsInOrder = new Set(order.items.map(i => i.itemId));
+        // Filter items specifically for this supplier
+        availableItems = state.items.filter(i => !itemsInOrder.has(i.id) && i.supplierId === order.supplierId);
+    }
 
     const searchFiltered = !search
       ? availableItems
@@ -28,7 +32,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
         );
         
     return searchFiltered.sort((a, b) => a.name.localeCompare(b.name));
-  }, [search, state.items, order.items, order.supplierId]);
+  }, [search, state.items, order]);
 
   const handleItemClick = (item: Item) => {
     onItemSelect(item);
@@ -42,10 +46,15 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
 
     setIsCreating(true);
     try {
-        const supplier = state.suppliers.find(s => s.id === order.supplierId);
+        const supplierId = order?.supplierId;
+        const supplier = supplierId ? state.suppliers.find(s => s.id === supplierId) : null;
+
         if (!supplier) {
-            notify('Could not find the supplier for this order.', 'error');
-            return;
+            // If global add, searching "ItemName" implies we might want to select a supplier or assume one?
+            // Usually Global Add Item is: User selects an item, then AppContext decides where it goes (add to existing dispatch order or create new one).
+            // If it's a new item creation, we need a supplier.
+             notify('Cannot create new items without a specific order context.', 'error');
+             return;
         }
 
         const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase() && i.supplierId === supplier.id);
@@ -94,9 +103,11 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
     <>
       <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
         <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md border-t-4 ${
-            order.status === OrderStatus.DISPATCHING ? 'border-blue-500' :
-            order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' :
-            'border-green-500'
+            order ? (
+                order.status === OrderStatus.DISPATCHING ? 'border-blue-500' :
+                order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' :
+                'border-green-500'
+            ) : 'border-gray-500'
         }`} onClick={(e) => e.stopPropagation()}>
           <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -104,7 +115,11 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
               </svg>
           </button>
           <h2 className="text-xl font-bold text-white mb-4">
-            Add Item to <span className="font-mono font-semibold tracking-wider">{order.supplierName}</span>
+            {order ? (
+                <>Add Item to <span className="font-mono font-semibold tracking-wider">{order.supplierName}</span></>
+            ) : (
+                <>Add Item</>
+            )}
           </h2>
           
           <div className="relative">
@@ -147,7 +162,10 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
               ) : (
                 filteredItems.map(item => (
                   <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none flex justify-between items-center group">
-                      <p className="text-gray-300 group-hover:text-white">{item.name}</p>
+                      <div className="flex flex-col">
+                        <p className="text-gray-300 group-hover:text-white">{item.name}</p>
+                        {!order && <span className="text-xs text-gray-500 group-hover:text-gray-300">{item.supplierName}</span>}
+                      </div>
                       <span className="text-gray-500 text-xs group-hover:text-gray-300">{item.unit}</span>
                   </button>
                 ))

@@ -1,3 +1,5 @@
+
+
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -21,7 +23,6 @@ export enum PaymentMethod {
   MISHA = 'misha',
 }
 
-// FIX: Define SyncStatus here to be the single source of truth.
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
 export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'due-report';
 
@@ -42,6 +43,7 @@ export interface Item {
   createdAt?: string;
   modifiedAt?: string;
   stockQuantity?: number;
+  defaultQuantity?: number;
 }
 
 export interface SupplierBotSettings {
@@ -119,7 +121,6 @@ export interface ItemPrice {
     price: number;
     unit: Unit;
     createdAt?: string;
-    // FIX: Add isMaster property to align with database schema.
     isMaster?: boolean;
 }
 
@@ -153,21 +154,28 @@ export interface AppSettings {
     messageTemplates?: { [key: string]: string; };
 }
 
-export interface KaliTodoItem extends OrderItem {
-  uniqueId: string;
-  originalOrderId: string;
-  ticked: boolean;
+export interface KaliTodoItem {
+    uniqueId: string;
+    originalOrderId: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    ticked: boolean;
 }
 
 export interface KaliTodoSection {
-  id: string;
-  title: string;
-  items: KaliTodoItem[];
+    id: string;
+    title: string;
+    items: KaliTodoItem[];
+}
+
+export interface KaliTodoState {
+    sections: KaliTodoSection[];
 }
 
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings' | 'ALL';
+  activeStore: StoreName | 'Settings' | 'ALL' | 'TODO';
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
@@ -182,16 +190,13 @@ export interface AppState {
   isLoading: boolean;
   isInitialized: boolean;
   syncStatus: SyncStatus;
-  isManagerView: boolean;
   isSmartView: boolean;
-  managerStoreFilter: StoreName | null;
   isDualPaneMode: boolean;
   cardWidth: number | null;
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
   initialAction: string | null;
-  kaliTodoState: {
-    sections: KaliTodoSection[];
-  };
+  managerStoreFilter: StoreName | null;
+  kaliTodoState: KaliTodoState;
 }

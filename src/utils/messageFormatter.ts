@@ -1,3 +1,4 @@
+
 import { Order, OrderItem, ItemPrice, Supplier, Store, AppSettings, StoreName, PaymentMethod, SupplierName, Unit } from '../types';
 
 // Timezone offset for Asia/Phnom_Penh (UTC+7) in minutes
@@ -6,21 +7,22 @@ const PHNOM_PENH_OFFSET = 7 * 60;
 const BUSINESS_DAY_START_HOUR = 6;
 
 // Helper to get a Date object adjusted for Phnom Penh timezone
-// The resulting Date object, when methods like .getUTCHours() or .toISOString() are used,
-// reflects the wall-clock time in Phnom Penh.
+// The resulting Date object's UTC components match the Phnom Penh wall clock time.
 export const getPhnomPenhDate = (date?: Date | string): Date => {
     const d = date ? new Date(date) : new Date();
-    // Get the time in UTC milliseconds
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    // Return a new Date object for Phnom Penh time
-    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
+    // Start with the absolute UTC timestamp
+    const utc = d.getTime();
+    // Add 7 hours (in milliseconds) to shift to Phnom Penh time
+    const shifted = utc + (PHNOM_PENH_OFFSET * 60 * 1000);
+    return new Date(shifted);
 };
 
 // Helper to get the YYYY-MM-DD key for a given date, adjusted for Phnom Penh timezone AND business day offset
 // Any time before 6:00 AM belongs to the PREVIOUS date.
 export const getPhnomPenhDateKey = (date?: Date | string): string => {
     const ppDate = getPhnomPenhDate(date);
-    ppDate.setHours(ppDate.getHours() - BUSINESS_DAY_START_HOUR);
+    // Subtract business day start hour using UTC methods (since ppDate is shifted UTC)
+    ppDate.setUTCHours(ppDate.getUTCHours() - BUSINESS_DAY_START_HOUR);
     return ppDate.toISOString().split('T')[0];
 };
 

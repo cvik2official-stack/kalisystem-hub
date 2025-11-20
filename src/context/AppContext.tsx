@@ -1,6 +1,8 @@
 
+
+
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, KaliTodoSection, KaliTodoItem } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, KaliTodoState, KaliTodoSection, KaliTodoItem } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
@@ -24,7 +26,7 @@ const normalizeUnit = (unit?: string): Unit | undefined => {
 
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings' | 'ALL';
+  activeStore: StoreName | 'Settings' | 'ALL' | 'TODO';
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
@@ -39,18 +41,15 @@ export interface AppState {
   isLoading: boolean;
   isInitialized: boolean;
   syncStatus: SyncStatus;
-  isManagerView: boolean;
   isSmartView: boolean;
-  managerStoreFilter: StoreName | null;
   isDualPaneMode: boolean;
   cardWidth: number | null;
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
   initialAction: string | null;
-  kaliTodoState: {
-    sections: KaliTodoSection[];
-  };
+  managerStoreFilter: StoreName | null;
+  kaliTodoState: KaliTodoState;
 }
 
 export type Action =
@@ -73,7 +72,6 @@ export type Action =
   | { type: '_SET_SYNC_STATUS'; payload: SyncStatus }
   | { type: '_MERGE_DATABASE'; payload: { items: Item[], suppliers: Supplier[], orders: Order[], stores: Store[], itemPrices: ItemPrice[], dueReportTopUps: DueReportTopUp[], quickOrders: QuickOrder[] } }
   | { type: 'INITIALIZATION_COMPLETE' }
-  | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
   | { type: 'UPSERT_ITEM_PRICE'; payload: ItemPrice }
   | { type: 'TOGGLE_DUAL_PANE_MODE' }
   | { type: 'CYCLE_COLUMN_COUNT' }
@@ -88,10 +86,10 @@ export type Action =
   | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] }
   | { type: 'ADD_QUICK_ORDER'; payload: QuickOrder }
   | { type: 'DELETE_QUICK_ORDER'; payload: string }
-  | { type: 'SYNC_KALI_TODO' }
+  | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
   | { type: 'TICK_KALI_TODO_ITEM'; payload: { uniqueId: string } }
-  | { type: 'MOVE_KALI_TODO_ITEM'; payload: { item: KaliTodoItem, sourceSectionId: string, destinationSectionId: string } }
-  | { type: 'ADD_KALI_TODO_SECTION'; payload: { title: string } };
+  | { type: 'ADD_KALI_TODO_SECTION'; payload: { title: string } }
+  | { type: 'MOVE_KALI_TODO_ITEM'; payload: { destinationSectionId: string; item: KaliTodoItem; sourceSectionId: string } };
 
 
 export interface AppContextActions {
@@ -251,13 +249,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case 'INITIALIZATION_COMPLETE':
       return { ...state, isInitialized: true };
-    case 'SET_MANAGER_VIEW':
-        return {
-            ...state,
-            isManagerView: action.payload.isManager,
-            managerStoreFilter: action.payload.store,
-            isSmartView: false, // Exit smart view when entering manager view
-        };
     case 'SET_SMART_VIEW':
         return {
             ...state,
@@ -303,75 +294,36 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, quickOrders: [...state.quickOrders, action.payload] };
     case 'DELETE_QUICK_ORDER':
         return { ...state, quickOrders: state.quickOrders.filter(q => q.id !== action.payload) };
-    case 'SYNC_KALI_TODO': {
-      const { orders, suppliers, kaliTodoState } = state;
-      const onTheWayKaliOrders = orders.filter(order => {
-        if (order.status !== OrderStatus.ON_THE_WAY) return false;
-        const supplier = suppliers.find(s => s.id === order.supplierId);
-        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-        return paymentMethod === PaymentMethod.KALI;
-      });
-
-      const allCurrentTodoItems = new Map(kaliTodoState.sections.flatMap(s => s.items).map(i => [i.uniqueId, i]));
-      const onTheWayItemIds = new Set<string>();
-
-      const newItems: KaliTodoItem[] = [];
-      onTheWayKaliOrders.forEach(order => {
-        order.items.forEach(item => {
-          const uniqueId = `${order.id}-${item.itemId}-${item.isSpoiled ? 's' : 'c'}`;
-          onTheWayItemIds.add(uniqueId);
-          if (!allCurrentTodoItems.has(uniqueId)) {
-            newItems.push({
-              ...item,
-              uniqueId,
-              originalOrderId: order.id,
-              ticked: false,
-            });
-          }
-        });
-      });
-
-      const updatedSections = kaliTodoState.sections.map(section => ({
-        ...section,
-        items: section.items.filter(item => onTheWayItemIds.has(item.uniqueId)),
-      }));
-
-      const uncategorizedSection = updatedSections.find(s => s.id === 'uncategorized');
-      if (uncategorizedSection) {
-        uncategorizedSection.items.push(...newItems);
-      } else {
-        updatedSections.push({ id: 'uncategorized', title: 'Uncategorized', items: newItems });
-      }
-
-      return { ...state, kaliTodoState: { sections: updatedSections } };
-    }
+    case 'SET_MANAGER_VIEW':
+        return { ...state, managerStoreFilter: action.payload.store };
     case 'TICK_KALI_TODO_ITEM': {
-      const { uniqueId } = action.payload;
-      const newSections = state.kaliTodoState.sections.map(section => ({
-        ...section,
-        items: section.items.map(item =>
-          item.uniqueId === uniqueId ? { ...item, ticked: !item.ticked } : item
-        ),
-      }));
-      return { ...state, kaliTodoState: { sections: newSections } };
-    }
-    case 'MOVE_KALI_TODO_ITEM': {
-      const { item, sourceSectionId, destinationSectionId } = action.payload;
-      const newSections = state.kaliTodoState.sections.map(section => {
-        if (section.id === sourceSectionId) {
-          return { ...section, items: section.items.filter(i => i.uniqueId !== item.uniqueId) };
-        }
-        if (section.id === destinationSectionId) {
-          return { ...section, items: [...section.items, item] };
-        }
-        return section;
-      });
-      return { ...state, kaliTodoState: { sections: newSections } };
+        const { uniqueId } = action.payload;
+        const newSections = state.kaliTodoState.sections.map(section => ({
+            ...section,
+            items: section.items.map(item => item.uniqueId === uniqueId ? { ...item, ticked: !item.ticked } : item)
+        }));
+        return { ...state, kaliTodoState: { ...state.kaliTodoState, sections: newSections } };
     }
     case 'ADD_KALI_TODO_SECTION': {
-      const { title } = action.payload;
-      const newSection: KaliTodoSection = { id: Date.now().toString(), title, items: [] };
-      return { ...state, kaliTodoState: { sections: [...state.kaliTodoState.sections, newSection] } };
+        const newSection: KaliTodoSection = {
+            id: `section_${Date.now()}`,
+            title: action.payload.title,
+            items: []
+        };
+        return { ...state, kaliTodoState: { ...state.kaliTodoState, sections: [...state.kaliTodoState.sections, newSection] } };
+    }
+    case 'MOVE_KALI_TODO_ITEM': {
+        const { item, sourceSectionId, destinationSectionId } = action.payload;
+        const newSections = state.kaliTodoState.sections.map(section => {
+            if (section.id === sourceSectionId) {
+                return { ...section, items: section.items.filter(i => i.uniqueId !== item.uniqueId) };
+            }
+            if (section.id === destinationSectionId) {
+                return { ...section, items: [...section.items, item] };
+            }
+            return section;
+        });
+        return { ...state, kaliTodoState: { ...state.kaliTodoState, sections: newSections } };
     }
     default:
       return state;
@@ -444,26 +396,22 @@ const getInitialState = (): AppState => {
     isLoading: false,
     isInitialized: false,
     syncStatus: 'idle',
-    isManagerView: false,
     isSmartView: false,
-    managerStoreFilter: null,
     isDualPaneMode: false,
     draggedOrderId: null,
     draggedItem: null,
     cardWidth: null,
     columnCount: 3,
     initialAction: null,
-    kaliTodoState: {
-        sections: [{ id: 'uncategorized', title: 'Uncategorized', items: [] }],
-    },
+    managerStoreFilter: null,
+    kaliTodoState: { sections: [] },
   };
 
   const finalState = { ...initialState, ...loadedState };
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
   if ((finalState as any).quickOrders === undefined) finalState.quickOrders = [];
-  // Initialize kaliTodoState if not present in loaded state
-  finalState.kaliTodoState = loadedState.kaliTodoState || initialState.kaliTodoState;
-  // Remove legacy properties that are now managed differently
+  
+  // Remove legacy properties
   if ((finalState as any).dueReportTopUps) delete (finalState as any).dueReportTopUps;
   if ((finalState as any).notifications) delete (finalState as any).notifications;
 
@@ -713,6 +661,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             o.supplierId === item.supplierId && 
             o.status === OrderStatus.DISPATCHING
         );
+        
+        const quantityToAdd = item.defaultQuantity || 1;
     
         if (existingOrder) {
             const itemInOrderIndex = existingOrder.items.findIndex(i => i.itemId === item.id);
@@ -720,14 +670,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const updatedItems = [...existingOrder.items];
                 updatedItems[itemInOrderIndex] = {
                     ...updatedItems[itemInOrderIndex],
-                    quantity: updatedItems[itemInOrderIndex].quantity + 1
+                    quantity: updatedItems[itemInOrderIndex].quantity + quantityToAdd
                 };
                 await actions.updateOrder({ ...existingOrder, items: updatedItems });
                 notify(`Incremented "${item.name}" in existing order.`, 'success');
                 return;
             }
             
-            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
+            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: quantityToAdd, unit: item.unit };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
             notify(`Added "${item.name}" to existing order.`, 'success');
@@ -737,7 +687,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 notify(`Supplier for "${item.name}" not found.`, 'error');
                 return;
             }
-            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
+            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: quantityToAdd, unit: item.unit };
             await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
         }
     },

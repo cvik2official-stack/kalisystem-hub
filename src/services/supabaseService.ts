@@ -1,3 +1,4 @@
+
 /*
   NOTE FOR DATABASE SETUP:
   This service now supports an 'invoice_amount' for orders and 'bot_settings' for suppliers.
@@ -40,6 +41,9 @@
   -- Add a numeric column for stock quantity on items
   ALTER TABLE public.items ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC;
   
+  -- Add a numeric column for default order quantity on items
+  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS default_quantity NUMERIC;
+
   -- Create the table for Due Report top-up amounts
   CREATE TABLE IF NOT EXISTS public.due_report_top_ups (
     date DATE PRIMARY KEY,
@@ -92,6 +96,7 @@ interface ItemFromDb {
   created_at: string;
   modified_at: string;
   stock_quantity?: number;
+  default_quantity?: number;
 }
 
 interface StoreFromDb {
@@ -214,6 +219,7 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
                 createdAt: i.created_at,
                 modifiedAt: i.modified_at,
                 stockQuantity: i.stock_quantity,
+                defaultQuantity: i.default_quantity,
             });
         }
         return acc;
@@ -395,6 +401,7 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         unit: item.unit,
         supplier_id: item.supplierId,
         stock_quantity: item.stockQuantity,
+        default_quantity: item.defaultQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?select=*`, {
         method: 'POST',
@@ -410,6 +417,7 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         createdAt: newItem.created_at,
         modifiedAt: newItem.modified_at,
         stockQuantity: newItem.stock_quantity,
+        defaultQuantity: newItem.default_quantity,
     };
 };
 
@@ -419,6 +427,7 @@ export const updateItem = async ({ item, url, key }: { item: Item, url: string, 
         unit: item.unit,
         supplier_id: item.supplierId,
         stock_quantity: item.stockQuantity,
+        default_quantity: item.defaultQuantity,
     };
     const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
         method: 'PATCH',

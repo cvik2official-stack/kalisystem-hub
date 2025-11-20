@@ -1,3 +1,4 @@
+
 // @deno-types="https://unpkg.com/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts"
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -23,12 +24,15 @@ const PHNOM_PENH_OFFSET = 7 * 60;
 const BUSINESS_DAY_START_HOUR = 6;
 const getPhnomPenhDate = (date?: Date | string): Date => {
     const d = date ? new Date(date) : new Date();
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
+    const utc = d.getTime();
+    // Shift UTC time by +7 hours to match Phnom Penh wall clock
+    const shifted = utc + (PHNOM_PENH_OFFSET * 60000);
+    return new Date(shifted);
 };
 const getPhnomPenhDateKey = (date?: Date | string): string => {
     const ppDate = getPhnomPenhDate(date);
-    ppDate.setHours(ppDate.getHours() - BUSINESS_DAY_START_HOUR);
+    // Subtract business day start using UTC methods on the shifted date
+    ppDate.setUTCHours(ppDate.getUTCHours() - BUSINESS_DAY_START_HOUR);
     return ppDate.toISOString().split('T')[0];
 };
 
