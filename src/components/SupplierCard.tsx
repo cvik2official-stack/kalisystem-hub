@@ -1,20 +1,16 @@
-
-
-
 import React, { useContext, useState, useMemo, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName } from '../types';
-import ContextMenu from './ContextMenu';
 import AddSupplierModal from './modals/AddSupplierModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
 import NumpadModal from './modals/NumpadModal';
-import EditItemModal from './modals/EditItemModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import { generateOrderMessage } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
 import { getLatestItemPrice } from '../utils/messageFormatter';
+import ContextMenu from './ContextMenu';
 
 interface SupplierCardProps {
   order: Order;
@@ -32,32 +28,21 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     const [isPaymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    
+    // Long press refs
     const longPressTimer = useRef<number | null>(null);
     const isLongPress = useRef(false);
-    const [activeItemId, setActiveItemId] = useState<string | null>(null);
-    const [editingItemId, setEditingItemId] = useState<string | null>(null);
+    
+    const [activeUniqueItemId, setActiveUniqueItemId] = useState<string | null>(null);
+    const [editingNameUniqueId, setEditingNameUniqueId] = useState<string | null>(null);
+    const [editingPriceUniqueId, setEditingPriceUniqueId] = useState<string | null>(null);
     const cardRef = useRef<HTMLDivElement>(null);
-
 
     // State for item modals
     const [selectedItem, setSelectedItem] = useState<OrderItem | null>(null);
     const [isNumpadOpen, setNumpadOpen] = useState(false);
-    const [isEditItemModalOpen, setIsEditItemModalOpen] = useState(false);
-    const [selectedMasterItem, setSelectedMasterItem] = useState<Item | null>(null);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
-    const [editingPriceUniqueId, setEditingPriceUniqueId] = useState<string | null>(null);
     const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-
-    const handleBlur = (event: React.FocusEvent<HTMLDivElement>) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-            if (!isManuallyCollapsed && (order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED)) {
-                 setIsManuallyCollapsed(true);
-            }
-            setActiveItemId(null);
-            setEditingItemId(null);
-            setEditingPriceUniqueId(null);
-        }
-    };
 
     const handleCardDragStart = (e: React.DragEvent<HTMLDivElement>) => {
         e.stopPropagation();
@@ -92,10 +77,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         if (state.draggedItem && state.draggedItem.sourceOrderId !== order.id) {
             canDrop = true;
         } else if (state.draggedOrderId && state.draggedOrderId !== order.id) {
-            const sourceOrder = state.orders.find(o => o.id === state.draggedOrderId);
-            if (sourceOrder) {
-                canDrop = true;
-            }
+            canDrop = true;
         }
         
         if (canDrop) {
@@ -124,7 +106,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
 
     const supplier = useMemo(() => state.suppliers.find(s => s.id === order.supplierId), [state.suppliers, order.supplierId]);
     const cardTotal = useMemo(() => {
-        if (order.status === OrderStatus.DISPATCHING) return 0;
+        // Always calculate total, but we might hide it in UI if dispatching
         return order.items.reduce((total, item) => {
             if (item.isSpoiled) return total;
             const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, state.itemPrices);
@@ -170,26 +152,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         }
     };
 
-    const handleItemActionsClick = (e: React.MouseEvent, item: OrderItem) => {
-        e.stopPropagation();
-        const masterItem = state.items.find(i => i.id === item.itemId);
-        if (!masterItem) return;
-
-        const options = [
-            { label: 'Edit Master', action: () => { setSelectedMasterItem(masterItem); setIsEditItemModalOpen(true); } },
-            { label: 'Set Price', action: () => { setSelectedItem(item); setIsPriceNumpadOpen(true); } },
-            { label: 'Drop', action: () => handleDeleteItem(item), isDestructive: true },
-        ];
-
-        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        setContextMenu({ x: rect.left, y: rect.bottom + 5, options });
+    const handleDeleteItem = async (itemToDelete: OrderItem) => {
+        await actions.deleteItemFromOrder(itemToDelete, order.id);
     };
 
-    const handleQuantityOrPriceClick = (item: OrderItem) => {
-        if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) {
-            setSelectedItem(item);
-            setNumpadOpen(true);
-        }
+    const handleQuantityOrPriceClick = (e: React.MouseEvent, item: OrderItem) => {
+        e.stopPropagation();
+        setSelectedItem(item);
+        setNumpadOpen(true);
     };
     
     const handleSaveInlinePrice = async (itemToUpdate: OrderItem, totalPriceStr: string) => {
@@ -221,153 +191,95 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
       }
   
       if (newTotalPrice === null) {
+          // Clear price override
           const { price, ...itemWithoutPrice } = itemToUpdate;
           if (itemToUpdate.price !== undefined) {
-               await actions.updateOrder({ ...order, items: order.items.map(i => i.itemId === itemToUpdate.itemId ? itemWithoutPrice : i) });
+              const updatedItems = order.items.map(i => 
+                  (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? itemWithoutPrice : i
+              );
+              await actions.updateOrder({ ...order, items: updatedItems });
           }
           return;
       }
-  
-      if (itemToUpdate.quantity === 0) {
-          notify('Cannot set price for item with quantity 0.', 'error');
-          return;
-      }
-      
-      if (newTotalPrice !== null && !isNaN(newTotalPrice) && newTotalPrice >= 0) {
+
+      if (itemToUpdate.quantity === 0) { notify('Cannot set price for item with quantity 0.', 'error'); return; }
+
+      if (!isNaN(newTotalPrice) && newTotalPrice >= 0) {
           const newUnitPrice = newTotalPrice / itemToUpdate.quantity;
-          const updatedItems = order.items.map(i =>
-              (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled)
-                  ? { ...i, price: newUnitPrice }
-                  : i
+          const updatedItems = order.items.map(i => 
+              (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, price: newUnitPrice } : i
           );
           await actions.updateOrder({ ...order, items: updatedItems });
-
-          // Persist the price for future orders
-          await actions.upsertItemPrice({
-              itemId: itemToUpdate.itemId,
-              supplierId: order.supplierId,
-              price: newUnitPrice,
-              unit: itemToUpdate.unit || Unit.PC
-          });
       } else {
           notify('Invalid price.', 'error');
       }
-  };
-
-    const handleItemNameClick = (uniqueItemId: string) => {
-        if (activeItemId === uniqueItemId) {
-            setEditingItemId(uniqueItemId);
-        } else {
-            setActiveItemId(uniqueItemId);
-            setEditingItemId(null);
-        }
     };
-    
-    const handleItemNameSave = async (itemToUpdate: OrderItem, newName: string) => {
+
+    const handleSaveName = async (itemToUpdate: OrderItem, newName: string) => {
+        setEditingNameUniqueId(null);
         const trimmedName = newName.trim();
-        if (itemToUpdate.name === trimmedName || trimmedName === '') {
-            setEditingItemId(null);
-            return;
-        }
-    
-        const updatedItems = order.items.map(i =>
-            (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled)
-                ? { ...i, name: trimmedName }
-                : i
+        if (!trimmedName || trimmedName === itemToUpdate.name) return;
+
+        const updatedItems = order.items.map(i => 
+            (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) 
+            ? { ...i, name: trimmedName } 
+            : i
         );
-        
         await actions.updateOrder({ ...order, items: updatedItems });
-    
-        setEditingItemId(null);
     };
 
-    const handleSaveItemQuantity = async (quantity: number, unit?: Unit) => {
-        if (!selectedItem) return;
-        setIsProcessing(true);
-        try {
-            const newItems = order.items.map(i =>
-                (i.itemId === selectedItem.itemId && i.isSpoiled === selectedItem.isSpoiled)
-                    ? { ...i, quantity, unit: unit || i.unit }
-                    : i
+    const handleSaveQuantity = async (quantity: number, unit?: Unit) => {
+        if (selectedItem) {
+            const updatedItems = order.items.map(i => 
+                (i.itemId === selectedItem.itemId && i.isSpoiled === selectedItem.isSpoiled) 
+                ? { ...i, quantity, unit: unit || i.unit } 
+                : i
             );
-            await actions.updateOrder({ ...order, items: newItems });
-
-            // Update the master item's default quantity
-            const masterItem = state.items.find(i => i.id === selectedItem.itemId);
-            if (masterItem) {
-                await actions.updateItem({ ...masterItem, defaultQuantity: quantity });
-            }
-        } finally {
-            setIsProcessing(false);
+            await actions.updateOrder({ ...order, items: updatedItems });
+            setSelectedItem(null);
             setNumpadOpen(false);
         }
     };
 
-    const handleDeleteItem = async (itemToDelete: OrderItem) => {
-        setIsProcessing(true);
-        try {
-            const newItems = order.items.filter(i => !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled));
-            await actions.updateOrder({ ...order, items: newItems });
-        } finally {
-            setIsProcessing(false);
+    const handleSavePrice = async (price: number, unit: Unit) => {
+        if (selectedItem) {
+            const updatedItems = order.items.map(i => 
+                (i.itemId === selectedItem.itemId && i.isSpoiled === selectedItem.isSpoiled) 
+                ? { ...i, price, unit } 
+                : i
+            );
+            await actions.updateOrder({ ...order, items: updatedItems });
+            setSelectedItem(null);
+            setIsPriceNumpadOpen(false);
         }
     };
-    
-    const handleAddItemFromModal = async (item: Item) => {
+
+    const handleAddItem = async (item: Item) => {
         const existingItemIndex = order.items.findIndex(i => i.itemId === item.id && !i.isSpoiled);
         
-        const quantityToAdd = item.defaultQuantity || 1;
-
         let newItems;
         if (existingItemIndex > -1) {
             newItems = [...order.items];
             newItems[existingItemIndex] = {
                 ...newItems[existingItemIndex],
-                quantity: newItems[existingItemIndex].quantity + quantityToAdd
+                quantity: newItems[existingItemIndex].quantity + 1
             };
         } else {
             const newItem: OrderItem = {
                 itemId: item.id,
                 name: item.name,
-                quantity: quantityToAdd,
+                quantity: 1,
                 unit: item.unit,
                 isNew: order.status === OrderStatus.ON_THE_WAY,
             };
             newItems = [...order.items, newItem];
         }
         await actions.updateOrder({ ...order, items: newItems });
+        notify(`Added ${item.name}`, 'success');
     };
 
-    const handleSaveUnitPrice = async (price: number, unit: Unit) => {
-        if (!selectedItem) return;
-        setIsProcessing(true);
-        try {
-          const itemPrice: Omit<ItemPrice, 'id' | 'createdAt'> = { itemId: selectedItem.itemId, supplierId: order.supplierId, price, unit };
-          await actions.upsertItemPrice(itemPrice);
-        } finally {
-          setIsPriceNumpadOpen(false);
-          setSelectedItem(null);
-          setIsProcessing(false);
-        }
-    };
+    // --- Telegram Functions ---
 
-    const handleSendToTelegram = async () => {
-        const { settings, suppliers, stores } = state;
-        const currentSupplier = suppliers.find(s => s.id === order.supplierId);
-        if (!currentSupplier || !currentSupplier.chatId || !settings.telegramBotToken) {
-            notify('Supplier Chat ID or Bot Token is not configured.', 'error');
-            return;
-        }
-        setIsProcessing(true);
-        try {
-            await sendOrderToSupplierOnTelegram(order, currentSupplier, generateOrderMessage(order, 'html', suppliers, stores, settings), settings.telegramBotToken);
-            notify(`Order sent to ${order.supplierName}.`, 'success');
-            await actions.updateOrder({ ...order, isSent: true, status: OrderStatus.ON_THE_WAY });
-        } catch (error: any) {
-            notify(error.message || `Failed to send.`, 'error');
-        } finally { setIsProcessing(false); }
-    };
-    
     const handleLongPressAction = async () => {
         await actions.updateOrder({ ...order, status: OrderStatus.ON_THE_WAY, isSent: true });
         notify(`Order for ${order.supplierName} moved to 'On the Way'.`, 'success');
@@ -382,271 +294,302 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         }
     };
     
-    const handleTelegramPressStart = () => {
+    const handlePressStart = (e: React.PointerEvent) => {
+        if (e.button !== 0) return;
+        
+        e.stopPropagation(); // Prevent drag or other parent interactions
+        
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+        }
+        
         isLongPress.current = false;
         longPressTimer.current = window.setTimeout(() => {
             isLongPress.current = true;
+            longPressTimer.current = null;
             handleLongPressAction();
+            if (navigator.vibrate) navigator.vibrate(50);
         }, 500);
     };
 
-    const handleTelegramPressEnd = () => {
+    const handlePressEnd = (e: React.PointerEvent) => {
+        e.stopPropagation();
         if (longPressTimer.current) {
             clearTimeout(longPressTimer.current);
             longPressTimer.current = null;
         }
     };
 
-    const handleTelegramClick = () => {
-        if (!isLongPress.current) {
-            handleSendToTelegram();
+    const handleTelegramClick = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (isLongPress.current) {
+            isLongPress.current = false;
+            return;
+        }
+        handleSendToTelegram();
+    };
+
+    const handleSendToTelegram = async () => {
+        const { settings, suppliers, stores } = state;
+        if (!supplier || !supplier.chatId || !settings.telegramBotToken) {
+            notify('Supplier Chat ID or Bot Token is not configured.', 'error');
+            return;
+        }
+        
+        setIsProcessing(true);
+        try {
+            const message = generateOrderMessage(order, 'html', suppliers, stores, settings);
+            await sendOrderToSupplierOnTelegram(order, supplier, message, settings.telegramBotToken);
+            notify(`Order sent to ${order.supplierName}.`, 'success');
+            
+            if (order.status === OrderStatus.DISPATCHING) {
+                await actions.updateOrder({ ...order, isSent: true, status: OrderStatus.ON_THE_WAY });
+            }
+        } catch (error: any) {
+            notify(error.message || 'Failed to send.', 'error');
+        } finally {
+            setIsProcessing(false);
         }
     };
 
-    const handleToggleToPriceNumpad = () => {
-        setNumpadOpen(false);
-        setIsPriceNumpadOpen(true);
-    };
+    const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && supplier?.chatId;
+    const isKaliOrder = order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI;
     
-    const handleToggleToQuantityNumpad = () => {
-        setIsPriceNumpadOpen(false);
-        setNumpadOpen(true);
-    };
-
-    const paymentMethodBadgeColors: Record<string, string> = {
-        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
-        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
-        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
-        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
-        [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
-    };
-
-    const paymentMethodAmountBadgeColors: Record<string, string> = {
-        [PaymentMethod.ABA]: 'bg-blue-600/50 text-blue-200',
-        [PaymentMethod.CASH]: 'bg-green-600/50 text-green-200',
-        [PaymentMethod.KALI]: 'bg-purple-600/50 text-purple-200',
-        [PaymentMethod.STOCK]: 'bg-gray-600/50 text-gray-200',
-        [PaymentMethod.MISHA]: 'bg-orange-600/50 text-orange-200',
-    };
-
-    const displayPaymentMethod = order.paymentMethod || supplier?.paymentMethod;
-    let badgeColorClass = paymentMethodBadgeColors[displayPaymentMethod] || 'bg-gray-600';
-    let amountBadgeColorClass = paymentMethodAmountBadgeColors[displayPaymentMethod] || 'bg-gray-700';
-    if (displayPaymentMethod === PaymentMethod.STOCK && supplier?.paymentMethod && supplier.paymentMethod !== PaymentMethod.STOCK) {
-        badgeColorClass = paymentMethodBadgeColors[supplier.paymentMethod] || 'bg-gray-600';
-        amountBadgeColorClass = paymentMethodAmountBadgeColors[supplier.paymentMethod] || 'bg-gray-700';
-    }
-
-
-    const statusBorderColor = useMemo(() => {
-        switch (order.status) {
-            case OrderStatus.DISPATCHING: return 'border-blue-500';
-            case OrderStatus.ON_THE_WAY: return 'border-yellow-500';
-            case OrderStatus.COMPLETED: return 'border-green-700';
-            default: return 'border-gray-500';
+    const paymentBadgeClasses = useMemo(() => {
+        switch (order.paymentMethod) {
+            case PaymentMethod.KALI: return 'bg-purple-500/10 text-purple-300 border-purple-500/30 hover:bg-purple-500/20';
+            case PaymentMethod.CASH: return 'bg-green-500/10 text-green-300 border-green-500/30 hover:bg-green-500/20';
+            case PaymentMethod.ABA: return 'bg-blue-500/10 text-blue-300 border-blue-500/30 hover:bg-blue-500/20';
+            case PaymentMethod.STOCK: return 'bg-gray-600/50 text-gray-300 border-gray-500/30 hover:bg-gray-600';
+            case PaymentMethod.MISHA: return 'bg-orange-500/10 text-orange-300 border-orange-500/30 hover:bg-orange-500/20';
+            default: return 'bg-gray-700/50 text-gray-400 border-gray-600/50 hover:bg-gray-700';
         }
-    }, [order.status]);
-    
-    const isKaliOrder = supplier?.name === SupplierName.KALI || displayPaymentMethod === PaymentMethod.KALI;
-
-    const isEffectivelyCollapsed = (state.draggedItem && state.draggedItem.sourceOrderId !== order.id) ? true : isManuallyCollapsed;
+    }, [order.paymentMethod]);
 
     return (
         <>
             <div 
                 ref={cardRef}
-                tabIndex={-1}
-                onBlur={handleBlur}
+                draggable
+                onDragStart={handleCardDragStart}
+                onDragEnd={handleCardDragEnd}
                 onDragOver={handleCardDragOver}
                 onDragLeave={handleCardDragLeave}
                 onDrop={handleCardDrop}
-                className={`outline-none relative rounded-xl shadow-lg flex flex-col transition-all duration-300 ${isDragOver ? 'bg-indigo-900/50' : 'bg-gray-800'} border-t-2 ${statusBorderColor} w-full max-w-sm`}
+                className={`relative bg-gray-800 rounded-xl shadow-lg border transition-all duration-200 
+                    ${isDragOver ? 'border-indigo-500 ring-2 ring-indigo-500 ring-opacity-50' : 'border-gray-700'}
+                    ${state.draggedOrderId === order.id ? 'opacity-50' : 'opacity-100'}
+                `}
             >
-                {isProcessing && <div className="absolute inset-0 bg-gray-900/60 flex items-center justify-center z-10 rounded-xl"><svg className="animate-spin h-8 w-8 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg></div>}
-                
-                <div 
-                    className="px-1 py-2 flex justify-between items-center cursor-grab active:cursor-grabbing"
-                    draggable="true"
-                    onDragStart={handleCardDragStart}
-                    onDragEnd={handleCardDragEnd}
-                    onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)}
-                >
-                    <div className="flex items-center gap-2 flex-grow min-w-0">
-                        {!isEffectivelyCollapsed && (
-                            <button onClick={(e) => { e.stopPropagation(); handleHeaderActionsClick(e); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white flex-shrink-0" aria-label="Order Actions">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                            </button>
+                {/* Header */}
+                <div className="p-3 flex justify-between items-center">
+                    <div className="flex-grow min-w-0 mr-2 cursor-pointer flex items-center overflow-hidden" onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)}>
+                        {showStoreName && (
+                            <span className="text-[10px] font-bold bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded uppercase tracking-wide mr-2 flex-shrink-0">
+                                {order.store}
+                            </span>
                         )}
-                        <h3 
-                            className="font-bold text-white text-xs select-none truncate"
-                        >
-                            {showStoreName && <span className="font-semibold text-gray-500 mr-2">{order.store}</span>}
+                        <h3 className={`text-sm font-bold truncate mr-2 ${isKaliOrder ? 'text-purple-400' : 'text-white'}`}>
                             {order.supplierName}
                         </h3>
-                        {displayPaymentMethod && (
-                            <div className="flex items-stretch overflow-hidden rounded-full flex-shrink-0">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setPaymentMethodModalOpen(true); }}
-                                    className={`px-2 py-0.5 text-xs font-semibold cursor-pointer ${badgeColorClass}`}
-                                >
-                                    {displayPaymentMethod.toUpperCase()}
-                                </button>
-                                {(order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) && cardTotal > 0 && (
-                                    <span className={`px-2 py-0.5 text-xs font-semibold ${amountBadgeColorClass}`}>
-                                        {cardTotal.toFixed(2)}
-                                    </span>
-                                )}
-                            </div>
-                        )}
-                        {order.status === OrderStatus.DISPATCHING && (
-                            <div className="flex items-center space-x-1">
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); handleTelegramClick(); }}
-                                    onMouseDown={(e) => { e.stopPropagation(); handleTelegramPressStart(); }}
-                                    onMouseUp={(e) => { e.stopPropagation(); handleTelegramPressEnd(); }}
-                                    onMouseLeave={(e) => { e.stopPropagation(); handleTelegramPressEnd(); }}
-                                    onTouchStart={(e) => { e.stopPropagation(); handleTelegramPressStart(); }}
-                                    onTouchEnd={(e) => { e.stopPropagation(); handleTelegramPressEnd(); }}
-                                    disabled={!supplier?.chatId || isProcessing}
-                                    className={`w-5 h-5 flex items-center justify-center rounded-full transition-colors duration-200 flex-shrink-0 ${(order.isSent || !supplier?.chatId) ? 'bg-gray-600' : 'bg-blue-500'}`}
-                                    aria-label="Send to Telegram"
-                                    title="Click: Send & Move | Long-press: Move & Copy"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
-                                </button>
-                            </div>
-                        )}
-                        {order.status === OrderStatus.ON_THE_WAY && supplier?.contact && (
-                            <a
-                                href={`https://t.me/${supplier.contact.replace('@', '')}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="w-5 h-5 flex items-center justify-center rounded-full bg-gray-600 hover:bg-gray-500 transition-colors flex-shrink-0"
-                                title="Open Telegram Chat"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
-                            </a>
-                        )}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); setPaymentMethodModalOpen(true); }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide flex-shrink-0 flex items-center space-x-1 border transition-colors ${paymentBadgeClasses}`}
+                        >
+                            <span>{order.paymentMethod || 'PAYMENT'}</span>
+                            {cardTotal > 0 && (
+                                <>
+                                    <span className="opacity-40">|</span>
+                                    <span>{cardTotal.toFixed(2)}</span>
+                                </>
+                            )}
+                        </button>
                     </div>
-                    <div className="flex-shrink-0 flex items-center">
-                         <div className="text-gray-500 p-1">
-                            {isEffectivelyCollapsed ? <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clipRule="evenodd" /></svg>}
-                        </div>
+
+                    <div className="flex items-center space-x-1 flex-shrink-0">
+                        {canSendTelegram && (
+                            <button
+                                onClick={handleTelegramClick}
+                                onPointerDown={handlePressStart}
+                                onPointerUp={handlePressEnd}
+                                onPointerLeave={handlePressEnd}
+                                onPointerCancel={handlePressEnd}
+                                onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                disabled={isProcessing}
+                                className={`w-8 h-8 flex items-center justify-center rounded-full transition-colors duration-200 flex-shrink-0 select-none ${
+                                    order.isSent ? 'text-gray-500 hover:bg-gray-700' : 'text-blue-400 hover:bg-blue-500/20 hover:text-blue-300'
+                                } ${isProcessing ? 'opacity-50 cursor-wait' : ''}`}
+                                aria-label="Send to Telegram"
+                                title="Click: Send & Move | Long-press: Move & Copy"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path>
+                                </svg>
+                            </button>
+                        )}
+                        <button 
+                            onClick={handleHeaderActionsClick}
+                            className="w-8 h-8 flex items-center justify-center rounded-full text-gray-500 hover:bg-gray-700 hover:text-white transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
 
-                <div className={`flex-grow overflow-hidden transition-all duration-300 ease-in-out ${isEffectivelyCollapsed ? 'max-h-0 opacity-0' : 'opacity-100'}`} onTransitionEnd={() => { if (isEffectivelyCollapsed) { setEditingItemId(null); } }}>
-                    <div className="pt-1 pb-1 px-1">
-                        <ul className="space-y-1">
-                        {order.items.length === 0 ? (
-                            <li className="text-center text-gray-500 text-sm py-4 px-2">
-                                No items.
-                            </li>
-                        ) : order.items.map(item => {
+                {/* Items List */}
+                {!isManuallyCollapsed && (
+                    <div className="px-3 pb-3 space-y-1">
+                        {order.items.map(item => {
                             const uniqueItemId = `${item.itemId}-${item.isSpoiled ? 'spoiled' : 'clean'}`;
-                            const isActive = activeItemId === uniqueItemId;
-                            const isEditing = editingItemId === uniqueItemId;
                             const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, state.itemPrices);
-                            const unitPrice = item.price ?? latestPriceInfo?.price ?? null;
+                            const unitPrice = item.price ?? latestPriceInfo?.price ?? 0;
+                            const totalPrice = unitPrice * item.quantity;
                             const isEditingPrice = editingPriceUniqueId === uniqueItemId;
-                            const isStockMovement = order.supplierName === SupplierName.STOCK || order.paymentMethod === PaymentMethod.STOCK;
+                            const isEditingName = editingNameUniqueId === uniqueItemId;
+                            const isActive = activeUniqueItemId === uniqueItemId;
 
                             return (
-                                <li key={uniqueItemId} className="flex items-center group">
-                                    <div
-                                        draggable={isActive}
-                                        onDragStart={(e) => handleItemDragStart(e, item)}
-                                        onDragEnd={handleItemDragEnd}
-                                        className={`transition-all duration-200 flex items-center ${isActive ? 'opacity-100 w-5 mr-1 cursor-grab active:cursor-grabbing text-gray-500' : 'opacity-0 w-0'}`}
+                                <div 
+                                    key={uniqueItemId} 
+                                    className={`flex items-center justify-between text-sm py-1 group transition-colors duration-200 ${isActive ? 'bg-gray-700/50 -mx-2 px-2 rounded my-0.5' : ''}`}
+                                    onClick={() => setActiveUniqueItemId(prev => prev === uniqueItemId ? null : uniqueItemId)}
+                                >
+                                    {isActive && (
+                                        <div 
+                                            className="mr-2 cursor-grab text-gray-400 hover:text-white flex-shrink-0"
+                                            draggable
+                                            onDragStart={(e) => handleItemDragStart(e, item)}
+                                            onDragEnd={handleItemDragEnd}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8h16M4 16h16" /></svg>
+                                        </div>
+                                    )}
+
+                                    <div 
+                                        className="flex-grow min-w-0 flex items-center"
                                     >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="currentColor" viewBox="0 0 16 16"><path d="M7 2a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 5a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM7 8a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm-3 3a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm3 0a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        {isEditing ? (
-                                            <input
+                                        {isEditingName ? (
+                                            <input 
                                                 type="text"
-                                                defaultValue={item.name}
                                                 autoFocus
-                                                onBlur={(e) => handleItemNameSave(item, e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') e.currentTarget.blur();
-                                                    if (e.key === 'Escape') setEditingItemId(null);
-                                                }}
-                                                className="bg-gray-700 text-gray-200 rounded px-1 py-0.5 w-full outline-none"
+                                                defaultValue={item.name}
+                                                onBlur={(e) => handleSaveName(item, e.target.value)}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                                                 onClick={(e) => e.stopPropagation()}
+                                                className="w-full bg-gray-900 text-white border border-blue-500 rounded px-1 outline-none"
                                             />
                                         ) : (
-                                            <span onClick={() => handleItemNameClick(uniqueItemId)} className="text-gray-300 truncate cursor-pointer block">
+                                            <span 
+                                                className={`truncate cursor-pointer hover:text-white ${item.isSpoiled ? 'line-through text-red-400' : 'text-gray-300'}`}
+                                                onClick={(e) => { 
+                                                    e.stopPropagation(); 
+                                                    if (isActive) {
+                                                        setEditingNameUniqueId(uniqueItemId); 
+                                                    } else {
+                                                        setActiveUniqueItemId(uniqueItemId); 
+                                                    }
+                                                }}
+                                            >
                                                 {item.name}
                                             </span>
                                         )}
+                                        {item.isNew && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>}
                                     </div>
-                                    <div className="flex items-center space-x-1 ml-1 flex-shrink-0">
-                                        <div onClick={() => handleQuantityOrPriceClick(item)} className={`text-white text-right w-12 p-1 -m-1 rounded-md ${(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY || order.status === OrderStatus.COMPLETED) ? 'hover:bg-gray-700 cursor-pointer' : 'cursor-default'}`}>
-                                            {isStockMovement ? (
-                                                order.supplierName === SupplierName.STOCK ? (
-                                                    <span className="font-semibold text-yellow-400 mr-1">out</span>
-                                                ) : ( // This implicitly means paymentMethod is STOCK
-                                                    <span className="font-semibold text-green-400 mr-1">in</span>
-                                                )
-                                            ) : null}
-                                            {item.quantity}{item.unit}
-                                        </div>
+                                    
+                                    <div className="flex items-center space-x-3 flex-shrink-0 ml-2">
+                                        <button 
+                                            onClick={(e) => handleQuantityOrPriceClick(e, item)}
+                                            className="text-gray-400 hover:text-white tabular-nums"
+                                        >
+                                            {item.quantity} <span className="text-xs text-gray-500">{item.unit}</span>
+                                        </button>
+                                        
                                         {isEditingPrice ? (
-                                            <input
-                                                type="text" inputMode="decimal"
-                                                defaultValue={unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : ''}
-                                                autoFocus={isEditingPrice}
-                                                onFocus={() => setEditingPriceUniqueId(uniqueItemId)}
+                                            <input 
+                                                type="text"
+                                                inputMode="decimal"
+                                                autoFocus
+                                                defaultValue={totalPrice > 0 ? totalPrice.toFixed(2) : ''}
                                                 onBlur={(e) => handleSaveInlinePrice(item, e.target.value)}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') e.currentTarget.blur();
-                                                    if (e.key === 'Escape') setEditingPriceUniqueId(null);
-                                                }}
-                                                className={`bg-gray-700 font-mono rounded px-1 py-0.5 w-16 text-right ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'} outline-none`}
+                                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                                                 onClick={(e) => e.stopPropagation()}
+                                                className="w-16 bg-gray-900 text-right text-white rounded border border-indigo-500 px-1 py-0.5 outline-none text-xs font-mono"
                                             />
                                         ) : (
-                                            <div 
-                                                onClick={() => setEditingPriceUniqueId(uniqueItemId)} 
-                                                className={`font-mono w-16 text-right p-1 -m-1 rounded-md hover:bg-gray-700 cursor-pointer ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
+                                            <span 
+                                                onClick={(e) => { e.stopPropagation(); setEditingPriceUniqueId(uniqueItemId); }}
+                                                className={`w-14 text-right cursor-pointer font-mono text-xs ${totalPrice > 0 ? (isKaliOrder ? 'text-purple-300' : 'text-cyan-300') : 'text-gray-600'}`}
                                             >
-                                                {unitPrice !== null ? (unitPrice * item.quantity).toFixed(2) : <span className="text-gray-500">-</span>}
-                                            </div>
+                                                {totalPrice > 0 ? totalPrice.toFixed(2) : '-'}
+                                            </span>
                                         )}
-                                        <button 
-                                            onClick={(e) => handleItemActionsClick(e, item)}
-                                            className={`p-1 text-gray-500 rounded-full hover:bg-gray-700 hover:text-white transition-opacity duration-200 ${isActive ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                                        </button>
                                     </div>
-                                </li>
-                            )
+                                </div>
+                            );
                         })}
-                        {(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && !isEffectivelyCollapsed && (
-                            <li className="px-1 pt-2">
-                                <button 
-                                    onClick={() => setIsAddItemModalOpen(true)} 
-                                    className="text-left text-gray-500 hover:text-white hover:bg-gray-700/50 text-sm p-2 rounded-md w-full transition-colors"
-                                >
-                                    + Add item
-                                </button>
-                            </li>
+                        
+                        {(order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && (
+                            <button 
+                                onClick={() => setIsAddItemModalOpen(true)}
+                                className="w-full text-left text-xs text-gray-500 hover:text-indigo-400 hover:bg-gray-700/30 py-1.5 px-2 rounded transition-colors mt-2 flex items-center"
+                            >
+                                <span className="mr-1">+</span> Add item
+                            </button>
                         )}
-                        </ul>
                     </div>
-                </div>
+                )}
             </div>
 
-            {contextMenu && <ContextMenu {...contextMenu} onClose={() => setContextMenu(null)} />}
-            <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
-            <PaymentMethodModal isOpen={isPaymentMethodModalOpen} onClose={() => setPaymentMethodModalOpen(false)} onSelect={handlePaymentMethodChange} order={order} />
-            {isNumpadOpen && selectedItem && <NumpadModal item={selectedItem} isOpen={isNumpadOpen} onClose={() => setNumpadOpen(false)} onSave={handleSaveItemQuantity} onDelete={() => handleDeleteItem(selectedItem)} onToggle={handleToggleToPriceNumpad} />}
-            {selectedMasterItem && isEditItemModalOpen && <EditItemModal item={selectedMasterItem} isOpen={isEditItemModalOpen} onClose={() => setIsEditItemModalOpen(false)} onSave={async (item) => actions.updateItem(item as Item)} onDelete={actions.deleteItem} />}
-            {isPriceNumpadOpen && selectedItem && <PriceNumpadModal item={selectedItem} supplierId={order.supplierId} isOpen={isPriceNumpadOpen} onClose={() => setIsPriceNumpadOpen(false)} onSave={handleSaveUnitPrice} onToggle={handleToggleToQuantityNumpad} />}
-            <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onItemSelect={handleAddItemFromModal} order={order} />
+            {/* Modals */}
+            <AddSupplierModal 
+                isOpen={isChangeSupplierModalOpen} 
+                onClose={() => setChangeSupplierModalOpen(false)} 
+                onSelect={handleChangeSupplier} 
+                title="Change Supplier"
+            />
+            <PaymentMethodModal
+                isOpen={isPaymentMethodModalOpen}
+                onClose={() => setPaymentMethodModalOpen(false)}
+                onSelect={handlePaymentMethodChange}
+                order={order}
+            />
+            {selectedItem && isNumpadOpen && (
+                <NumpadModal 
+                    item={selectedItem} 
+                    isOpen={isNumpadOpen} 
+                    onClose={() => setNumpadOpen(false)} 
+                    onSave={handleSaveQuantity} 
+                    onDelete={() => handleDeleteItem(selectedItem)}
+                />
+            )}
+            {selectedItem && isPriceNumpadOpen && (
+                <PriceNumpadModal
+                    item={selectedItem}
+                    supplierId={order.supplierId}
+                    isOpen={isPriceNumpadOpen}
+                    onClose={() => setIsPriceNumpadOpen(false)}
+                    onSave={handleSavePrice}
+                />
+            )}
+            {isAddItemModalOpen && (
+                <AddItemModal 
+                    isOpen={isAddItemModalOpen} 
+                    onClose={() => setIsAddItemModalOpen(false)} 
+                    onItemSelect={handleAddItem}
+                    order={order}
+                />
+            )}
+            {contextMenu && (
+                <ContextMenu 
+                    x={contextMenu.x} 
+                    y={contextMenu.y} 
+                    options={contextMenu.options} 
+                    onClose={() => setContextMenu(null)} 
+                />
+            )}
         </>
     );
 };

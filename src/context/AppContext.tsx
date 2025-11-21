@@ -1,8 +1,6 @@
 
-
-
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, KaliTodoState, KaliTodoSection, KaliTodoItem } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
@@ -26,7 +24,7 @@ const normalizeUnit = (unit?: string): Unit | undefined => {
 
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings' | 'ALL' | 'TODO';
+  activeStore: StoreName | 'Settings' | 'ALL';
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
@@ -41,15 +39,12 @@ export interface AppState {
   isLoading: boolean;
   isInitialized: boolean;
   syncStatus: SyncStatus;
-  isSmartView: boolean;
   isDualPaneMode: boolean;
   cardWidth: number | null;
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
   initialAction: string | null;
-  managerStoreFilter: StoreName | null;
-  kaliTodoState: KaliTodoState;
 }
 
 export type Action =
@@ -80,16 +75,11 @@ export type Action =
   | { type: 'SET_DRAGGED_ITEM'; payload: { item: OrderItem; sourceOrderId: string } | null }
   | { type: 'SET_CARD_WIDTH'; payload: number | null }
   | { type: 'UPSERT_DUE_REPORT_TOP_UP'; payload: DueReportTopUp }
-  | { type: 'SET_SMART_VIEW'; payload: boolean }
   | { type: 'SET_INITIAL_ACTION'; payload: string | null }
   | { type: 'CLEAR_INITIAL_ACTION' }
   | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] }
   | { type: 'ADD_QUICK_ORDER'; payload: QuickOrder }
-  | { type: 'DELETE_QUICK_ORDER'; payload: string }
-  | { type: 'SET_MANAGER_VIEW'; payload: { isManager: boolean; store: StoreName | null } }
-  | { type: 'TICK_KALI_TODO_ITEM'; payload: { uniqueId: string } }
-  | { type: 'ADD_KALI_TODO_SECTION'; payload: { title: string } }
-  | { type: 'MOVE_KALI_TODO_ITEM'; payload: { destinationSectionId: string; item: KaliTodoItem; sourceSectionId: string } };
+  | { type: 'DELETE_QUICK_ORDER'; payload: string };
 
 
 export interface AppContextActions {
@@ -249,13 +239,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
     }
     case 'INITIALIZATION_COMPLETE':
       return { ...state, isInitialized: true };
-    case 'SET_SMART_VIEW':
-        return {
-            ...state,
-            isSmartView: action.payload,
-            // Reset column count when exiting smart view to prevent weird states
-            columnCount: action.payload ? state.columnCount : getInitialColumnCount(),
-        };
     case 'UPSERT_ITEM_PRICE': {
         const newPrice = action.payload;
         const priceExists = state.itemPrices.some(p => p.id === newPrice.id);
@@ -294,37 +277,6 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, quickOrders: [...state.quickOrders, action.payload] };
     case 'DELETE_QUICK_ORDER':
         return { ...state, quickOrders: state.quickOrders.filter(q => q.id !== action.payload) };
-    case 'SET_MANAGER_VIEW':
-        return { ...state, managerStoreFilter: action.payload.store };
-    case 'TICK_KALI_TODO_ITEM': {
-        const { uniqueId } = action.payload;
-        const newSections = state.kaliTodoState.sections.map(section => ({
-            ...section,
-            items: section.items.map(item => item.uniqueId === uniqueId ? { ...item, ticked: !item.ticked } : item)
-        }));
-        return { ...state, kaliTodoState: { ...state.kaliTodoState, sections: newSections } };
-    }
-    case 'ADD_KALI_TODO_SECTION': {
-        const newSection: KaliTodoSection = {
-            id: `section_${Date.now()}`,
-            title: action.payload.title,
-            items: []
-        };
-        return { ...state, kaliTodoState: { ...state.kaliTodoState, sections: [...state.kaliTodoState.sections, newSection] } };
-    }
-    case 'MOVE_KALI_TODO_ITEM': {
-        const { item, sourceSectionId, destinationSectionId } = action.payload;
-        const newSections = state.kaliTodoState.sections.map(section => {
-            if (section.id === sourceSectionId) {
-                return { ...section, items: section.items.filter(i => i.uniqueId !== item.uniqueId) };
-            }
-            if (section.id === destinationSectionId) {
-                return { ...section, items: [...section.items, item] };
-            }
-            return section;
-        });
-        return { ...state, kaliTodoState: { ...state.kaliTodoState, sections: newSections } };
-    }
     default:
       return state;
   }
@@ -352,7 +304,7 @@ const getInitialState = (): AppState => {
 
   const initialState: AppState = {
     stores: [],
-    activeStore: 'ALL', // Changed default to 'ALL'
+    activeStore: 'ALL',
     suppliers: [],
     items: [],
     itemPrices: [],
@@ -396,15 +348,12 @@ const getInitialState = (): AppState => {
     isLoading: false,
     isInitialized: false,
     syncStatus: 'idle',
-    isSmartView: false,
     isDualPaneMode: false,
     draggedOrderId: null,
     draggedItem: null,
     cardWidth: null,
     columnCount: 3,
     initialAction: null,
-    managerStoreFilter: null,
-    kaliTodoState: { sections: [] },
   };
 
   const finalState = { ...initialState, ...loadedState };
@@ -414,6 +363,9 @@ const getInitialState = (): AppState => {
   // Remove legacy properties
   if ((finalState as any).dueReportTopUps) delete (finalState as any).dueReportTopUps;
   if ((finalState as any).notifications) delete (finalState as any).notifications;
+  if ((finalState as any).managerStoreFilter) delete (finalState as any).managerStoreFilter;
+  if ((finalState as any).kaliTodoState) delete (finalState as any).kaliTodoState;
+  if ((finalState as any).isSmartView) delete (finalState as any).isSmartView;
 
   finalState.orders = (loadedState.orders || []).map((o: Partial<Order>) => ({
       ...o,
@@ -424,14 +376,6 @@ const getInitialState = (): AppState => {
   finalState.isInitialized = false;
   finalState.cardWidth = loadedState.cardWidth ?? null;
   finalState.columnCount = loadedState.columnCount ?? getInitialColumnCount();
-  
-  // Only default to smart view if the user hasn't explicitly exited it before
-  if (loadedState.isSmartView === undefined || loadedState.isSmartView === null) {
-    finalState.isSmartView = window.innerWidth >= 768;
-  } else {
-    finalState.isSmartView = loadedState.isSmartView;
-  }
-
 
   return finalState;
 };
@@ -477,15 +421,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     const handleResize = () => {
-        if (!state.isSmartView) {
-            dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
-        }
+        dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
     };
     window.addEventListener('resize', handleResize);
     // Set initial count on mount
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
-  }, [dispatch, state.isSmartView]);
+  }, [dispatch]);
 
   const syncWithSupabase = useCallback(async (options?: { isInitialSync?: boolean }) => {
     dispatch({ type: '_SET_SYNC_STATUS', payload: 'syncing' });
@@ -661,8 +603,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             o.supplierId === item.supplierId && 
             o.status === OrderStatus.DISPATCHING
         );
-        
-        const quantityToAdd = item.defaultQuantity || 1;
     
         if (existingOrder) {
             const itemInOrderIndex = existingOrder.items.findIndex(i => i.itemId === item.id);
@@ -670,14 +610,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 const updatedItems = [...existingOrder.items];
                 updatedItems[itemInOrderIndex] = {
                     ...updatedItems[itemInOrderIndex],
-                    quantity: updatedItems[itemInOrderIndex].quantity + quantityToAdd
+                    quantity: updatedItems[itemInOrderIndex].quantity + 1
                 };
                 await actions.updateOrder({ ...existingOrder, items: updatedItems });
                 notify(`Incremented "${item.name}" in existing order.`, 'success');
                 return;
             }
             
-            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: quantityToAdd, unit: item.unit };
+            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
             const updatedItems = [...existingOrder.items, newItem];
             await actions.updateOrder({ ...existingOrder, items: updatedItems });
             notify(`Added "${item.name}" to existing order.`, 'success');
@@ -687,7 +627,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 notify(`Supplier for "${item.name}" not found.`, 'error');
                 return;
             }
-            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: quantityToAdd, unit: item.unit };
+            const newOrderItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit };
             await actions.addOrder(supplier, activeStore as StoreName, [newOrderItem]);
         }
     },

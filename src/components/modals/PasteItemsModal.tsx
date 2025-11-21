@@ -71,8 +71,7 @@ const PasteItemsModal: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   const handleSubmit = async () => {
     if (!text.trim()) return;
 
-    // FIX: Refactored guard clauses for type safety. This prevents pasting into special views.
-    if (state.activeStore === 'Settings' || state.activeStore === 'ALL' || state.activeStore === 'TODO') {
+    if (state.activeStore === 'Settings' || state.activeStore === 'ALL') {
         notify(`Pasting items is not available for the "${state.activeStore}" view.`, 'info');
         return;
     }

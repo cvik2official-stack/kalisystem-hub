@@ -1,12 +1,13 @@
+
 import React, { useContext, useState } from 'react';
 import ItemsSettings from './settings/ItemsSettings';
 import SuppliersSettings from './settings/SuppliersSettings';
 import StoresSettings from './settings/StoresSettings';
 import { AppContext } from '../context/AppContext';
-import { SettingsTab, StoreName } from '../types';
-import TemplatesSettings from './settings/TemplatesSettings';
+import { SettingsTab } from '../types';
 import ContextMenu from './ContextMenu';
 import DueReportSettings from './settings/DueReportSettings';
+import TelegramBotSettings from './settings/TelegramBotSettings';
 
 const SettingsPage: React.FC = () => {
   const { state, dispatch } = useContext(AppContext);
@@ -19,6 +20,7 @@ const SettingsPage: React.FC = () => {
     { id: 'suppliers', label: 'Suppliers' },
     { id: 'stores', label: 'Stores' },
     { id: 'due-report', label: 'Due Report' },
+    { id: 'integrations', label: 'Integrations' },
   ];
   
   const handleOpenMenu = (e: React.MouseEvent) => {
@@ -34,8 +36,8 @@ const SettingsPage: React.FC = () => {
         return <SuppliersSettings setMenuOptions={setMenuOptions} />;
       case 'stores':
         return <StoresSettings />;
-      case 'templates':
-        return <TemplatesSettings />;
+      case 'integrations':
+        return <TelegramBotSettings />;
       case 'due-report':
         return <DueReportSettings setMenuOptions={setMenuOptions} />;
       default:
@@ -47,7 +49,7 @@ const SettingsPage: React.FC = () => {
   return (
     <div className="mt-2 flex flex-col flex-grow">
       <div>
-        <nav className="-mb-px flex space-x-2 md:space-x-6 items-center">
+        <nav className="-mb-px flex space-x-2 md:space-x-6 items-center overflow-x-auto hide-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -64,7 +66,7 @@ const SettingsPage: React.FC = () => {
           {menuOptions.length > 0 && (
               <button
                 onClick={handleOpenMenu}
-                className="text-gray-400 hover:text-white p-1"
+                className="text-gray-400 hover:text-white p-1 ml-auto"
                 aria-label="Table options"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">

@@ -1,3 +1,4 @@
+
 import React, { useContext, useEffect, useState, useRef, useMemo } from 'react';
 import StoreTabs from './components/StoreTabs';
 import OrderWorkspace from './components/OrderWorkspace';
@@ -19,7 +20,7 @@ import QuickOrderListModal from './components/modals/QuickOrderListModal';
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isSmartView } = state;
+  const { activeStore, isInitialized, syncStatus, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -80,7 +81,7 @@ const App: React.FC = () => {
     // Reset the animation after it finishes
     const timer = setTimeout(() => setIsRedAnimating(false), 1500); // Must match animation-duration in CSS
     return () => clearTimeout(timer);
-  }, [activeStore, activeSettingsTab, activeStatus, isSmartView, state.columnCount]);
+  }, [activeStore, activeSettingsTab, activeStatus, state.columnCount]);
 
 
   useEffect(() => {
@@ -151,12 +152,9 @@ const App: React.FC = () => {
   const handleRedDotClick = () => {
       // If we are on the settings page, always exit to the default view
       if (activeStore === 'Settings') {
-          dispatch({ type: 'SET_SMART_VIEW', payload: false });
           dispatch({ type: 'SET_ACTIVE_STORE', payload: StoreName.CV2 });
           return;
       }
-      // Otherwise, toggle Smart View
-      dispatch({ type: 'SET_SMART_VIEW', payload: !isSmartView });
   };
   
   const handleYellowDotClick = () => {
@@ -257,7 +255,7 @@ const App: React.FC = () => {
                 <div className="flex items-center justify-between w-full md:w-auto md:contents">
                     {/* Left: Status Dots (Order 1 on Desktop) */}
                     <div className="flex items-center space-x-2 md:order-1">
-                        <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Toggle Smart View / Exit Settings">
+                        <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Exit Settings">
                             {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
                         </button>
                         <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">

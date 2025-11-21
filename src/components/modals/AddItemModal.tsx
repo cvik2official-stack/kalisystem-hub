@@ -7,7 +7,7 @@ interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
   onItemSelect: (item: Item) => void;
-  order?: Order;
+  order?: Order | null;
 }
 
 const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSelect, order }) => {
@@ -17,18 +17,16 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
   const [isCreating, setIsCreating] = useState(false);
 
   const filteredItems = useMemo(() => {
-    let availableItems = state.items;
+    const itemsInOrder = new Set(order?.items.map(i => i.itemId) || []);
+    // Filter items: exclude those already in the order, but include items from ALL suppliers
+    const availableItems = state.items.filter(i => !itemsInOrder.has(i.id));
 
-    if (order) {
-        const itemsInOrder = new Set(order.items.map(i => i.itemId));
-        // Filter items specifically for this supplier
-        availableItems = state.items.filter(i => !itemsInOrder.has(i.id) && i.supplierId === order.supplierId);
-    }
-
+    const searchLower = search.toLowerCase();
     const searchFiltered = !search
       ? availableItems
       : availableItems.filter(item => 
-          item.name.toLowerCase().includes(search.toLowerCase())
+          item.name.toLowerCase().includes(searchLower) || 
+          item.supplierName.toLowerCase().includes(searchLower)
         );
         
     return searchFiltered.sort((a, b) => a.name.localeCompare(b.name));
@@ -44,19 +42,20 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
     const trimmedSearch = search.trim();
     if (!trimmedSearch) return;
 
+    if (!order) {
+        notify("Please add a supplier card first to create new items.", "info");
+        return; 
+    }
+
     setIsCreating(true);
     try {
-        const supplierId = order?.supplierId;
-        const supplier = supplierId ? state.suppliers.find(s => s.id === supplierId) : null;
-
+        const supplier = state.suppliers.find(s => s.id === order.supplierId);
         if (!supplier) {
-            // If global add, searching "ItemName" implies we might want to select a supplier or assume one?
-            // Usually Global Add Item is: User selects an item, then AppContext decides where it goes (add to existing dispatch order or create new one).
-            // If it's a new item creation, we need a supplier.
-             notify('Cannot create new items without a specific order context.', 'error');
-             return;
+            notify('Could not find the supplier for this order.', 'error');
+            return;
         }
 
+        // Check if exact item already exists for THIS supplier to avoid duplicates
         const existingItemInDb = state.items.find(i => i.name.toLowerCase() === trimmedSearch.toLowerCase() && i.supplierId === supplier.id);
         
         let itemToAdd: Item;
@@ -99,16 +98,16 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
 
   if (!isOpen) return null;
 
+  const borderColorClass = !order 
+    ? 'border-gray-500' 
+    : order.status === OrderStatus.DISPATCHING ? 'border-blue-500' :
+      order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' :
+      'border-green-500';
+
   return (
     <>
       <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
-        <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md border-t-4 ${
-            order ? (
-                order.status === OrderStatus.DISPATCHING ? 'border-blue-500' :
-                order.status === OrderStatus.ON_THE_WAY ? 'border-yellow-500' :
-                'border-green-500'
-            ) : 'border-gray-500'
-        }`} onClick={(e) => e.stopPropagation()}>
+        <div className={`relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-md border-t-4 ${borderColorClass}`} onClick={(e) => e.stopPropagation()}>
           <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -118,7 +117,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
             {order ? (
                 <>Add Item to <span className="font-mono font-semibold tracking-wider">{order.supplierName}</span></>
             ) : (
-                <>Add Item</>
+                "Select Item"
             )}
           </h2>
           
@@ -137,7 +136,7 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
                 onKeyDown={handleKeyDown}
                 autoFocus
                 className="w-full bg-gray-900 text-gray-200 rounded-md p-3 pl-10 outline-none focus:ring-2 focus:ring-indigo-500"
-                placeholder="Search or type to create..."
+                placeholder={order ? "Search items or type to create..." : "Search items..."}
             />
           </div>
 
@@ -145,28 +144,34 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
               {filteredItems.length === 0 ? (
                 search.trim() ? (
                     <div className="text-center py-4">
-                        <p className="text-gray-500 mb-4">No existing item named "{search}".</p>
-                        <button
-                            onClick={handleAddNewItem}
-                            disabled={isCreating}
-                            className="w-full text-center p-3 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 disabled:cursor-wait transition-colors duration-150 outline-none"
-                        >
-                            {isCreating ? 'Creating...' : `+ Create "${search.trim()}"`}
-                        </button>
+                        <p className="text-gray-500 mb-4">No existing item matches "{search}".</p>
+                        {order ? (
+                            <button
+                                onClick={handleAddNewItem}
+                                disabled={isCreating}
+                                className="w-full text-center p-3 rounded-md text-indigo-400 hover:bg-indigo-600 hover:text-white font-semibold disabled:text-gray-500 disabled:cursor-wait transition-colors duration-150 outline-none"
+                            >
+                                {isCreating ? 'Creating...' : `+ Create "${search.trim()}" for ${order.supplierName}`}
+                            </button>
+                        ) : (
+                            <p className="text-gray-500 italic text-sm">
+                                Cannot create new items in this mode.<br/>Please add a supplier card first.
+                            </p>
+                        )}
                     </div>
                 ) : (
                     <p className="text-gray-500 text-center py-4">
-                        Type to search or add items.
+                        Type to search items from any supplier.
                     </p>
                 )
               ) : (
                 filteredItems.map(item => (
-                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none flex justify-between items-center group">
-                      <div className="flex flex-col">
-                        <p className="text-gray-300 group-hover:text-white">{item.name}</p>
-                        {!order && <span className="text-xs text-gray-500 group-hover:text-gray-300">{item.supplierName}</span>}
+                  <button key={item.id} onClick={() => handleItemClick(item)} className="w-full text-left p-2 px-3 rounded-md hover:bg-indigo-600 transition-colors duration-150 outline-none flex justify-between items-center group">
+                      <div className="flex flex-col overflow-hidden mr-2">
+                          <p className="text-gray-200 group-hover:text-white font-medium truncate">{item.name}</p>
+                          <p className="text-gray-500 text-xs group-hover:text-gray-300 truncate">{item.supplierName}</p>
                       </div>
-                      <span className="text-gray-500 text-xs group-hover:text-gray-300">{item.unit}</span>
+                      <span className="text-gray-500 text-xs group-hover:text-gray-300 flex-shrink-0 bg-gray-900/30 px-2 py-1 rounded">{item.unit}</span>
                   </button>
                 ))
               )}

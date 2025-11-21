@@ -1,18 +1,14 @@
-
-
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
 import SupplierCard from '../components/SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
-import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice } from '../types';
+import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport, getPhnomPenhDateKey } from '../utils/messageFormatter';
-import ManagerReportView from './ManagerReportView';
 import PasteItemsModal from './modals/PasteItemsModal';
 import AddItemModal from './modals/AddItemModal';
-import QuickOrderListModal from './modals/QuickOrderListModal';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -30,38 +26,58 @@ const formatDateGroupHeader = (key: string): string => {
   return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
 };
 
-const DispatchActions: React.FC<{ onAddSupplier: () => void, onPasteList: () => void, onGlobalAddItem: () => void, onQuickOrder: () => void }> = ({ onAddSupplier, onPasteList, onGlobalAddItem, onQuickOrder }) => {
+const InlineAddOrder: React.FC<{ 
+    onAddSupplier: () => void, 
+    onPasteList: () => void,
+    onSelectItem: () => void,
+    onQuickOrder: (qo: QuickOrder) => void
+}> = ({ onAddSupplier, onPasteList, onSelectItem, onQuickOrder }) => {
     const { state } = useContext(AppContext);
-    const { activeStore } = state;
+    const { activeStore, quickOrders } = state;
 
-    if (activeStore === 'Settings' || activeStore === 'ALL' || activeStore === 'TODO') { return null; }
+    if (activeStore === 'Settings' || activeStore === 'ALL') { return null; }
+
+    const storeQuickOrders = quickOrders.filter(qo => qo.store === activeStore);
 
     return (
-        <div className="flex flex-col space-y-4 w-full max-w-sm">
-            <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 min-h-[8rem]">
-                <div className="flex flex-col items-center justify-center space-y-4 w-full">
-                    <button onClick={onAddSupplier} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
-                        + Select Supplier
+        <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 w-full max-w-sm mx-auto my-4 transition-all hover:border-gray-600">
+            <div className="flex flex-col space-y-3 w-full">
+                <div className="grid grid-cols-2 gap-3">
+                    <button onClick={onAddSupplier} className="flex items-center justify-center text-indigo-400 hover:text-white hover:bg-indigo-600 font-semibold transition-all text-sm py-3 px-2 rounded-lg border border-indigo-500/30 hover:border-indigo-500 shadow-sm">
+                        <span className="mr-1 text-lg">+</span> Supplier
                     </button>
-                    <span className="text-gray-500 text-xs">or</span>
-                    <button onClick={onPasteList} className="text-indigo-400 hover:text-indigo-300 hover:bg-gray-700/50 font-semibold transition-colors text-lg py-2 px-4 rounded-lg w-full border border-indigo-500/30">
-                        Paste a List
+                    <button onClick={onSelectItem} className="flex items-center justify-center text-indigo-400 hover:text-white hover:bg-indigo-600 font-semibold transition-all text-sm py-3 px-2 rounded-lg border border-indigo-500/30 hover:border-indigo-500 shadow-sm">
+                        <span className="mr-1 text-lg">+</span> Item
                     </button>
                 </div>
-            </div>
-            <div className="flex flex-col space-y-2">
-                 <button 
-                    onClick={onGlobalAddItem}
-                    className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg border border-gray-600 transition-colors uppercase tracking-wider text-sm"
-                 >
-                    + Add Item
-                 </button>
-                 <button 
-                    onClick={onQuickOrder}
-                    className="bg-gray-800 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg border border-gray-600 transition-colors uppercase tracking-wider text-sm"
-                 >
-                    Quick Order
-                 </button>
+                
+                <div className="relative flex items-center py-1">
+                    <div className="flex-grow border-t border-gray-700"></div>
+                    <span className="flex-shrink-0 mx-2 text-gray-600 text-[10px] font-bold uppercase tracking-widest">OR</span>
+                    <div className="flex-grow border-t border-gray-700"></div>
+                </div>
+
+                <button onClick={onPasteList} className="text-gray-400 hover:text-white hover:bg-gray-700 font-medium transition-colors text-sm py-2 px-4 rounded-lg w-full border border-gray-600 hover:border-gray-500">
+                    Paste a List
+                </button>
+
+                {storeQuickOrders.length > 0 && (
+                    <div className="pt-2">
+                        <div className="flex items-center mb-2">
+                             <div className="h-px bg-gray-700 flex-grow"></div>
+                             <span className="px-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Quick Orders</span>
+                             <div className="h-px bg-gray-700 flex-grow"></div>
+                        </div>
+                        <div className="grid grid-cols-1 gap-2">
+                            {storeQuickOrders.map(qo => (
+                                <button key={qo.id} onClick={() => onQuickOrder(qo)} className="bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white text-xs py-2 px-3 rounded border border-gray-700 hover:border-gray-500 transition-all flex items-center justify-between group">
+                                    <span className="font-medium truncate">{qo.name}</span>
+                                    <span className="text-[10px] text-gray-500 group-hover:text-gray-400">{qo.supplierName}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -70,15 +86,12 @@ const DispatchActions: React.FC<{ onAddSupplier: () => void, onPasteList: () => 
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, isSmartView, itemPrices, initialAction } = state;
+  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, itemPrices, initialAction } = state;
   const { notify } = useNotifier();
 
-  // ... (state definitions)
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
-  const [isGlobalAddItemModalOpen, setIsGlobalAddItemModalOpen] = useState(false);
-  const [isQuickOrderListModalOpen, setIsQuickOrderListModalOpen] = useState(false);
-  const [isKaliOnTheWayListView, setIsKaliOnTheWayListView] = useState(false);
+  const [isStandaloneItemModalOpen, setIsStandaloneItemModalOpen] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
@@ -93,18 +106,13 @@ const OrderWorkspace: React.FC = () => {
   const [dragOverDateGroup, setDragOverDateGroup] = useState<string | null>(null);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
-  const [completedViewMode, setCompletedViewMode] = useState<'card' | 'report'>('card');
   
-  const [mobileSmartViewPage, setMobileSmartViewPage] = useState(1); // 0: Dispatch, 1: On The Way, 2: Completed
-
   useEffect(() => {
       if (initialAction && activeStore !== 'Settings' && activeStore !== 'ALL') {
           if (initialAction === 'paste-list') {
               setIsPasteModalOpen(true);
           } else if (initialAction === 'add-card') {
               setSupplierSelectModalOpen(true);
-          } else if (initialAction === 'quick-order') {
-              setIsQuickOrderListModalOpen(true);
           }
           dispatch({ type: 'CLEAR_INITIAL_ACTION' });
       }
@@ -125,13 +133,7 @@ const OrderWorkspace: React.FC = () => {
     const isLeftSwipe = swipeDistance > 50;
     const isRightSwipe = swipeDistance < -50;
     
-    if (isSmartView && columnCount === 1) {
-        if (isLeftSwipe) {
-            setMobileSmartViewPage(p => Math.min(2, p + 1));
-        } else if (isRightSwipe) {
-            setMobileSmartViewPage(p => Math.max(0, p - 1));
-        }
-    } else if (!isSmartView && columnCount === 1) {
+    if (columnCount === 1) {
         const currentIndex = STATUS_TABS.findIndex(tab => tab.id === activeStatus);
         if (isLeftSwipe && currentIndex < STATUS_TABS.length - 1) {
             dispatch({ type: 'SET_ACTIVE_STATUS', payload: STATUS_TABS[currentIndex + 1].id });
@@ -142,30 +144,15 @@ const OrderWorkspace: React.FC = () => {
   };
   
   const handleCompletedTabClick = (e: React.MouseEvent) => {
-    const isHeaderClick = (e.target as HTMLElement).tagName.toLowerCase() === 'h2';
-    if (activeStatus === OrderStatus.COMPLETED || isHeaderClick) {
-        setCompletedViewMode(prev => prev === 'card' ? 'report' : 'card');
-    } 
     if (activeStatus !== OrderStatus.COMPLETED) {
         dispatch({ type: 'SET_ACTIVE_STATUS', payload: OrderStatus.COMPLETED });
-        setCompletedViewMode('card');
     }
   };
 
   const handleAddOrder = async (supplier: Supplier) => {
-    if (activeStore === 'Settings' || activeStore === 'ALL' || activeStore === 'TODO' || !activeStore) return;
+    if (activeStore === 'Settings' || activeStore === 'ALL' || !activeStore) return;
     await actions.addOrder(supplier, activeStore, [], OrderStatus.DISPATCHING);
     setSupplierSelectModalOpen(false);
-  };
-
-  const handleAddItemFromModal = async (item: any) => {
-      if (itemForNewOrder) {
-         await actions.addItemToDispatch(item);
-         setIsGlobalAddItemModalOpen(false);
-      } else {
-         await actions.addItemToDispatch(item);
-         setIsGlobalAddItemModalOpen(false);
-      }
   };
   
   const handleItemDropOnCard = async (destinationOrderId: string) => {
@@ -220,7 +207,7 @@ const OrderWorkspace: React.FC = () => {
 };
   
   const handleCreateOrderFromDrop = async (supplier: Supplier) => {
-    if (!itemForNewOrder || activeStore === 'Settings' || activeStore === 'ALL' || activeStore === 'TODO') return;
+    if (!itemForNewOrder || activeStore === 'Settings' || activeStore === 'ALL') return;
 
     const sourceOrder = orders.find(o => o.id === itemForNewOrder.sourceOrderId);
     if (sourceOrder) {
@@ -284,11 +271,8 @@ const OrderWorkspace: React.FC = () => {
           filtered = orders.filter(order => {
               const supplier = suppliers.find(s => s.id === order.supplierId);
               const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
-              const isKali = order.supplierName === SupplierName.KALI || effectivePaymentMethod === PaymentMethod.KALI;
-              return isKali && order.status === status;
+              return effectivePaymentMethod === PaymentMethod.KALI && order.status === status;
           });
-      } else if (activeStore === 'TODO') {
-          return [];
       } else {
           filtered = orders.filter(order => order.store === activeStore && order.status === status);
       }
@@ -364,7 +348,7 @@ const OrderWorkspace: React.FC = () => {
   const getMenuOptionsForDateGroup = (dateGroupKey: string) => {
     const options = [];
     
-    if (dateGroupKey === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings' && activeStore !== 'TODO') {
+    if (dateGroupKey === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings') {
         options.push(
             { label: 'New Card...', action: () => setSupplierSelectModalOpen(true) },
             { label: 'Store Report', action: handleGenerateStoreReport }
@@ -434,41 +418,21 @@ const OrderWorkspace: React.FC = () => {
     }
   };
 
-  const renderKaliAggregatedList = (orders: Order[]) => {
-    const itemMap = new Map<string, { name: string; quantity: number; unit: string }>();
-    orders.forEach(order => {
-        order.items.forEach(item => {
-            if(!item.isSpoiled) {
-                const key = item.itemId;
-                if (itemMap.has(key)) {
-                    const entry = itemMap.get(key)!;
-                    entry.quantity += item.quantity;
-                } else {
-                    itemMap.set(key, { name: item.name, quantity: item.quantity, unit: item.unit || '' });
-                }
-            }
-        });
-    });
-    
-    const sortedItems = Array.from(itemMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const handleStandaloneItemSelect = async (item: Item) => {
+      if (activeStore === 'Settings' || activeStore === 'ALL') return;
+      
+      await actions.addItemToDispatch(item);
+      setIsStandaloneItemModalOpen(false);
+  };
 
-    return (
-        <div className="bg-gray-800 rounded-xl p-4 shadow-lg">
-             <div className="flex justify-between items-center mb-4 border-b border-gray-700 pb-2">
-                 <h3 className="text-lg font-bold text-white">Consolidated List</h3>
-                 <span className="text-xs text-gray-500">{sortedItems.length} items</span>
-             </div>
-             <ul className="space-y-2">
-                 {sortedItems.map((item, i) => (
-                     <li key={i} className="flex justify-between items-center text-sm">
-                         <span className="text-gray-200">{item.name}</span>
-                         <span className="text-indigo-300 font-mono font-bold bg-gray-900/50 px-2 py-1 rounded">{item.quantity}{item.unit}</span>
-                     </li>
-                 ))}
-                 {sortedItems.length === 0 && <li className="text-gray-500 text-center italic">No items.</li>}
-             </ul>
-        </div>
-    );
+  const handleQuickOrder = async (qo: QuickOrder) => {
+      const supplier = suppliers.find(s => s.id === qo.supplierId);
+      if (!supplier) {
+          notify('Supplier not found for this Quick Order', 'error');
+          return;
+      }
+      await actions.addOrder(supplier, qo.store, qo.items, OrderStatus.DISPATCHING);
+      notify(`Quick Order "${qo.name}" added to Dispatch.`, 'success');
   };
 
   const DispatchingColumnContent = () => {
@@ -483,11 +447,11 @@ const OrderWorkspace: React.FC = () => {
               showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
           />
         ))}
-        <DispatchActions 
+        <InlineAddOrder 
             onAddSupplier={() => setSupplierSelectModalOpen(true)} 
-            onPasteList={() => setIsPasteModalOpen(true)}
-            onGlobalAddItem={() => setIsGlobalAddItemModalOpen(true)}
-            onQuickOrder={() => setIsQuickOrderListModalOpen(true)}
+            onPasteList={() => setIsPasteModalOpen(true)} 
+            onSelectItem={() => setIsStandaloneItemModalOpen(true)}
+            onQuickOrder={handleQuickOrder}
         />
       </>
     );
@@ -495,353 +459,237 @@ const OrderWorkspace: React.FC = () => {
   
   const OnTheWayColumnContent = () => {
     const onTheWayOrders = getFilteredOrdersForStatus(OrderStatus.ON_THE_WAY);
-    
     return (
-      <div className="flex flex-col space-y-2">
-         {activeStore === StoreName.KALI && (
-             <div className="flex justify-end px-2">
-                 <button 
-                    onClick={() => setIsKaliOnTheWayListView(!isKaliOnTheWayListView)}
-                    className={`p-2 rounded-full transition-colors ${isKaliOnTheWayListView ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:bg-gray-800'}`}
-                    title="Toggle List View"
-                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                    </svg>
-                 </button>
-             </div>
-         )}
-
-         {activeStore === StoreName.KALI && isKaliOnTheWayListView ? (
-             renderKaliAggregatedList(onTheWayOrders)
-         ) : (
-              <>
-                {onTheWayOrders.map(order => (
-                  <SupplierCard 
-                      key={order.id} 
-                      order={order} 
-                      onItemDrop={handleItemDropOnCard}
-                      showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
-                  />
-                ))}
-                {onTheWayOrders.length === 0 && (
-                    <div className="text-center py-12">
-                      <p className="text-gray-500">No orders on the way.</p>
-                    </div>
-                )}
-              </>
-         )}
-      </div>
-    );
-  };
-  
-  const renderCompletedColumn = () => {
-    if (completedViewMode === 'report' && (activeStore !== 'Settings' && activeStore !== 'ALL' && activeStore !== 'TODO')) {
-        const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
-        return <ManagerReportView orders={todaysCompletedOrders} onItemDrop={handleItemDropOnCard} singleColumn="completed" />;
-    }
-    
-    return (
-        <>
-        {sortedCompletedGroupKeys.length > 0 ? (
-            <div className="space-y-1">
-            {visibleCompletedGroupKeys.map(key => {
-                const isExpanded = expandedGroups.has(key);
-                const ordersInGroup = groupedCompletedOrders[key] || [];
-                return (
-                <div 
-                    key={key}
-                    onDragOver={(e) => handleDragOverDateGroup(e, key)}
-                    onDragLeave={() => setDragOverDateGroup(null)}
-                    onDrop={(e) => { e.preventDefault(); handleDropOnDateGroup(key); }}
-                    className="w-full max-w-sm"
-                >
-                    <div className={`bg-gray-800 px-1 py-1 flex justify-between items-center w-full text-left rounded-xl transition-colors ${dragOverDateGroup === key ? 'bg-indigo-900/50' : ''}`}>
-                    <button onClick={() => toggleGroup(key)} className="flex items-center space-x-1 flex-grow p-1">
-                        <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                        <h3 className="font-bold text-white text-base">{formatDateGroupHeader(key)}</h3>
-                    </button>
-                    <button onClick={(e) => { e.preventDefault(); e.stopPropagation(); const rect = (e.currentTarget as HTMLElement).getBoundingClientRect(); setHeaderContextMenu({ x: rect.left, y: rect.bottom + 5, dateGroupKey: key }); }} className="p-1 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white" aria-label="Date Group Actions">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                    </button>
-                    </div>
-                    {isExpanded && (
-                    <div className="space-y-4 p-2">
-                        {ordersInGroup.length > 0 ? ordersInGroup.map((order) => (
-                        <SupplierCard 
-                            key={order.id} 
-                            order={order}
-                            onItemDrop={handleItemDropOnCard}
-                            showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'} 
-                        />
-                        )) : (
-                            <div className="text-center text-gray-500 text-sm py-4 px-2">
-                                No completed orders for this day.
-                            </div>
-                        )}
-                    </div>
-                    )}
-                </div>
-                );
-            })}
-             {sortedCompletedGroupKeys.length > visibleCompletedGroupKeys.length && (
-                 <button onClick={() => setShowAllCompleted(true)} className="w-full text-center text-sm text-indigo-400 hover:text-indigo-300 py-2">
-                     Show more...
-                 </button>
-             )}
-             {showAllCompleted && (
-                  <button onClick={() => setShowAllCompleted(false)} className="w-full text-center text-sm text-indigo-400 hover:text-indigo-300 py-2">
-                     Show less
-                 </button>
-             )}
-            </div>
-        ) : (
-            <div className="text-center py-12">
-            <p className="text-gray-500">No completed orders.</p>
+      <>
+        {onTheWayOrders.map(order => (
+          <SupplierCard 
+              key={order.id} 
+              order={order} 
+              onItemDrop={handleItemDropOnCard}
+              showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
+          />
+        ))}
+        {onTheWayOrders.length === 0 && activeStore !== 'Settings' && (
+            <div className="flex flex-col items-center justify-center h-32 text-gray-500 opacity-50">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                <p className="text-sm font-medium">No orders on the way.</p>
             </div>
         )}
-        </>
+      </>
     );
   };
 
-  const renderStatusContent = (status: OrderStatus) => {
-    switch (status) {
-      case OrderStatus.DISPATCHING:
-        return <DispatchingColumnContent />;
-      case OrderStatus.ON_THE_WAY:
-        return <OnTheWayColumnContent />;
-      case OrderStatus.COMPLETED:
-        return renderCompletedColumn();
-      default:
-        return null;
-    }
-  };
-  
-  const smartViewOrders = useMemo(() => {
-    const todayKey = getPhnomPenhDateKey();
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
-
-    return orders.filter(order => {
-        if (activeStore === 'TODO') return false;
-        if (activeStore === 'Settings') return false;
-
-        // Fix: Respect activeStore filter in Smart View
-        if (activeStore !== 'ALL') {
-             if (activeStore === StoreName.KALI) {
-                  const supplier = suppliers.find(s => s.id === order.supplierId);
-                  const effectivePaymentMethod = order.paymentMethod || supplier?.paymentMethod;
-                  const isKali = order.supplierName === SupplierName.KALI || effectivePaymentMethod === PaymentMethod.KALI;
-                  if (!isKali) return false;
-             } else if (order.store !== activeStore) {
-                return false;
-            }
-        }
-
-        if (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) {
-            return true;
-        }
-        if (order.status === OrderStatus.COMPLETED && order.completedAt) {
-            const completedDateKey = getPhnomPenhDateKey(order.completedAt);
-            return completedDateKey === todayKey || completedDateKey === yesterdayKey;
-        }
-        return false;
-    });
-  }, [orders, activeStore, suppliers]);
-
-
-  if (isSmartView) {
-      if (columnCount === 1) { // Mobile Portrait Smart View
-        const isDragging = !!draggedOrderId || !!draggedItem;
-        return (
-            <div 
-                className="flex-grow flex flex-col overflow-hidden pt-2"
-                onTouchStart={handleTouchStart} 
-                onTouchMove={handleTouchMove} 
-                onTouchEnd={handleTouchEnd}
-            >
-                 {isDragging && (
-                    <>
-                        <div 
-                            className="fixed top-0 left-0 h-full w-[15vw] z-20"
-                            onDragEnter={() => setMobileSmartViewPage(p => Math.max(0, p - 1))}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => {
-                                e.preventDefault();
-                                // Drop on left zone: attempt to move order to the previous status column
-                                // If we navigated to it, use current view. If not, use implied view.
-                                const targetIndex = mobileSmartViewPage; // The view should have updated onDragEnter
-                                if (targetIndex >= 0 && targetIndex < STATUS_TABS.length) {
-                                    handleDropOnStatus(STATUS_TABS[targetIndex].id);
-                                }
-                            }}
-                        />
-                        <div 
-                            className="fixed top-0 right-0 h-full w-[15vw] z-20"
-                            onDragEnter={() => setMobileSmartViewPage(p => Math.min(2, p + 1))}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={(e) => {
-                                e.preventDefault();
-                                // Drop on right zone: attempt to move order to the next status column
-                                const targetIndex = mobileSmartViewPage; // The view should have updated onDragEnter
-                                if (targetIndex >= 0 && targetIndex < STATUS_TABS.length) {
-                                    handleDropOnStatus(STATUS_TABS[targetIndex].id);
-                                }
-                            }}
-                        />
-                    </>
-                )}
-                {/* Swipeable content */}
-                <div className="flex-grow flex transition-transform duration-300 ease-in-out" style={{ transform: `translateX(-${mobileSmartViewPage * 100}%)` }}>
-                    {STATUS_TABS.map(tab => (
-                        <div key={tab.id} className="w-full flex-shrink-0 px-1 flex flex-col">
-                            <div 
-                                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(tab.id); }}}
-                                onDragLeave={() => setDragOverColumn(null)}
-                                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
-                                className={`flex-grow rounded-lg transition-colors duration-200 overflow-y-auto hide-scrollbar ${dragOverColumn === tab.id ? 'bg-indigo-900/20' : ''}`}
-                            >
-                                <ManagerReportView 
-                                    orders={smartViewOrders} 
-                                    singleColumn={tab.id === OrderStatus.DISPATCHING ? 'dispatch' : tab.id}
-                                    onItemDrop={handleItemDropOnCard}
-                                    hideTitle={false} // Show titles like "Dispatch" inside the column
-                                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
-                                />
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            </div>
-        );
-    }
-    // Desktop / Landscape Smart View
+  const CompletedColumnContent = () => {
     return (
-        <div className="flex-grow pt-2 h-full grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-8">
-            <div 
-                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}}
-                onDragLeave={() => setDragOverColumn(null)}
-                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.DISPATCHING); }}
-                className={`rounded-lg transition-colors duration-200 ${dragOverColumn === OrderStatus.DISPATCHING ? 'bg-indigo-900/20' : ''}`}
-            >
-                <ManagerReportView 
-                    orders={smartViewOrders} 
-                    singleColumn="dispatch"
-                    onItemDrop={handleItemDropOnCard}
-                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
-                />
-            </div>
-             <div 
-                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.ON_THE_WAY); }}}
-                onDragLeave={() => setDragOverColumn(null)}
-                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.ON_THE_WAY); }}
-                className={`rounded-lg transition-colors duration-200 ${dragOverColumn === OrderStatus.ON_THE_WAY ? 'bg-indigo-900/20' : ''}`}
-            >
-                <ManagerReportView 
-                    orders={smartViewOrders} 
-                    singleColumn="on_the_way"
-                    onItemDrop={handleItemDropOnCard}
-                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
-                />
-            </div>
-             <div 
-                onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(OrderStatus.COMPLETED); }}}
-                onDragLeave={() => setDragOverColumn(null)}
-                onDrop={(e) => { e.preventDefault(); handleDropOnStatus(OrderStatus.COMPLETED); }}
-                className={`rounded-lg transition-colors duration-200 w-full max-w-sm ${dragOverColumn === OrderStatus.COMPLETED ? 'bg-indigo-900/20' : ''}`}
-            >
-                <ManagerReportView 
-                    orders={smartViewOrders} 
-                    singleColumn="completed"
-                    onItemDrop={handleItemDropOnCard}
-                    showStoreName={activeStore === 'ALL' || activeStore === StoreName.KALI}
-                />
-            </div>
-        </div>
-    );
-  }
+      <>
+        {visibleCompletedGroupKeys.map(key => {
+          const ordersInDateGroup = groupedCompletedOrders[key] || [];
+          const isExpanded = expandedGroups.has(key);
+          const isDragOver = dragOverDateGroup === key;
+          
+          // Sort orders within date group by store then supplier (same logic as before)
+          const sortedOrdersInGroup = [...ordersInDateGroup].sort((a, b) => {
+              const storeCompare = a.store.localeCompare(b.store);
+              if (storeCompare !== 0) return storeCompare;
+              
+              const nameA = a.supplierName;
+              const nameB = b.supplierName;
+              if (nameA === 'PISEY' && nameB !== 'PISEY') return 1;
+              if (nameB === 'PISEY' && nameA !== 'PISEY') return -1;
+              const indexA = ['KALI', 'STOCK'].indexOf(nameA);
+              const indexB = ['KALI', 'STOCK'].indexOf(nameB);
+              if (indexA > -1 && indexB > -1) return indexA - indexB;
+              if (indexA > -1) return -1;
+              if (indexB > -1) return 1;
+              return nameA.localeCompare(nameB);
+          });
 
-  // --- REGULAR VIEW IMPLEMENTATION ---
+          return (
+            <div 
+                key={key} 
+                className={`mb-4 transition-colors ${isDragOver ? 'bg-green-900/20 rounded-lg p-1 -m-1' : ''}`}
+                onDragOver={(e) => handleDragOverDateGroup(e, key)}
+                onDragLeave={() => setDragOverDateGroup(null)}
+                onDrop={() => handleDropOnDateGroup(key)}
+            >
+              <div 
+                className="flex items-center justify-between cursor-pointer p-2 bg-gray-800/50 rounded-lg hover:bg-gray-800 transition-colors"
+                onClick={() => toggleGroup(key)}
+              >
+                <div className="flex items-center space-x-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-gray-400 transform transition-transform ${isExpanded ? 'rotate-0' : '-rotate-90'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    <h3 className="text-sm font-bold text-white">{formatDateGroupHeader(key)}</h3>
+                    <span className="text-xs text-gray-500 bg-gray-900 px-2 py-0.5 rounded-full">{sortedOrdersInGroup.length}</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                    {key === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings' && (
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleGenerateStoreReport(); }} 
+                            className="text-xs text-gray-400 hover:text-indigo-400 font-medium p-1 hover:bg-gray-700 rounded"
+                            title="Copy Store Report"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                        </button>
+                    )}
+                </div>
+              </div>
+              
+              {isExpanded && (
+                <div className="mt-2 space-y-2 pl-2">
+                  {sortedOrdersInGroup.length > 0 ? (
+                    sortedOrdersInGroup.map(order => (
+                      <SupplierCard 
+                          key={order.id} 
+                          order={order} 
+                          onItemDrop={handleItemDropOnCard}
+                          showStoreName={activeStore === StoreName.KALI || activeStore === 'ALL'}
+                      />
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-500 italic ml-6">No orders.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        
+        {sortedCompletedGroupKeys.length > visibleCompletedGroupKeys.length && (
+            <button 
+                onClick={() => setShowAllCompleted(!showAllCompleted)}
+                className="w-full py-2 text-sm text-indigo-400 hover:text-indigo-300 font-medium text-center"
+            >
+                {showAllCompleted ? 'Show Less' : 'Show more...'}
+            </button>
+        )}
+      </>
+    );
+  };
 
   if (columnCount === 1) {
-    return (
-      <div className="flex-grow pt-2 flex flex-col">
-        <nav className="-mb-px flex space-x-6 px-3">
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : () => dispatch({ type: 'SET_ACTIVE_STATUS', payload: tab.id })}
-              onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverStatusTab(tab.id); }}}
-              onDragLeave={() => setDragOverStatusTab(null)}
-              onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
-              className={`whitespace-nowrap py-3 px-2 md:px-4 border-b-2 font-medium text-sm transition-colors ${
-                activeStatus === tab.id
-                  ? 'border-indigo-500 text-indigo-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-              } ${
-                dragOverStatusTab === tab.id ? 'bg-indigo-900/50' : ''
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-        <div
-          className="flex-grow overflow-y-auto pt-2 space-y-2 hide-scrollbar px-1"
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-        >
-          {(activeStore === 'ALL') && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
-          {renderStatusContent(activeStatus)}
-        </div>
-      </div>
-    );
+      // Mobile/Single Column Layout
+      const renderCurrentTab = () => {
+          switch (activeStatus) {
+              case OrderStatus.DISPATCHING: return <DispatchingColumnContent />;
+              case OrderStatus.ON_THE_WAY: return <OnTheWayColumnContent />;
+              case OrderStatus.COMPLETED: return <CompletedColumnContent />;
+              default: return null;
+          }
+      };
+
+      return (
+          <div 
+            className="flex-grow flex flex-col relative overflow-hidden"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
+              {/* Mobile Tabs */}
+              <div className="flex border-b border-gray-700 mb-2">
+                  {STATUS_TABS.map(tab => (
+                      <button
+                          key={tab.id}
+                          onClick={() => dispatch({ type: 'SET_ACTIVE_STATUS', payload: tab.id })}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverStatusTab(tab.id); }}
+                          onDragLeave={() => setDragOverStatusTab(null)}
+                          onDrop={() => handleDropOnStatus(tab.id)}
+                          className={`flex-1 py-3 text-sm font-medium transition-colors relative ${
+                              activeStatus === tab.id ? 'text-white' : 'text-gray-400 hover:text-gray-200'
+                          } ${dragOverStatusTab === tab.id ? 'bg-indigo-900/30' : ''}`}
+                      >
+                          {tab.label}
+                          {activeStatus === tab.id && (
+                              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500"></span>
+                          )}
+                      </button>
+                  ))}
+              </div>
+              
+              <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar">
+                  {renderCurrentTab()}
+              </div>
+              
+              <AddSupplierModal 
+                  isOpen={isSupplierSelectModalOpen} 
+                  onClose={() => setSupplierSelectModalOpen(false)} 
+                  onSelect={draggedItem ? handleCreateOrderFromDrop : (orderToChange ? handleChangeSupplierForOrder : handleAddOrder)}
+                  title={draggedItem ? "Create new order from item..." : (orderToChange ? "Change Supplier To..." : "Add Supplier Card")}
+              />
+              <AddItemModal 
+                  isOpen={isStandaloneItemModalOpen} 
+                  onClose={() => setIsStandaloneItemModalOpen(false)} 
+                  onItemSelect={handleStandaloneItemSelect}
+                  order={null}
+              />
+              <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setIsPasteModalOpen(false)} />
+          </div>
+      );
   }
 
-  // Multi-column view
   return (
-    <>
-      <div className={`flex-grow pt-2 grid gap-8 grid-cols-1 md:grid-cols-3`}>
-        {STATUS_TABS.map(tab => (
-            <div 
-              key={tab.id} 
-              className={`flex-grow flex flex-col space-y-4 p-2 rounded-lg transition-colors duration-200 ${dragOverColumn === tab.id ? 'bg-indigo-900/20' : ''}`}
-              onDragOver={(e) => { if (draggedOrderId) { e.preventDefault(); setDragOverColumn(tab.id); }}}
-              onDragLeave={() => setDragOverColumn(null)}
-              onDrop={(e) => { e.preventDefault(); handleDropOnStatus(tab.id); }}
-            >
-                <h2 className="text-lg font-semibold text-white px-1 cursor-pointer" onClick={tab.id === OrderStatus.COMPLETED ? handleCompletedTabClick : undefined}>
-                    {tab.label}
-                </h2>
-                <div className="flex-grow overflow-y-auto space-y-2 hide-scrollbar pr-2 -mr-2">
-                    {(activeStore === 'ALL') && tab.id === OrderStatus.DISPATCHING && <div className="text-center py-4 text-gray-500 text-sm">Select a store to create or paste orders.</div>}
-                    {renderStatusContent(tab.id)}
-                </div>
-            </div>
-        ))}
+    <div className="flex-grow flex overflow-hidden h-full space-x-4">
+      {/* Desktop/Tablet 3-Column Layout */}
+      <div 
+        className={`flex-1 flex flex-col min-w-0 bg-gray-900/50 rounded-xl border ${dragOverColumn === OrderStatus.DISPATCHING ? 'border-indigo-500 bg-indigo-900/10' : 'border-transparent'}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}
+        onDragLeave={() => setDragOverColumn(null)}
+        onDrop={() => handleDropOnStatus(OrderStatus.DISPATCHING)}
+      >
+        <h2 className="text-lg font-bold text-white mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">Dispatch</h2>
+        <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar space-y-3">
+            <DispatchingColumnContent />
+        </div>
       </div>
-      
-      <AddSupplierModal
-        isOpen={isSupplierSelectModalOpen}
-        onClose={() => {
-          setSupplierSelectModalOpen(false);
-          setItemForNewOrder(null);
-          setOrderToChange(null);
-        }}
-        onSelect={itemForNewOrder ? handleCreateOrderFromDrop : (orderToChange ? handleChangeSupplierForOrder : handleAddOrder)}
-        title={itemForNewOrder ? "Create New Order For..." : (orderToChange ? "Change Supplier To..." : "Select Supplier")}
+
+      <div 
+        className={`flex-1 flex flex-col min-w-0 bg-gray-900/50 rounded-xl border ${dragOverColumn === OrderStatus.ON_THE_WAY ? 'border-indigo-500 bg-indigo-900/10' : 'border-transparent'}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOverColumn(OrderStatus.ON_THE_WAY); }}
+        onDragLeave={() => setDragOverColumn(null)}
+        onDrop={() => handleDropOnStatus(OrderStatus.ON_THE_WAY)}
+      >
+        <h2 className="text-lg font-bold text-white mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">On the Way</h2>
+        <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar space-y-3">
+            <OnTheWayColumnContent />
+        </div>
+      </div>
+
+      <div 
+        className={`flex-1 flex flex-col min-w-0 bg-gray-900/50 rounded-xl border ${dragOverColumn === OrderStatus.COMPLETED ? 'border-indigo-500 bg-indigo-900/10' : 'border-transparent'}`}
+        onDragOver={(e) => { e.preventDefault(); setDragOverColumn(OrderStatus.COMPLETED); }}
+        onDragLeave={() => setDragOverColumn(null)}
+        onDrop={() => handleDropOnStatus(OrderStatus.COMPLETED)}
+      >
+        <h2 className="text-lg font-bold text-white mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">Completed</h2>
+        <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar">
+            <CompletedColumnContent />
+        </div>
+      </div>
+
+      <AddSupplierModal 
+          isOpen={isSupplierSelectModalOpen} 
+          onClose={() => setSupplierSelectModalOpen(false)} 
+          onSelect={draggedItem ? handleCreateOrderFromDrop : (orderToChange ? handleChangeSupplierForOrder : handleAddOrder)}
+          title={draggedItem ? "Create new order from item..." : (orderToChange ? "Change Supplier To..." : "Add Supplier Card")}
+      />
+      <AddItemModal 
+          isOpen={isStandaloneItemModalOpen} 
+          onClose={() => setIsStandaloneItemModalOpen(false)} 
+          onItemSelect={handleStandaloneItemSelect}
+          order={null}
       />
       <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setIsPasteModalOpen(false)} />
-      <AddItemModal isOpen={isGlobalAddItemModalOpen} onClose={() => setIsGlobalAddItemModalOpen(false)} onItemSelect={handleAddItemFromModal} />
-      <QuickOrderListModal isOpen={isQuickOrderListModalOpen} onClose={() => setIsQuickOrderListModalOpen(false)} />
-      {headerContextMenu && <ContextMenu x={headerContextMenu.x} y={headerContextMenu.y} options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)} onClose={() => setHeaderContextMenu(null)} />}
-    </>
+      {headerContextMenu && (
+          <ContextMenu
+              x={headerContextMenu.x}
+              y={headerContextMenu.y}
+              options={getMenuOptionsForDateGroup(headerContextMenu.dateGroupKey)}
+              onClose={() => setHeaderContextMenu(null)}
+          />
+      )}
+    </div>
   );
 };
 
 export default OrderWorkspace;
-

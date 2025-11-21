@@ -1,7 +1,6 @@
-
 import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Order, ItemPrice, StoreName, PaymentMethod } from '../../types';
+import { Order, ItemPrice, StoreName, PaymentMethod, SupplierName } from '../../types';
 import { getLatestItemPrice, generateKaliUnifyReport, getPhnomPenhDateKey } from '../../utils/messageFormatter';
 import { useNotifier } from '../../context/NotificationContext';
 import { sendDueReport } from '../../services/telegramService';
@@ -33,7 +32,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             if (o.status !== 'completed' || !o.completedAt) return false;
             const supplier = suppliers.find(s => s.id === o.supplierId);
             const paymentMethod = o.paymentMethod || supplier?.paymentMethod;
-            return paymentMethod === PaymentMethod.KALI;
+            return paymentMethod === PaymentMethod.KALI || supplier?.name === SupplierName.KALI;
         });
 
         kaliOrders.forEach(order => {
@@ -64,13 +63,27 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
     };
 
     const reportRows = useMemo(() => {
-        const dates = Object.keys(dailyKALIspend).concat(Array.from(topUpsMap.keys()));
-        const startDate = new Date('2025-11-01T00:00:00Z');
+        // Collect all dates from data
+        const datesSet = new Set<string>([
+            ...Object.keys(dailyKALIspend),
+            ...Array.from(topUpsMap.keys())
+        ]);
         
-        const relevantDates = dates.filter(dateKey => new Date(dateKey + 'T00:00:00Z') >= startDate);
-        if (relevantDates.length === 0) return [];
+        const startDateStr = '2025-11-01';
+        const todayKey = getPhnomPenhDateKey();
         
-        const uniqueSortedDates = [...new Set(relevantDates)].sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+        // Generate continuous date range from startDate to today
+        const current = new Date(startDateStr + 'T12:00:00Z');
+        const end = new Date(todayKey + 'T12:00:00Z');
+        
+        while (current <= end) {
+            datesSet.add(current.toISOString().split('T')[0]);
+            current.setDate(current.getDate() + 1);
+        }
+        
+        const uniqueSortedDates = Array.from(datesSet)
+            .filter(d => d >= startDateStr)
+            .sort();
         
         const hardcodedInitialBalance = 146.26;
         let runningDue = hardcodedInitialBalance;
@@ -83,8 +96,11 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             
             runningDue = runningDue + topUp - totalSpend;
             
+            // Create a date object at noon to avoid timezone shifting issues when displaying
+            const displayDate = new Date(dateKey + 'T12:00:00');
+
             rows.push({
-                date: new Date(dateKey + 'T00:00:00'),
+                date: displayDate,
                 dateKey,
                 topUp,
                 cv2: spend[StoreName.CV2] || 0,
@@ -118,7 +134,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
                 
                 const supplier = suppliers.find(s => s.id === order.supplierId);
                 const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-                return paymentMethod === PaymentMethod.KALI;
+                return paymentMethod === PaymentMethod.KALI || supplier?.name === SupplierName.KALI;
             });
             
             const message = generateKaliUnifyReport(ordersForDate, itemPrices, previousDue, topUp, row.dateKey, row.dateKey);

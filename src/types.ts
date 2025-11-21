@@ -1,5 +1,4 @@
 
-
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -24,7 +23,7 @@ export enum PaymentMethod {
 }
 
 export type SyncStatus = 'idle' | 'syncing' | 'error' | 'offline';
-export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'templates' | 'due-report';
+export type SettingsTab = 'items' | 'suppliers' | 'stores' | 'integrations' | 'due-report';
 
 export interface Store {
   id: string; // uuid from Supabase
@@ -43,7 +42,6 @@ export interface Item {
   createdAt?: string;
   modifiedAt?: string;
   stockQuantity?: number;
-  defaultQuantity?: number;
 }
 
 export interface SupplierBotSettings {
@@ -154,28 +152,9 @@ export interface AppSettings {
     messageTemplates?: { [key: string]: string; };
 }
 
-export interface KaliTodoItem {
-    uniqueId: string;
-    originalOrderId: string;
-    name: string;
-    quantity: number;
-    unit: string;
-    ticked: boolean;
-}
-
-export interface KaliTodoSection {
-    id: string;
-    title: string;
-    items: KaliTodoItem[];
-}
-
-export interface KaliTodoState {
-    sections: KaliTodoSection[];
-}
-
 export interface AppState {
   stores: Store[];
-  activeStore: StoreName | 'Settings' | 'ALL' | 'TODO';
+  activeStore: StoreName | 'Settings' | 'ALL';
   suppliers: Supplier[];
   items: Item[];
   itemPrices: ItemPrice[];
@@ -190,13 +169,10 @@ export interface AppState {
   isLoading: boolean;
   isInitialized: boolean;
   syncStatus: SyncStatus;
-  isSmartView: boolean;
   isDualPaneMode: boolean;
   cardWidth: number | null;
   draggedOrderId: string | null;
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
   initialAction: string | null;
-  managerStoreFilter: StoreName | null;
-  kaliTodoState: KaliTodoState;
 }
