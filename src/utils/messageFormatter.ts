@@ -137,10 +137,14 @@ export const generateKaliUnifyReport = (
         const start = new Date(startDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' });
         const end = new Date(endDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
         dateStr = `${start} - ${end}`;
+    } else if (startDate) {
+        // If specific start date provided (single day report), use it directly
+        // Use noon UTC to avoid any timezone shift when printing
+        const reportDate = new Date(startDate + 'T12:00:00Z');
+        dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
     } else {
-        const reportDate = orders.length > 0 && orders[0].completedAt 
-            ? new Date(orders[0].completedAt) 
-            : new Date(startDate || new Date());
+        // Fallback to today if no date provided
+        const reportDate = new Date();
         dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }
     

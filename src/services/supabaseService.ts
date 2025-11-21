@@ -261,7 +261,11 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
     const headers = getHeaders(key);
     const supplierMap = new Map<string, Supplier>(suppliers.map(s => [s.id, s]));
 
-    const ordersResponse = await fetch(`${url}/rest/v1/orders?select=*`, { headers });
+    // Force descending order by created_at to ensure recent orders are always fetched,
+    // preventing missing data when the row limit is reached.
+    // Supabase's PostgREST default limit is 1000 rows if not specified, or if no `limit` is set.
+    // Without an explicit `order`, the order of returned rows is not guaranteed, causing recent data to be lost.
+    const ordersResponse = await fetch(`${url}/rest/v1/orders?select=*&order=created_at.desc`, { headers });
     if (!ordersResponse.ok) throw new Error(`Failed to fetch orders: ${await ordersResponse.text()}`);
     
     const ordersData: OrderFromDb[] = await ordersResponse.json();

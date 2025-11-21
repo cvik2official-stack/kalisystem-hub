@@ -10,7 +10,6 @@ declare const Deno: {
 };
 
 const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN');
-const TELEGRAM_WEBHOOK_SECRET = Deno.env.get('TELEGRAM_WEBHOOK_SECRET');
 
 // --- Types (subset of frontend types) ---
 interface Order { id: string; orderId: string; store: string; supplierId: string; supplierName: string; items: OrderItem[]; completedAt?: string; paymentMethod?: string; status: string; }
@@ -51,7 +50,7 @@ const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
 const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[], previousDue = 0, topUp = 0, dateKey: string): string => {
     const reportDate = new Date(dateKey + 'T00:00:00Z');
     const dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
-    let report = `${dateStr} KALI Due report\n\n`;
+    let report = `<b>${dateStr} KALI Due report</b>\n\n`;
     const ordersByStore = orders.reduce((acc, order) => {
         if (!acc[order.store]) acc[order.store] = [];
         acc[order.store].push(order);
@@ -62,7 +61,7 @@ const generateKaliUnifyReport = (orders: Order[], itemPrices: ItemPrice[], previ
         const storeOrders = ordersByStore[storeName];
         const storeTotal = storeOrders.reduce((sum, order) => sum + calculateOrderTotal(order, itemPrices), 0);
         grandTotal += storeTotal;
-        report += `${storeName.padEnd(8, ' ')} ${formatPrice(storeTotal)}\n`;
+        report += `<b>${storeName}</b>   ${formatPrice(storeTotal)}\n`;
         const itemMap = new Map<string, { name: string; quantity: number; totalValue: number; unit?: string }>();
         for (const order of storeOrders) {
             for (const item of order.items) {
@@ -94,11 +93,11 @@ const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]): string
         return acc;
     }, {} as Record<string, Order[]>);
     let grandTotal = Math.max(0, orders.reduce((sum, order) => sum + calculateOrderTotal(order, itemPrices), 0));
-    let report = `Date ${dateStr}\nEST. report sum ${formatPrice(grandTotal)}\n---------------------\n\n`;
+    let report = `<b>Date ${dateStr}</b>\nEST. report sum ${formatPrice(grandTotal)}\n---------------------\n\n`;
     for (const storeName of Object.keys(ordersByStore).sort()) {
         const storeOrders = ordersByStore[storeName];
         let storeTotal = Math.max(0, storeOrders.reduce((sum, order) => sum + calculateOrderTotal(order, itemPrices), 0));
-        report += `${storeName} ${formatPrice(storeTotal)}\n`;
+        report += `<b>${storeName}</b> ${formatPrice(storeTotal)}\n`;
         const itemMap = new Map<string, { name: string; quantity: number; totalValue: number; unit?: string }>();
         for (const order of storeOrders) {
             for (const item of order.items) {
@@ -123,9 +122,6 @@ const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]): string
 
 // --- Telegram Bot Logic ---
 serve(async (req)=>{
-    if (!TELEGRAM_WEBHOOK_SECRET || new URL(req.url).searchParams.get('secret') !== TELEGRAM_WEBHOOK_SECRET) {
-        return new Response("Unauthorized", { status: 401 });
-    }
   const ack = new Promise(r => setTimeout(() => r(new Response(null, { status: 200 })), 0));
   processRequest(req).catch(e => console.error("Error processing request:", e));
   return await ack;
@@ -173,10 +169,27 @@ async function handleCallbackQuery(query: any) {
   else if (action === 'trigger_qo' && recordId) await answerCallbackQuery(id, "This must be triggered from the app.", true);
 }
 
+// --- Helpers ---
+async function getKaliSupplierId(supabase: any): Promise<string | null> {
+    const { data } = await supabase.from('suppliers').select('id').eq('name', 'KALI').maybeSingle();
+    return data?.id || null;
+}
+
 // --- Report Handlers ---
 async function handleEstReport(chatId: number) {
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
-    const { data: orders, error: ordersError } = await supabase.from('orders').select('*, suppliers(name)').eq('status', 'on_the_way').or('payment_method.eq.kali,suppliers.name.eq.KALI');
+    
+    const kaliId = await getKaliSupplierId(supabase);
+    let query = supabase.from('orders').select('*, suppliers(name)').eq('status', 'on_the_way');
+    
+    if (kaliId) {
+        query = query.or(`payment_method.eq.kali,supplier_id.eq.${kaliId}`);
+    } else {
+        query = query.eq('payment_method', 'kali');
+    }
+
+    const { data: orders, error: ordersError } = await query;
+
     if (ordersError) throw new Error(`DB Error (Orders): ${ordersError.message}`);
     if (orders.length === 0) { await sendMessageToChat(chatId, 'No KALI orders are currently on the way.'); return; }
     const { data: itemPrices, error: pricesError } = await supabase.from('item_prices').select('*');
@@ -185,14 +198,24 @@ async function handleEstReport(chatId: number) {
     const mappedOrders: Order[] = orders.map((o: any) => ({ ...o, supplierName: o.suppliers.name, orderId: o.order_id }));
 
     const report = generateKaliZapReport(mappedOrders, itemPrices);
-    await sendMessageToChat(chatId, `<pre>${report}</pre>`, 'HTML');
+    await sendMessageToChat(chatId, report, 'HTML');
 }
 
 async function handleDueReport(chatId: number) {
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     const todayKey = getPhnomPenhDateKey();
+    const kaliId = await getKaliSupplierId(supabase);
     
-    const { data: orders, error: ordersError } = await supabase.from('orders').select('*, suppliers(name)').eq('status', 'completed').or('payment_method.eq.kali,suppliers.name.eq.KALI');
+    let query = supabase.from('orders').select('*, suppliers(name)').eq('status', 'completed');
+    
+    if (kaliId) {
+        query = query.or(`payment_method.eq.kali,supplier_id.eq.${kaliId}`);
+    } else {
+        query = query.eq('payment_method', 'kali');
+    }
+
+    const { data: orders, error: ordersError } = await query;
+
     if (ordersError) throw new Error(`DB Error (Orders): ${ordersError.message}`);
     const { data: itemPrices, error: pricesError } = await supabase.from('item_prices').select('*');
     if (pricesError) throw new Error(`DB Error (Prices): ${pricesError.message}`);
@@ -214,7 +237,7 @@ async function handleDueReport(chatId: number) {
     }
 
     const report = generateKaliUnifyReport(todaysOrders, itemPrices, previousDue, todaysTopUp, todayKey);
-    await sendMessageToChat(chatId, `<pre>${report}</pre>`, 'HTML');
+    await sendMessageToChat(chatId, report, 'HTML');
 }
 
 

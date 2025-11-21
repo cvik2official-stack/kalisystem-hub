@@ -233,32 +233,6 @@ const OrderWorkspace: React.FC = () => {
     setSupplierSelectModalOpen(false);
     setOrderToChange(null);
   };
-  
-  const handleGenerateStoreReport = () => {
-    if (activeStore === 'Settings' || activeStore === 'ALL') return;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const todaysCompletedOrders = orders.filter(o => {
-      if (o.status !== OrderStatus.COMPLETED || !o.completedAt || o.store !== activeStore) return false;
-      const completedDate = new Date(o.completedAt);
-      completedDate.setHours(0, 0, 0, 0);
-      return completedDate.getTime() === today.getTime();
-    });
-    
-    if (todaysCompletedOrders.length === 0) {
-        notify("No completed orders for today to generate a report.", 'info');
-        return;
-    }
-    
-    const reportText = generateStoreReport(todaysCompletedOrders);
-    navigator.clipboard.writeText(reportText).then(() => {
-        notify('Store report copied to clipboard!', 'success');
-    }).catch(err => {
-        notify(`Failed to copy report: ${err}`, 'error');
-    });
-  };
 
   const getFilteredOrdersForStatus = (status: OrderStatus) => {
       if (activeStore === 'Settings') return [];
@@ -335,6 +309,34 @@ const OrderWorkspace: React.FC = () => {
     if (showAllCompleted) return sortedCompletedGroupKeys;
     return sortedCompletedGroupKeys.filter(key => key === 'Today' || formatDateGroupHeader(key) === 'Yesterday');
   }, [sortedCompletedGroupKeys, showAllCompleted]);
+
+  const handleGenerateStoreReport = () => {
+    if (activeStore === 'Settings' || activeStore === 'ALL') return;
+
+    // Use the exact same grouping logic to find today's orders
+    const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
+    
+    if (todaysCompletedOrders.length === 0) {
+        notify("No completed orders for today to generate a report.", 'info');
+        return;
+    }
+    
+    let reportText = generateStoreReport(todaysCompletedOrders);
+    
+    if (activeStore === StoreName.KALI) {
+        const lines = reportText.split('\n');
+        if (lines.length > 0) {
+            lines[0] = `*KALI Delivery Report - ${new Date().toLocaleDateString('en-GB')}*`;
+            reportText = lines.join('\n');
+        }
+    }
+
+    navigator.clipboard.writeText(reportText).then(() => {
+        notify('Store report copied to clipboard!', 'success');
+    }).catch(err => {
+        notify(`Failed to copy report: ${err}`, 'error');
+    });
+  };
 
   const toggleGroup = (key: string) => {
     setExpandedGroups(prev => {
