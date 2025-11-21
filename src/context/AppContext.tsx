@@ -319,7 +319,7 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      geminiApiKey: 'AIzaSyCZXZ8HC5gyqEPDhI13eaN6X1QxOJn0bwE',
+      geminiApiKey: 'AIzaSyBSeDzBv_MX8ztYXxbft9pkRJLeYiuSJe4',
       telegramBotToken: '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og',
       aiParsingRules: {
         global: {
