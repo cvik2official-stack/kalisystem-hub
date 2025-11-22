@@ -64,32 +64,33 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
     };
 
     const reportRows = useMemo(() => {
-        // Collect all dates that exist in orders or top-ups
-        const dataDates = new Set<string>([
-            ...Object.keys(dailyKALIspend),
-            ...Array.from(topUpsMap.keys())
-        ]);
+        // Determine range: from hardcoded start or earliest data point to today
+        const dataKeys = [...Object.keys(dailyKALIspend), ...Array.from(topUpsMap.keys())];
+        dataKeys.sort();
         
-        const startDateStr = '2025-11-01';
+        // Hardcoded start date as per requirements/context (Nov 1, 2025 based on previous context, or current year)
+        // Using 2025-11-01 as base since previous prompts implied this context
+        const startDateStr = '2025-11-01'; 
         const todayKey = getPhnomPenhDateKey();
         
-        let current = new Date(startDateStr + 'T12:00:00Z');
-        const end = new Date(todayKey + 'T12:00:00Z');
+        // Generate full date range
+        const dates: string[] = [];
+        let currentDate = new Date(startDateStr);
+        const endDate = new Date(todayKey);
         
-        while (current <= end) {
-            dataDates.add(current.toISOString().split('T')[0]);
-            current.setDate(current.getDate() + 1);
+        // Safety break to prevent infinite loops if dates are wild
+        let safety = 0;
+        while (currentDate <= endDate && safety < 1000) {
+            dates.push(currentDate.toISOString().split('T')[0]);
+            currentDate.setDate(currentDate.getDate() + 1);
+            safety++;
         }
-        
-        const uniqueSortedDates = Array.from(dataDates)
-            .filter(d => d >= startDateStr)
-            .sort();
         
         const hardcodedInitialBalance = 146.26;
         let runningDue = hardcodedInitialBalance;
         const rows: any[] = [];
 
-        for (const dateKey of uniqueSortedDates) {
+        for (const dateKey of dates) {
             const spend = dailyKALIspend[dateKey] || {};
             
             // Calculate totals
@@ -104,6 +105,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             
             runningDue = runningDue + topUp - totalSpent;
             
+            // Create a display date object (using noon to avoid timezone shifts)
             const displayDate = new Date(dateKey + 'T12:00:00');
 
             rows.push({

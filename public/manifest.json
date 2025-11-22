@@ -30,6 +30,13 @@
         "description": "Send the Kali On-the-Way estimation report",
         "url": "/?action=kali-est",
         "icons": [{ "src": "/icons/web-app-manifest-192x192.png", "sizes": "192x192" }]
+    },
+    {
+        "name": "Order Salmon",
+        "short_name": "Salmon",
+        "description": "Execute Salmon Quick Order",
+        "url": "/?action=salmon",
+        "icons": [{ "src": "/icons/web-app-manifest-192x192.png", "sizes": "192x192" }]
     }
   ],
   "share_target": {

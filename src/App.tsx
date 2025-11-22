@@ -6,8 +6,8 @@ import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
 import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod, Order, Supplier } from './types';
-import { generateKaliZapReport } from './utils/messageFormatter';
-import { sendKaliZapReport } from './services/telegramService';
+import { generateKaliZapReport, generateOrderMessage } from './utils/messageFormatter';
+import { sendKaliZapReport, sendOrderToSupplierOnTelegram } from './services/telegramService';
 import { useNotifier } from './context/NotificationContext';
 import ContextMenu from './components/ContextMenu';
 import NotificationBell from './components/NotificationBell';
@@ -100,7 +100,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('blur', handleFocusLoss);
   }, [actions, state.orders]);
 
-  // Function to send Kali Zap report, defined outside useEffect so it can be used there
+  // Function to send Kali Zap report
   const handleSendKaliZapReport = async () => {
     setIsSendingZapReport(true);
     try {
@@ -130,6 +130,31 @@ const App: React.FC = () => {
     }
   };
 
+  const handleTriggerQuickOrder = async (quickOrderName: string) => {
+      // Case insensitive search
+      const targetQO = state.quickOrders.find(qo => qo.name.toLowerCase() === quickOrderName.toLowerCase());
+      if (!targetQO) {
+          notify(`Quick Order "${quickOrderName}" not found.`, 'error');
+          return;
+      }
+      
+      try {
+          const supplier = state.suppliers.find(s => s.id === targetQO.supplierId);
+          if (!supplier) throw new Error('Supplier not found');
+
+          const newOrder = await actions.addOrder(supplier, targetQO.store, targetQO.items, OrderStatus.DISPATCHING);
+
+          if (state.settings.telegramBotToken && supplier.chatId) {
+             await sendOrderToSupplierOnTelegram(newOrder, supplier, generateOrderMessage(newOrder, 'html', state.suppliers, state.stores, state.settings), state.settings.telegramBotToken);
+          }
+          
+          await actions.updateOrder({ ...newOrder, status: OrderStatus.ON_THE_WAY, isSent: true });
+          notify(`Quick Order "${targetQO.name}" executed!`, 'success');
+      } catch (e: any) {
+          notify(`Failed: ${e.message}`, 'error');
+      }
+  };
+
   useEffect(() => {
     if (!isInitialized) return;
 
@@ -140,12 +165,13 @@ const App: React.FC = () => {
       if (action === 'show_all') {
         dispatch({ type: 'SET_ACTIVE_STORE', payload: 'ALL' });
       } else if (action === 'kali-est') {
-          // Trigger Kali EST report
           handleSendKaliZapReport();
+      } else if (action === 'salmon') {
+          handleTriggerQuickOrder('CV2_CHARONAI_SALMON');
       }
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [isInitialized, dispatch, orders, itemPrices, settings]); // Dependencies needed for handleSendKaliZapReport
+  }, [isInitialized, dispatch, orders, itemPrices, settings, state.quickOrders]); 
 
   
   const handleHeaderMenuClick = (e: React.MouseEvent) => {

@@ -3,6 +3,9 @@
   This service now supports an 'invoice_amount' for orders and 'bot_settings' for suppliers.
   Please run the following SQL commands in your Supabase SQL Editor:
 
+  -- Add tags column to items
+  ALTER TABLE public.items ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+
   -- Add a numeric column to store the invoice amount
   ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS invoice_amount NUMERIC;
 
@@ -92,6 +95,7 @@ interface ItemFromDb {
   created_at: string;
   modified_at: string;
   stock_quantity?: number;
+  tags?: string[];
 }
 
 interface StoreFromDb {
@@ -214,6 +218,7 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
                 createdAt: i.created_at,
                 modifiedAt: i.modified_at,
                 stockQuantity: i.stock_quantity,
+                tags: i.tags || [],
             });
         }
         return acc;
@@ -399,6 +404,7 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         unit: item.unit,
         supplier_id: item.supplierId,
         stock_quantity: item.stockQuantity,
+        tags: item.tags,
     };
     const response = await fetch(`${url}/rest/v1/items?select=*`, {
         method: 'POST',
@@ -414,6 +420,7 @@ export const addItem = async ({ item, url, key }: { item: Omit<Item, 'id'>, url:
         createdAt: newItem.created_at,
         modifiedAt: newItem.modified_at,
         stockQuantity: newItem.stock_quantity,
+        tags: newItem.tags,
     };
 };
 
@@ -423,6 +430,7 @@ export const updateItem = async ({ item, url, key }: { item: Item, url: string, 
         unit: item.unit,
         supplier_id: item.supplierId,
         stock_quantity: item.stockQuantity,
+        tags: item.tags,
     };
     const response = await fetch(`${url}/rest/v1/items?id=eq.${item.id}&select=*`, {
         method: 'PATCH',

@@ -6,13 +6,26 @@ import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services
 import { parseItemListLocally } from '../services/localParsingService';
 import parseItemListWithGemini from '../services/geminiService';
 
-// Helper to safely get env vars
-const getEnv = (key: string) => {
+// Safely access environment variables. 
+// We use direct property access so build tools like Vite can statically replace them.
+// We wrap in try-catch to handle environments where import.meta.env might be undefined.
+const getSafeGeminiApiKey = () => {
     try {
         // @ts-ignore
-        return import.meta.env?.[key] || '';
+        return import.meta.env?.VITE_GEMINI_API_KEY || '';
     } catch {
         return '';
+    }
+};
+
+const getSafeTelegramBotToken = () => {
+    try {
+        // @ts-ignore
+        const envToken = import.meta.env?.VITE_TELEGRAM_BOT_TOKEN;
+        // Fallback to the provided token if env var is missing
+        return envToken || '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og';
+    } catch {
+        return '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og';
     }
 };
 
@@ -311,6 +324,9 @@ const getInitialState = (): AppState => {
     if (serializedState) loadedState = JSON.parse(serializedState);
   } catch (err) { console.warn("Could not load state from localStorage", err); }
 
+  const envGemini = getSafeGeminiApiKey();
+  const envTelegram = getSafeTelegramBotToken();
+
   const initialState: AppState = {
     stores: [],
     activeStore: 'ALL',
@@ -328,8 +344,8 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      geminiApiKey: getEnv('VITE_GEMINI_API_KEY'),
-      telegramBotToken: getEnv('VITE_TELEGRAM_BOT_TOKEN'),
+      geminiApiKey: envGemini,
+      telegramBotToken: envTelegram,
       aiParsingRules: {
         global: {
           "Chicken": "Chicken breast",
@@ -370,9 +386,6 @@ const getInitialState = (): AppState => {
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
   
   // Ensure keys are set if environment variables exist and state is empty
-  const envGemini = getEnv('VITE_GEMINI_API_KEY');
-  const envTelegram = getEnv('VITE_TELEGRAM_BOT_TOKEN');
-
   if (!finalState.settings.geminiApiKey && envGemini) {
       finalState.settings.geminiApiKey = envGemini;
   }
