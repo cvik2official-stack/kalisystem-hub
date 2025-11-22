@@ -226,16 +226,16 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
                                         defaultValue={row.topUp || ''}
                                         onBlur={(e) => handleTopUpChange(row.dateKey, e.target.value)}
                                         placeholder="-"
-                                        className="bg-transparent p-1 w-14 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-right"
+                                        className="bg-transparent p-1 w-14 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-left"
                                     />
                                 </td>
-                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-right">{formatCurrency(row.cv2)}</td>
-                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-right">{formatCurrency(row.shanti)}</td>
-                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-right">{formatCurrency(row.stock02)}</td>
-                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-right">{formatCurrency(row.wb)}</td>
-                                <td className={`px-1 md:px-2 py-2 whitespace-nowrap text-xs font-bold text-right ${row.due < 0 ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(row.due)}</td>
-                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs font-medium text-yellow-500 text-right">{formatCurrency(row.totalSpent)}</td>
-                                <td className={`px-1 md:px-2 py-2 whitespace-nowrap text-xs font-medium text-right ${row.diffDay >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(row.diffDay)}</td>
+                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-left">{formatCurrency(row.cv2)}</td>
+                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-left">{formatCurrency(row.shanti)}</td>
+                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-left">{formatCurrency(row.stock02)}</td>
+                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-left">{formatCurrency(row.wb)}</td>
+                                <td className={`px-1 md:px-2 py-2 whitespace-nowrap text-xs font-bold text-left ${row.due < 0 ? 'text-red-400' : 'text-green-400'}`}>{formatCurrency(row.due)}</td>
+                                <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs font-medium text-yellow-500 text-left">{formatCurrency(row.totalSpent)}</td>
+                                <td className={`px-1 md:px-2 py-2 whitespace-nowrap text-xs font-medium text-left ${row.diffDay >= 0 ? 'text-green-500' : 'text-red-500'}`}>{formatCurrency(row.diffDay)}</td>
                                 <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-300 text-center">
                                     <button
                                         onClick={() => handleSendDailyReport(row, index)}

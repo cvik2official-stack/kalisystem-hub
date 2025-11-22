@@ -1,4 +1,3 @@
-
 import React, { useContext, useState, useMemo, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Item, Unit, SupplierName } from '../../types';
@@ -190,7 +189,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
     setMenuOptions(options);
 
     return () => setMenuOptions([]);
-  }, [handleAddNewItem, setMenuOptions, isGrouped, filteredItems]); // Add filteredItems to deps
+  }, [handleAddNewItem, setMenuOptions, isGrouped, filteredItems]);
 
 
   
@@ -230,6 +229,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                         autoFocus
                         onBlur={(e) => { handleItemUpdate(item, 'name', e.target.value); setEditingField(null); }}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingField(null); }}
+                        onClick={(e) => e.stopPropagation()}
                         className="bg-gray-900 p-1 w-full rounded outline-none"
                     />
                 ) : (
@@ -250,6 +250,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                         onBlur={() => setEditingField(null)}
                         onChange={(e) => { handleItemUpdate(item, 'supplierId', e.target.value); setEditingField(null); }}
                         onKeyDown={(e) => { if (e.key === 'Escape') setEditingField(null); }}
+                        onClick={(e) => e.stopPropagation()}
                         className="bg-gray-900 p-1 w-full rounded outline-none"
                     >
                         {state.suppliers.sort((a,b) => a.name.localeCompare(b.name)).map(s => (
@@ -274,6 +275,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                         onBlur={() => setEditingField(null)}
                         onChange={(e) => { handleItemUpdate(item, 'unit', e.target.value as Unit); setEditingField(null); }}
                         onKeyDown={(e) => { if (e.key === 'Escape') setEditingField(null); }}
+                        onClick={(e) => e.stopPropagation()}
                         className="bg-gray-900 p-1 w-full rounded outline-none"
                     >
                         {(Object.values(Unit) as Unit[]).map(u => <option key={u} value={u}>{u}</option>)}
@@ -297,6 +299,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                     autoFocus
                     onBlur={(e) => { handleStockQuantityUpdate(item, e.target.value); setEditingField(null); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingField(null); }}
+                    onClick={(e) => e.stopPropagation()}
                     placeholder="-"
                     className="bg-gray-900 p-1 w-full rounded outline-none text-right"
                 />
@@ -320,6 +323,7 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
                     autoFocus
                     onBlur={(e) => { handlePriceUpdate(item, e.target.value); setEditingField(null); }}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setEditingField(null); }}
+                    onClick={(e) => e.stopPropagation()}
                     placeholder="-"
                     className="bg-gray-900 p-1 w-full rounded outline-none text-right"
                 />

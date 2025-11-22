@@ -18,25 +18,18 @@
   ],
   "shortcuts": [
     {
-      "name": "Paste a List",
-      "short_name": "Paste",
-      "description": "Paste a list of items to create orders",
-      "url": "/?action=paste-list",
-      "icons": [{ "src": "/icons/web-app-manifest-192x192.png", "sizes": "192x192" }]
-    },
-    {
-      "name": "Add Card",
-      "short_name": "Add Card",
-      "description": "Manually add a new order card",
-      "url": "/?action=add-card",
-      "icons": [{ "src": "/icons/web-app-manifest-192x192.png", "sizes": "192x192" }]
-    },
-    {
       "name": "Send KALI Due Report",
       "short_name": "KALI Report",
       "description": "Open the KALI due report generator",
       "url": "/?action=kali-report",
       "icons": [{ "src": "/icons/web-app-manifest-192x192.png", "sizes": "192x192" }]
+    },
+    {
+        "name": "Kali Est Report",
+        "short_name": "Kali EST",
+        "description": "Send the Kali On-the-Way estimation report",
+        "url": "/?action=kali-est",
+        "icons": [{ "src": "/icons/web-app-manifest-192x192.png", "sizes": "192x192" }]
     }
   ],
   "share_target": {

@@ -100,21 +100,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('blur', handleFocusLoss);
   }, [actions, state.orders]);
 
-  useEffect(() => {
-    if (!isInitialized) return;
-
-    const params = new URLSearchParams(window.location.search);
-    const action = params.get('action');
-
-    if (action) {
-      if (action === 'show_all') {
-        dispatch({ type: 'SET_ACTIVE_STORE', payload: 'ALL' });
-      }
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, [isInitialized, dispatch]);
-
-  
+  // Function to send Kali Zap report, defined outside useEffect so it can be used there
   const handleSendKaliZapReport = async () => {
     setIsSendingZapReport(true);
     try {
@@ -143,6 +129,24 @@ const App: React.FC = () => {
         setIsSendingZapReport(false);
     }
   };
+
+  useEffect(() => {
+    if (!isInitialized) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+
+    if (action) {
+      if (action === 'show_all') {
+        dispatch({ type: 'SET_ACTIVE_STORE', payload: 'ALL' });
+      } else if (action === 'kali-est') {
+          // Trigger Kali EST report
+          handleSendKaliZapReport();
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, [isInitialized, dispatch, orders, itemPrices, settings]); // Dependencies needed for handleSendKaliZapReport
+
   
   const handleHeaderMenuClick = (e: React.MouseEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

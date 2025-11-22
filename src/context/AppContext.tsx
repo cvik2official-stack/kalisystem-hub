@@ -1,4 +1,3 @@
-
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, getAcknowledgedOrderUpdates, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
@@ -319,8 +318,8 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      geminiApiKey: 'AIzaSyBSeDzBv_MX8ztYXxbft9pkRJLeYiuSJe4',
-      telegramBotToken: '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og',
+      geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
+      telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
       aiParsingRules: {
         global: {
           "Chicken": "Chicken breast",
@@ -357,7 +356,17 @@ const getInitialState = (): AppState => {
   };
 
   const finalState = { ...initialState, ...loadedState };
+  // Prioritize initial settings for critical infrastructure if missing, but respect user overrides if present
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
+  
+  // Ensure keys are set if environment variables exist and state is empty
+  if (!finalState.settings.geminiApiKey && import.meta.env.VITE_GEMINI_API_KEY) {
+      finalState.settings.geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  }
+  if (!finalState.settings.telegramBotToken && import.meta.env.VITE_TELEGRAM_BOT_TOKEN) {
+      finalState.settings.telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
+  }
+  
   if ((finalState as any).quickOrders === undefined) finalState.quickOrders = [];
   
   // Remove legacy properties
