@@ -6,6 +6,16 @@ import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services
 import { parseItemListLocally } from '../services/localParsingService';
 import parseItemListWithGemini from '../services/geminiService';
 
+// Helper to safely get env vars
+const getEnv = (key: string) => {
+    try {
+        // @ts-ignore
+        return import.meta.env?.[key] || '';
+    } catch {
+        return '';
+    }
+};
+
 // Client-side safety net to ensure units are always valid for the database enum.
 const normalizeUnit = (unit?: string): Unit | undefined => {
     if (!unit) return undefined;
@@ -318,8 +328,8 @@ const getInitialState = (): AppState => {
       supabaseUrl: 'https://expwmqozywxbhewaczju.supabase.co',
       supabaseKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV4cHdtcW96eXd4Ymhld2Fjemp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2Njc5MjksImV4cCI6MjA3NzI0MzkyOX0.Tf0g0yIZ3pd-OcNrmLEdozDt9eT7Fn0Mjlu8BHt1vyg',
       isAiEnabled: true,
-      geminiApiKey: import.meta.env.VITE_GEMINI_API_KEY || '',
-      telegramBotToken: import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '',
+      geminiApiKey: getEnv('VITE_GEMINI_API_KEY'),
+      telegramBotToken: getEnv('VITE_TELEGRAM_BOT_TOKEN'),
       aiParsingRules: {
         global: {
           "Chicken": "Chicken breast",
@@ -360,11 +370,14 @@ const getInitialState = (): AppState => {
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
   
   // Ensure keys are set if environment variables exist and state is empty
-  if (!finalState.settings.geminiApiKey && import.meta.env.VITE_GEMINI_API_KEY) {
-      finalState.settings.geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const envGemini = getEnv('VITE_GEMINI_API_KEY');
+  const envTelegram = getEnv('VITE_TELEGRAM_BOT_TOKEN');
+
+  if (!finalState.settings.geminiApiKey && envGemini) {
+      finalState.settings.geminiApiKey = envGemini;
   }
-  if (!finalState.settings.telegramBotToken && import.meta.env.VITE_TELEGRAM_BOT_TOKEN) {
-      finalState.settings.telegramBotToken = import.meta.env.VITE_TELEGRAM_BOT_TOKEN;
+  if (!finalState.settings.telegramBotToken && envTelegram) {
+      finalState.settings.telegramBotToken = envTelegram;
   }
   
   if ((finalState as any).quickOrders === undefined) finalState.quickOrders = [];

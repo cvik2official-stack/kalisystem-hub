@@ -272,6 +272,40 @@ const OrderWorkspace: React.FC = () => {
       });
   };
   
+  const handleGenerateStoreReport = () => {
+    if (activeStore === 'Settings' || activeStore === 'ALL') return;
+
+    const todayKey = getPhnomPenhDateKey();
+
+    // Use the filter function to ensure we see what the user sees (handles KALI view logic correctly)
+    const relevantOrders = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
+
+    const todaysCompletedOrders = relevantOrders.filter(o => {
+      return o.completedAt && getPhnomPenhDateKey(o.completedAt) === todayKey;
+    });
+    
+    if (todaysCompletedOrders.length === 0) {
+        notify("No completed orders for today to generate a report.", 'info');
+        return;
+    }
+    
+    let reportText = generateStoreReport(todaysCompletedOrders);
+    
+    if (activeStore === StoreName.KALI) {
+        const lines = reportText.split('\n');
+        if (lines.length > 0) {
+            lines[0] = `*KALI Delivery Report - ${new Date().toLocaleDateString('en-GB')}*`;
+            reportText = lines.join('\n');
+        }
+    }
+
+    navigator.clipboard.writeText(reportText).then(() => {
+        notify('Store report copied to clipboard!', 'success');
+    }).catch(err => {
+        notify(`Failed to copy report: ${err}`, 'error');
+    });
+  };
+  
   const groupedCompletedOrders = useMemo(() => {
     const ordersToGroup = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
     const groups: Record<string, Order[]> = {};
@@ -310,34 +344,6 @@ const OrderWorkspace: React.FC = () => {
     return sortedCompletedGroupKeys.filter(key => key === 'Today' || formatDateGroupHeader(key) === 'Yesterday');
   }, [sortedCompletedGroupKeys, showAllCompleted]);
 
-  const handleGenerateStoreReport = () => {
-    if (activeStore === 'Settings' || activeStore === 'ALL') return;
-
-    // Use the exact same grouping logic to find today's orders
-    const todaysCompletedOrders = groupedCompletedOrders['Today'] || [];
-    
-    if (todaysCompletedOrders.length === 0) {
-        notify("No completed orders for today to generate a report.", 'info');
-        return;
-    }
-    
-    let reportText = generateStoreReport(todaysCompletedOrders);
-    
-    if (activeStore === StoreName.KALI) {
-        const lines = reportText.split('\n');
-        if (lines.length > 0) {
-            lines[0] = `*KALI Delivery Report - ${new Date().toLocaleDateString('en-GB')}*`;
-            reportText = lines.join('\n');
-        }
-    }
-
-    navigator.clipboard.writeText(reportText).then(() => {
-        notify('Store report copied to clipboard!', 'success');
-    }).catch(err => {
-        notify(`Failed to copy report: ${err}`, 'error');
-    });
-  };
-
   const toggleGroup = (key: string) => {
     setExpandedGroups(prev => {
       const newSet = new Set(prev);
@@ -365,6 +371,9 @@ const OrderWorkspace: React.FC = () => {
     if (!orderToMove) return;
 
     const todayKey = getPhnomPenhDateKey();
+    
+    // If "Today" is dropped on, use today's key. 
+    // Otherwise, key IS the YYYY-MM-DD string for that group (e.g. Yesterday's actual date key).
     const dateKeyToUse = key === 'Today' ? todayKey : key;
 
     // Create a date at noon in Phnom Penh for the target date, then get its UTC ISO string.
