@@ -27,8 +27,6 @@ const App: React.FC = () => {
 
   // Animations
   const [isRedAnimating, setIsRedAnimating] = useState(false);
-  const [isYellowAnimating, setIsYellowAnimating] = useState(false);
-  const prevHasUnreadRef = useRef(hasUnread);
   
   // Panel Control
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
@@ -63,17 +61,6 @@ const App: React.FC = () => {
         navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
     };
   }, [dispatch]);
-
-
-  useEffect(() => {
-    // Trigger bounce animation only when hasUnread changes from false to true
-    if (hasUnread && !prevHasUnreadRef.current) {
-        setIsYellowAnimating(true);
-        const timer = setTimeout(() => setIsYellowAnimating(false), 800); // Match wobble animation duration
-        return () => clearTimeout(timer);
-    }
-    prevHasUnreadRef.current = hasUnread;
-  }, [hasUnread]);
 
   // Animate red dot on page/view changes
   useEffect(() => {
@@ -279,17 +266,17 @@ const App: React.FC = () => {
       >
         <ToastContainer />
         
-        <main className="flex flex-col flex-grow p-2 lg:px-[10%] max-w-full mx-auto w-full">
-            <header className="flex-shrink-0 mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2 flex flex-col md:flex-row md:items-center md:justify-between md:flex-nowrap">
+        <main className="flex flex-col flex-grow py-2 px-0 md:px-2 lg:px-[10%] max-w-full mx-auto w-full">
+            <header className="flex-shrink-0 mb-4 sticky top-0 bg-gray-900/80 backdrop-blur-sm z-30 py-2 flex flex-col landscape:flex-row md:flex-row landscape:items-center md:items-center landscape:justify-between md:justify-between landscape:flex-nowrap md:flex-nowrap px-2 md:px-0">
                 {/* Mobile Top Row Wrapper / Desktop 'Contents' to unwrap children into parent flex container */}
-                <div className="flex items-center justify-between w-full md:w-auto md:contents">
+                <div className="flex items-center justify-between w-full landscape:w-auto landscape:contents md:w-auto md:contents">
                     {/* Left: Status Dots (Order 1 on Desktop) */}
-                    <div className="flex items-center space-x-2 md:order-1">
+                    <div className="flex items-center space-x-2 landscape:order-1 md:order-1">
                         <button onClick={handleRedDotClick} className="w-4 h-4 bg-red-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-red-500 relative" title="Exit Settings">
                             {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
                         </button>
                         <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">
-                            {hasUnread && <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 bg-red-500 rounded-full ${isYellowAnimating ? 'animate-wobble' : ''}`}></span>}
+                            {hasUnread && <span className="absolute inset-0 rounded-full sonar-emitter text-red-500"></span>}
                         </button>
                         <button onClick={handleGreenDotClick} className="relative w-4 h-4 bg-green-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-500" title="Sync with Database">
                             <span className={`absolute inset-0 rounded-full bg-green-500 ${greenDotAnimationClass}`}></span>
@@ -297,7 +284,7 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Right: Menu Button (Order 3 on Desktop) */}
-                    <div className="flex items-center space-x-2 md:order-3">
+                    <div className="flex items-center space-x-2 landscape:order-3 md:order-3">
                         <button onClick={handleHeaderMenuClick} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white rounded-full hover:bg-gray-800 focus:outline-none transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -306,8 +293,8 @@ const App: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Store Tabs (Order 2 on Desktop) - Will wrap to new line on mobile because parent is flex-col */}
-                <div className="w-full mt-2 md:mt-0 md:w-auto md:flex-grow md:px-4 md:order-2">
+                {/* Store Tabs (Order 2 on Desktop) - Will wrap to new line on mobile portrait because parent is flex-col */}
+                <div className="w-full mt-2 landscape:mt-0 md:mt-0 landscape:w-auto md:w-auto landscape:flex-grow md:flex-grow landscape:px-4 md:px-4 landscape:order-2 md:order-2">
                     <StoreTabs />
                 </div>
             </header>

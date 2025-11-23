@@ -10,6 +10,8 @@ import PaymentMethodModal from './modals/PaymentMethodModal';
 import AddItemModal from './modals/AddItemModal';
 import AddSupplierModal from './modals/AddSupplierModal';
 import PasteItemsModal from './modals/PasteItemsModal';
+import ContextMenu from './ContextMenu';
+import PriceNumpadModal from './modals/PriceNumpadModal';
 
 
 const formatDateGroupHeader = (key: string): string => {
@@ -46,13 +48,21 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     const [editingNameId, setEditingNameId] = useState<string | null>(null);
     const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
     const [paymentModalOrder, setPaymentModalOrder] = useState<Order | null>(null);
+    
+    // Numpad States
     const [numpadItem, setNumpadItem] = useState<{ order: Order, item: OrderItem } | null>(null);
+    const [priceNumpadItem, setPriceNumpadItem] = useState<{ order: Order, item: OrderItem } | null>(null);
     
     // Modal States
     const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
     const [orderForAddItem, setOrderForAddItem] = useState<Order | null>(null);
     const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
     const [isPasteItemsModalOpen, setIsPasteItemsModalOpen] = useState(false);
+    
+    // Context Menu & Change Supplier
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; options: any[] } | null>(null);
+    const [isChangeSupplierModalOpen, setIsChangeSupplierModalOpen] = useState(false);
+    const [orderToChangeSupplier, setOrderToChangeSupplier] = useState<Order | null>(null);
 
 
     const columnOrders = useMemo(() => {
@@ -102,9 +112,11 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
 
 
     const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set(columnOrders.map(o => o.store)));
+    
+    // Initialize expanded suppliers to exclude completed orders by default
     const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(() => {
-        // Always expand all suppliers initially
-        return new Set(columnOrders.map(o => o.id));
+        // Initially expand all orders EXCEPT completed ones
+        return new Set(columnOrders.filter(o => o.status !== OrderStatus.COMPLETED).map(o => o.id));
     });
 
     // Added state for expanded date groups in completed column
@@ -130,12 +142,6 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         dispatch({ type: 'SET_DRAGGED_ITEM', payload: { item, sourceOrderId } });
     };
     
-    const handleCardDragStart = (e: React.DragEvent, orderId: string) => {
-        if (editingNameId || editingPriceId) { e.preventDefault(); return; }
-        e.stopPropagation();
-        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: orderId });
-    };
-
     const handleDropOnSupplier = (e: React.DragEvent, destinationOrderId: string) => {
         e.preventDefault(); e.stopPropagation();
         if (draggedItem) onItemDrop(destinationOrderId);
@@ -147,6 +153,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         if (itemToUpdate.name === trimmedName || trimmedName === '') return;
         const updatedItems = order.items.map(i => (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, name: trimmedName } : i);
         await actions.updateOrder({ ...order, items: updatedItems });
+        notify("Item name updated for this order.", "info");
     };
 
     const handleSaveInlinePrice = async (order: Order, itemToUpdate: OrderItem, totalPriceStr: string) => {
@@ -182,8 +189,39 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
       if (itemToUpdate.quantity === 0) { notify('Cannot set price for item with quantity 0.', 'error'); return; }
       if (newTotalPrice !== null && !isNaN(newTotalPrice) && newTotalPrice >= 0) {
         const newUnitPrice = newTotalPrice / itemToUpdate.quantity;
-        const updatedItems = order.items.map(i => (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, price: newUnitPrice } : i);
-        await actions.updateOrder({ ...order, items: updatedItems });
+        
+        // Check for existing master price
+        const existingMaster = state.itemPrices.find(p => 
+            p.itemId === itemToUpdate.itemId && 
+            p.supplierId === order.supplierId &&
+            p.unit === itemToUpdate.unit
+        );
+
+        if (!existingMaster) {
+            // Create Default
+            await actions.upsertItemPrice({
+                itemId: itemToUpdate.itemId,
+                supplierId: order.supplierId,
+                price: newUnitPrice,
+                unit: itemToUpdate.unit || Unit.PC
+            });
+            // Clear override
+            const updatedItems = order.items.map(i => 
+                (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) 
+                ? { ...i, price: undefined } 
+                : i
+            );
+            await actions.updateOrder({ ...order, items: updatedItems });
+            notify('Price set as default.', 'success');
+        } else {
+            // Set Override
+            const updatedItems = order.items.map(i => 
+                (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) 
+                ? { ...i, price: newUnitPrice } 
+                : i
+            );
+            await actions.updateOrder({ ...order, items: updatedItems });
+        }
       } else {
         notify('Invalid price.', 'error');
       }
@@ -209,6 +247,14 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         setNumpadItem({ order, item });
     };
 
+    const handleSwitchToPriceFromNumpad = () => {
+        if (numpadItem) {
+            const itemRef = { ...numpadItem };
+            setNumpadItem(null);
+            setTimeout(() => setPriceNumpadItem(itemRef), 50);
+        }
+    };
+
     const handleSaveItemQuantity = async (quantity: number, unit?: Unit) => {
         if (!numpadItem) return;
         const { order, item } = numpadItem;
@@ -225,6 +271,42 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         setNumpadItem(null);
     };
     
+    const handleSavePriceFromModal = async (price: number, unit: Unit) => {
+        if (!priceNumpadItem) return;
+        const { order, item } = priceNumpadItem;
+        
+        // Check for existing master price
+        const existingMaster = state.itemPrices.find(p => 
+            p.itemId === item.itemId && 
+            p.supplierId === order.supplierId &&
+            p.unit === unit
+        );
+
+        if (!existingMaster) {
+            await actions.upsertItemPrice({
+                itemId: item.itemId,
+                supplierId: order.supplierId,
+                price: price,
+                unit: unit
+            });
+            const updatedItems = order.items.map(i => 
+                (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) 
+                ? { ...i, quantity: i.quantity, unit: unit, price: undefined } 
+                : i
+            );
+            await actions.updateOrder({ ...order, items: updatedItems });
+            notify('Price set as default.', 'success');
+        } else {
+            const updatedItems = order.items.map(i => 
+                (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) 
+                ? { ...i, price, unit } 
+                : i
+            );
+            await actions.updateOrder({ ...order, items: updatedItems });
+        }
+        setPriceNumpadItem(null);
+    };
+
     const handlePaymentMethodSelect = async (method: PaymentMethod) => {
         if (paymentModalOrder) {
             await actions.updateOrder({ ...paymentModalOrder, paymentMethod: method });
@@ -268,6 +350,33 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         await actions.addOrder(supplier, state.activeStore, [], OrderStatus.DISPATCHING);
         setIsAddSupplierModalOpen(false);
     };
+    
+    const handleChangeSupplier = async (newSupplier: Supplier) => {
+        if (!orderToChangeSupplier) return;
+        let supplierToUse = newSupplier;
+        if (newSupplier.id.startsWith('new_')) {
+            const newSupplierFromDb = await actions.addSupplier({ name: newSupplier.name });
+            supplierToUse = newSupplierFromDb;
+        }
+        await actions.updateOrder({ 
+            ...orderToChangeSupplier, 
+            supplierId: supplierToUse.id, 
+            supplierName: supplierToUse.name, 
+            paymentMethod: supplierToUse.paymentMethod 
+        });
+        setOrderToChangeSupplier(null);
+        setIsChangeSupplierModalOpen(false);
+    };
+    
+    const handleCardMenuClick = (e: React.MouseEvent, order: Order) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const options = [
+            { label: 'Change Supplier', action: () => { setOrderToChangeSupplier(order); setIsChangeSupplierModalOpen(true); } },
+            { label: 'Delete Order', action: () => actions.deleteOrder(order.id), isDestructive: true },
+        ];
+        setContextMenu({ x: e.clientX, y: e.clientY, options });
+    };
 
     const renderItemsForSupplier = (order: Order) => (
         <ul className="text-sm">
@@ -277,7 +386,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                 const unitPrice = item.price ?? latestPriceInfo?.price ?? 0;
                 const totalPrice = unitPrice * item.quantity;
                 const isKaliOrder = order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI;
-                const isStockMovement = order.supplierName === SupplierName.STOCK || order.paymentMethod === PaymentMethod.STOCK;
+                const isStockMovement = order.supplierName === SupplierName.STOCK_OUT || order.paymentMethod === PaymentMethod.STOCK;
                 const isEditingName = editingNameId === uniqueItemId;
                 const isEditingPrice = editingPriceId === uniqueItemId;
 
@@ -321,7 +430,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                         <div className="flex-grow truncate pr-2">{itemNameContent}</div>
                         <div className="flex items-center space-x-1 ml-1 flex-shrink-0">
                             {isStockMovement ? (
-                                order.supplierName === SupplierName.STOCK ? (
+                                order.supplierName === SupplierName.STOCK_OUT ? (
                                     <span className="font-semibold text-yellow-400">out</span>
                                 ) : ( // This implicitly means paymentMethod is STOCK if the outer condition is true
                                     <span className="font-semibold text-green-400">in</span>
@@ -370,15 +479,14 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
              const unitPrice = item.price ?? getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price ?? 0;
              return total + (unitPrice * item.quantity);
         }, 0);
-        const isDraggingThis = draggedOrderId === order.id;
         const isSupplierExpanded = expandedSuppliers.has(order.id);
         const isKaliOrder = order.supplierName === SupplierName.KALI || paymentMethod === PaymentMethod.KALI;
         const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && supplier?.chatId;
         const paymentColorClass = paymentMethod ? (paymentBadgeColors[paymentMethod] || 'text-gray-400') : 'text-gray-600';
 
         return (
-             <div key={order.id} draggable={!editingNameId && !editingPriceId} onDragStart={(e) => handleCardDragStart(e, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null })} onDragOver={(e) => { if(draggedItem) e.preventDefault(); }} onDrop={(e) => handleDropOnSupplier(e, order.id)} className={`py-1 ${(!editingNameId && !editingPriceId) ? 'cursor-grab active:cursor-grabbing' : ''} ${isDraggingThis ? 'opacity-50' : ''}`}>
-                <div onClick={() => toggleSupplier(order.id)} className="flex items-center justify-between text-xs font-bold uppercase space-x-2 cursor-pointer">
+             <div key={order.id} onDragOver={(e) => { if(draggedItem) e.preventDefault(); }} onDrop={(e) => handleDropOnSupplier(e, order.id)} className="py-1">
+                <div onClick={() => toggleSupplier(order.id)} className="flex items-center justify-between text-xs font-bold uppercase space-x-2 cursor-pointer group">
                     <div className="flex items-center space-x-2 overflow-hidden flex-grow min-w-0">
                         {showStoreNameProp && <span className="font-semibold text-gray-500 whitespace-nowrap">{order.store}</span>}
                         <span className={`whitespace-nowrap truncate ${isKaliOrder ? 'text-purple-300' : 'text-gray-300'}`}>{order.supplierName}</span>
@@ -390,11 +498,17 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                         </button>
                         {singleColumn !== 'dispatch' && cardTotal > 0 && <span className={`whitespace-nowrap flex-shrink-0 ${paymentColorClass}`}>{cardTotal.toFixed(2)}</span>}
                     </div>
-                    {canSendTelegram && (
-                        <button onClick={(e) => {e.stopPropagation(); handleSendToTelegram(order);}} className="text-blue-400 hover:text-white p-1 flex-shrink-0" title="Send to Telegram">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
+                    
+                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {canSendTelegram && (
+                            <button onClick={(e) => {e.stopPropagation(); handleSendToTelegram(order);}} className="text-blue-400 hover:text-white p-1 flex-shrink-0" title="Send to Telegram">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
+                            </button>
+                        )}
+                        <button onClick={(e) => handleCardMenuClick(e, order)} className="text-gray-500 hover:text-white p-1 flex-shrink-0">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
                         </button>
-                    )}
+                    </div>
                 </div>
                 {isSupplierExpanded && renderItemsForSupplier(order)}
             </div>
@@ -405,7 +519,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         <>
         <div className="outline-none h-full flex flex-col">
             {!hideTitle && (
-                <h2 className="capitalize text-lg font-semibold px-1 py-2 flex items-center space-x-2 text-white">
+                <h2 className="capitalize text-lg font-medium px-1 py-2 flex items-center space-x-2 text-gray-400">
                     <span>{title}</span>
                     {singleColumn === 'dispatch' && state.activeStore !== 'ALL' && state.activeStore !== 'Settings' && (
                         <div className="flex items-center space-x-1">
@@ -530,11 +644,21 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                 )}
             </div>
         </div>
-        {numpadItem && <NumpadModal isOpen={!!numpadItem} item={numpadItem.item} onClose={() => setNumpadItem(null)} onSave={handleSaveItemQuantity} onDelete={handleDeleteItem} />}
+        {numpadItem && <NumpadModal isOpen={!!numpadItem} item={numpadItem.item} onClose={() => setNumpadItem(null)} onSave={handleSaveItemQuantity} onDelete={handleDeleteItem} onSwitchToPrice={handleSwitchToPriceFromNumpad} />}
+        {priceNumpadItem && <PriceNumpadModal isOpen={!!priceNumpadItem} item={priceNumpadItem.item} supplierId={priceNumpadItem.order.supplierId} onClose={() => setPriceNumpadItem(null)} onSave={handleSavePriceFromModal} />}
         {paymentModalOrder && <PaymentMethodModal isOpen={!!paymentModalOrder} onClose={() => setPaymentModalOrder(null)} onSelect={handlePaymentMethodSelect} order={paymentModalOrder} />}
         {orderForAddItem && isAddItemModalOpen && <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onItemSelect={handleAddItemFromModal} order={orderForAddItem} />}
         <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => setIsAddSupplierModalOpen(false)} onSelect={handleAddSupplier} title="Add Card" />
+        <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setIsChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
         <PasteItemsModal isOpen={isPasteItemsModalOpen} onClose={() => setIsPasteItemsModalOpen(false)} />
+        {contextMenu && (
+            <ContextMenu 
+                x={contextMenu.x} 
+                y={contextMenu.y} 
+                options={contextMenu.options} 
+                onClose={() => setContextMenu(null)} 
+            />
+        )}
         </>
     );
 };

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNotificationState, useNotificationDispatch } from '../context/NotificationContext';
 
@@ -64,7 +65,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ isControlled, isOpe
       {!isControlled && (
         <button
           onClick={handleBellClick}
-          className="text-gray-400 hover:text-white p-1"
+          className="text-gray-400 hover:text-white p-1 transition-colors relative"
           aria-label="Notifications"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transition-colors ${hasUnread ? 'text-yellow-400' : ''} ${shouldAnimate ? 'animate-wobble' : ''}`} viewBox="0 0 20 20" fill="currentColor">
@@ -76,25 +77,30 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ isControlled, isOpe
       {isPanelOpen && (
         <div 
           style={panelStyle}
-          className="mt-2 w-72 bg-gray-700 rounded-md shadow-2xl z-[100] text-sm"
+          className="mt-2 w-80 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-[100] text-sm ring-1 ring-black/50 flex flex-col animate-in fade-in zoom-in-95 duration-200 backdrop-blur-sm"
         >
-          <div className="flex justify-between items-center p-3 border-b border-gray-600">
-            <h3 className="font-semibold text-white">Notifications</h3>
+          <div className="flex justify-between items-center px-4 py-3 border-b border-gray-800 bg-gray-900/50 rounded-t-xl">
+            <h3 className="font-bold text-white uppercase tracking-wider text-xs">Notifications</h3>
             {notifications.length > 0 && (
-                <button onClick={handleClear} className="text-indigo-400 hover:text-indigo-300 text-xs font-medium">Clear All</button>
+                <button onClick={handleClear} className="text-indigo-400 hover:text-indigo-300 text-xs font-bold transition-colors uppercase tracking-wide">Clear All</button>
             )}
           </div>
           <div className="max-h-80 overflow-y-auto hide-scrollbar">
             {notifications.length > 0 ? (
               <ul>
                 {notifications.map(n => (
-                  <li key={n.id} className="p-3 border-b border-gray-600/50">
-                    <p className="text-gray-300">{n.message}</p>
+                  <li key={n.id} className="px-4 py-3 border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors last:border-0">
+                    <p className="text-gray-300 leading-relaxed">{n.message}</p>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-gray-400 text-center p-6">No new notifications.</p>
+              <div className="flex flex-col items-center justify-center py-10 text-gray-600">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 mb-2 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  <p className="text-xs font-medium">No new notifications.</p>
+              </div>
             )}
           </div>
         </div>

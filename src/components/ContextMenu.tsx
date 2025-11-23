@@ -45,7 +45,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
             const menuHeight = menuRef.current.offsetHeight;
             const windowWidth = window.innerWidth;
             const windowHeight = window.innerHeight;
-            const buffer = 8; // 8px padding from the edge
+            const buffer = 12; // Increased padding from the edge
 
             let newX = x;
             let newY = y;
@@ -74,12 +74,12 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
             setFinalX(newX);
             setFinalY(newY);
         }
-    }, [x, y]); // Re-run when initial position changes
+    }, [x, y, options]); // Added options to dependency to recalc if content changes
 
     return (
         <div
             ref={menuRef}
-            className="fixed bg-gray-700 rounded-md shadow-2xl py-1 z-[100] min-w-[150px]"
+            className="fixed bg-gray-900 border border-gray-700 rounded-xl shadow-2xl py-1.5 z-[100] min-w-[180px] backdrop-blur-sm ring-1 ring-black/50 flex flex-col animate-in fade-in zoom-in-95 duration-100"
             style={{ top: finalY, left: finalX }}
         >
             <ul>
@@ -88,15 +88,22 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ x, y, options, onClose }) => 
                     return (
                         <li key={index}>
                             {option.isHeader ? (
-                                <span className="block px-4 pt-2 pb-1 text-xs font-bold text-gray-400 uppercase tracking-wider">{option.label}</span>
+                                <div className="px-4 py-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider border-b border-gray-800 mb-1 mt-1 first:mt-0 bg-gray-900/50">
+                                    {option.label}
+                                </div>
                             ) : (
                                 <button
                                     onClick={(e) => {
                                         if (option.action) option.action(e);
                                         onClose();
                                     }}
-                                    className={`w-full text-left py-2 text-sm ${isIndented ? 'pl-8 pr-4' : 'px-4'} ${option.isDestructive ? 'text-red-400 hover:bg-red-500 hover:text-white' : 'text-gray-200 hover:bg-indigo-500 hover:text-white'
-                                        }`}
+                                    className={`w-full text-left py-2.5 text-sm font-medium transition-colors flex items-center 
+                                        ${isIndented ? 'pl-8 pr-4' : 'px-4'} 
+                                        ${option.isDestructive 
+                                            ? 'text-red-400 hover:bg-red-900/20 hover:text-red-300' 
+                                            : 'text-gray-300 hover:bg-indigo-600 hover:text-white'
+                                        }
+                                    `}
                                 >
                                     {option.label.trim()}
                                 </button>

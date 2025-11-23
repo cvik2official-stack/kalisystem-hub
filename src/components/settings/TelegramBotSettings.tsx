@@ -1,3 +1,4 @@
+
 import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { useNotifier } from '../../context/NotificationContext';
@@ -48,60 +49,56 @@ const TelegramBotSettings: React.FC = () => {
     };
     
     return (
-        <div className="space-y-6">
-            <div className="bg-gray-800 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-white mb-2">Webhook Setup</h3>
-                <p className="text-sm text-gray-400 mb-4">
-                    Enter the URL of your Supabase Edge Function to receive bot interactions.
-                </p>
-                <div className="flex items-center space-x-2 max-w-2xl">
+        <div className="space-y-4 max-w-3xl">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-sm">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Webhook Setup</h3>
+                <div className="flex items-center gap-3">
                     <input
                         type="text"
                         value={webhookUrl}
                         onChange={(e) => setWebhookUrl(e.target.value)}
-                        className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
-                        placeholder="https://your-supabase-url.co/functions/v1/telegram-bot"
+                        className="flex-grow bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-transparent focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm"
                     />
                     <button
                         onClick={handleSetWebhook}
                         disabled={isSavingWebhook}
-                        className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800 disabled:cursor-wait"
+                        className="px-6 py-3 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                         {isSavingWebhook ? 'Saving...' : 'Set Webhook'}
                     </button>
                 </div>
             </div>
 
-            <div className="bg-gray-800 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Telegram Bot API</h3>
-                <div className="flex items-center space-x-2 max-w-2xl">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-sm">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Telegram Bot API</h3>
+                <div className="flex items-center gap-3">
                     <input
                         type="password"
                         value={botToken}
                         onChange={(e) => setBotToken(e.target.value)}
-                        className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                        className="flex-grow bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-transparent focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-mono"
                     />
                     <button
                         onClick={handleSaveBotToken}
-                        className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+                        className="px-6 py-3 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all"
                     >
                         Save
                     </button>
                 </div>
             </div>
 
-            <div className="bg-gray-800 rounded-lg p-4">
-                <h3 className="text-lg font-semibold text-white mb-4">Gemini API</h3>
-                <div className="flex items-center space-x-2 max-w-2xl">
+            <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-sm">
+                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Gemini API</h3>
+                <div className="flex items-center gap-3">
                     <input
                         type="password"
                         value={geminiKey}
                         onChange={(e) => setGeminiKey(e.target.value)}
-                        className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                        className="flex-grow bg-gray-800 text-white rounded-xl px-4 py-3 outline-none border border-transparent focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-mono"
                     />
                     <button
                         onClick={handleSaveGeminiKey}
-                        className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+                        className="px-6 py-3 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all"
                     >
                         Save
                     </button>

@@ -1,4 +1,5 @@
-import React, { useContext, useState, useMemo, useRef } from 'react';
+
+import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName, StoreName } from '../types';
 import ContextMenu from './ContextMenu';
@@ -23,7 +24,10 @@ interface SupplierCardProps {
 const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStoreName }) => {
     const { state, dispatch, actions } = useContext(AppContext);
     const { notify } = useNotifier();
-    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(false);
+    
+    // Initialize as collapsed if status is COMPLETED
+    const [isManuallyCollapsed, setIsManuallyCollapsed] = useState(order.status === OrderStatus.COMPLETED);
+    
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number; options: any[] } | null>(null);
     const [isChangeSupplierModalOpen, setChangeSupplierModalOpen] = useState(false);
     const [isPaymentMethodModalOpen, setPaymentMethodModalOpen] = useState(false);
@@ -45,19 +49,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
 
-    const handleCardDragStart = (e: React.DragEvent<HTMLDivElement>) => {
-        e.stopPropagation();
-        e.dataTransfer.setData('application/vnd.kalisystem.order-id', order.id);
-        e.dataTransfer.effectAllowed = 'move';
-        setTimeout(() => {
-          dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: order.id });
-        }, 0);
-    };
-
-    const handleCardDragEnd = (e: React.DragEvent<HTMLDivElement>) => {
-        e.stopPropagation();
-        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
-    };
+    // Sync collapse state with order status changes
+    useEffect(() => {
+        if (order.status === OrderStatus.COMPLETED) {
+            setIsManuallyCollapsed(true);
+        } else {
+            setIsManuallyCollapsed(false);
+        }
+    }, [order.status]);
 
     const handleItemDragStart = (e: React.DragEvent<HTMLDivElement>, item: OrderItem) => {
         e.stopPropagation();
@@ -74,14 +73,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     };
 
     const handleCardDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-        let canDrop = false;
+        // Only allow drops if we are dragging an item (not a card) and it's from a different order
         if (state.draggedItem && state.draggedItem.sourceOrderId !== order.id) {
-            canDrop = true;
-        } else if (state.draggedOrderId && state.draggedOrderId !== order.id) {
-            canDrop = true;
-        }
-        
-        if (canDrop) {
             e.preventDefault();
             setIsDragOver(true);
         }
@@ -97,12 +90,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
 
         if (state.draggedItem) {
             onItemDrop(order.id);
-        } else if (state.draggedOrderId) {
-            actions.mergeOrders(state.draggedOrderId, order.id);
+            dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
         }
-        
-        dispatch({ type: 'SET_DRAGGED_ITEM', payload: null });
-        dispatch({ type: 'SET_DRAGGED_ORDER_ID', payload: null });
     };
 
     const supplier = useMemo(() => state.suppliers.find(s => s.id === order.supplierId), [state.suppliers, order.supplierId]);
@@ -124,6 +113,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                 const newSupplierFromDb = await actions.addSupplier({ name: newSupplier.name });
                 supplierToUse = newSupplierFromDb;
             }
+            
             await actions.updateOrder({ ...order, supplierId: supplierToUse.id, supplierName: supplierToUse.name, paymentMethod: supplierToUse.paymentMethod });
         } finally {
             setIsProcessing(false);
@@ -135,10 +125,41 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         e.preventDefault();
         e.stopPropagation();
         
-        const options = [
-            { label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) },
-            { label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true },
-        ];
+        const options = [];
+
+        if (order.status !== OrderStatus.COMPLETED) {
+            options.push({ 
+                label: 'Completed', 
+                action: async () => {
+                    await actions.updateOrder({ 
+                        ...order, 
+                        status: OrderStatus.COMPLETED,
+                        isSent: true,
+                        isReceived: true,
+                        completedAt: new Date().toISOString()
+                    });
+                    notify(`Order for ${order.supplierName} marked as completed.`, 'success');
+                }
+            });
+        } else {
+            options.push({ 
+                label: 'Move to Yesterday', 
+                action: async () => {
+                    const yesterday = new Date();
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    yesterday.setHours(12, 0, 0, 0); // Noon to be safe from timezone shifts on date extraction
+                    
+                    await actions.updateOrder({ 
+                        ...order, 
+                        completedAt: yesterday.toISOString()
+                    });
+                    notify(`Order moved to yesterday.`, 'success');
+                }
+            });
+        }
+
+        options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
+        options.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
         
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         setContextMenu({ x: rect.left, y: rect.bottom + 5, options });
@@ -161,6 +182,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         e.stopPropagation();
         setSelectedItem(item);
         setNumpadOpen(true);
+    };
+    
+    const handleSwitchToPriceFromNumpad = () => {
+        setNumpadOpen(false);
+        setTimeout(() => setIsPriceNumpadOpen(true), 50);
     };
     
     const handleSaveInlinePrice = async (itemToUpdate: OrderItem, totalPriceStr: string) => {
@@ -207,10 +233,37 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
 
       if (!isNaN(newTotalPrice) && newTotalPrice >= 0) {
           const newUnitPrice = newTotalPrice / itemToUpdate.quantity;
-          const updatedItems = order.items.map(i => 
-              (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, price: newUnitPrice } : i
+          
+          // Check for existing master price
+          const existingMaster = state.itemPrices.find(p => 
+              p.itemId === itemToUpdate.itemId && 
+              p.supplierId === order.supplierId &&
+              p.unit === itemToUpdate.unit
           );
-          await actions.updateOrder({ ...order, items: updatedItems });
+
+          if (!existingMaster) {
+              // No master price exists, so this becomes the default
+              await actions.upsertItemPrice({
+                  itemId: itemToUpdate.itemId,
+                  supplierId: order.supplierId,
+                  price: newUnitPrice,
+                  unit: itemToUpdate.unit || Unit.PC
+              });
+              // Clear any override on the item so it uses the new master default
+              const updatedItems = order.items.map(i => 
+                  (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) 
+                  ? { ...i, price: undefined } 
+                  : i
+              );
+              await actions.updateOrder({ ...order, items: updatedItems });
+              notify('Price set as default.', 'success');
+          } else {
+              // Master exists, so this is an order-specific override
+              const updatedItems = order.items.map(i => 
+                  (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, price: newUnitPrice } : i
+              );
+              await actions.updateOrder({ ...order, items: updatedItems });
+          }
       } else {
           notify('Invalid price.', 'error');
       }
@@ -227,6 +280,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
             : i
         );
         await actions.updateOrder({ ...order, items: updatedItems });
+        notify("Item name updated for this order.", "info");
     };
 
     const handleSaveQuantity = async (quantity: number, unit?: Unit) => {
@@ -244,12 +298,39 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
 
     const handleSavePrice = async (price: number, unit: Unit) => {
         if (selectedItem) {
-            const updatedItems = order.items.map(i => 
-                (i.itemId === selectedItem.itemId && i.isSpoiled === selectedItem.isSpoiled) 
-                ? { ...i, price, unit } 
-                : i
+            // Check for existing master price
+            const existingMaster = state.itemPrices.find(p => 
+                p.itemId === selectedItem.itemId && 
+                p.supplierId === order.supplierId &&
+                p.unit === unit
             );
-            await actions.updateOrder({ ...order, items: updatedItems });
+
+            if (!existingMaster) {
+                // Create Default
+                await actions.upsertItemPrice({
+                    itemId: selectedItem.itemId,
+                    supplierId: order.supplierId,
+                    price: price,
+                    unit: unit
+                });
+                // Update item unit, ensure no price override is set so it uses default
+                const updatedItems = order.items.map(i => 
+                    (i.itemId === selectedItem.itemId && i.isSpoiled === selectedItem.isSpoiled) 
+                    ? { ...i, quantity: i.quantity, unit: unit, price: undefined } 
+                    : i
+                );
+                await actions.updateOrder({ ...order, items: updatedItems });
+                notify('Price set as default.', 'success');
+            } else {
+                // Set Override
+                const updatedItems = order.items.map(i => 
+                    (i.itemId === selectedItem.itemId && i.isSpoiled === selectedItem.isSpoiled) 
+                    ? { ...i, price, unit } 
+                    : i
+                );
+                await actions.updateOrder({ ...order, items: updatedItems });
+            }
+            
             setSelectedItem(null);
             setIsPriceNumpadOpen(false);
         }
@@ -361,7 +442,6 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
     const isKaliOrder = order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI;
     
-    // *** NEW LOGIC: Check for stock movement indicators ***
     const isStockOut = order.supplierName === SupplierName.STOCK_OUT;
     const isStockIn = order.store === StoreName.STOCK02 && order.supplierName !== SupplierName.STOCK_OUT;
 
@@ -380,15 +460,11 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         <>
             <div 
                 ref={cardRef}
-                draggable
-                onDragStart={handleCardDragStart}
-                onDragEnd={handleCardDragEnd}
                 onDragOver={handleCardDragOver}
                 onDragLeave={handleCardDragLeave}
                 onDrop={handleCardDrop}
-                className={`relative bg-gray-800 rounded-xl shadow-lg border transition-all duration-200 
-                    ${isDragOver ? 'border-indigo-500 ring-2 ring-indigo-500 ring-opacity-50' : 'border-gray-700'}
-                    ${state.draggedOrderId === order.id ? 'opacity-50' : 'opacity-100'}
+                className={`relative bg-gray-900 border border-gray-800 rounded-xl shadow-2xl transition-all duration-200 
+                    ${isDragOver ? 'border-indigo-500 ring-2 ring-indigo-500 ring-opacity-50' : 'border-gray-800'}
                 `}
             >
                 {/* Header */}
@@ -493,7 +569,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                             />
                                         ) : (
                                             <span 
-                                                className={`truncate cursor-pointer hover:text-white ${item.isSpoiled ? 'line-through text-red-400' : 'text-gray-300'}`}
+                                                className={`truncate cursor-pointer hover:text-white ${item.isSpoiled ? 'line-through text-red-400' : 'font-bold md:font-normal text-white md:text-gray-300'}`}
                                                 onClick={(e) => { 
                                                     e.stopPropagation(); 
                                                     if (isActive) {
@@ -516,9 +592,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
 
                                         <button 
                                             onClick={(e) => handleQuantityOrPriceClick(e, item)}
-                                            className="text-gray-400 hover:text-white tabular-nums"
+                                            className="text-gray-400 hover:text-white tabular-nums font-bold md:font-normal"
                                         >
-                                            {item.quantity} <span className="text-xs text-gray-500">{item.unit}</span>
+                                            {item.quantity} <span className="text-xs text-gray-500 font-bold md:font-normal">{item.unit}</span>
                                         </button>
                                         
                                         {isEditingPrice ? (
@@ -535,7 +611,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                         ) : (
                                             <span 
                                                 onClick={(e) => { e.stopPropagation(); setEditingPriceUniqueId(uniqueItemId); }}
-                                                className={`w-14 text-right cursor-pointer font-mono text-xs ${totalPrice > 0 ? (isKaliOrder ? 'text-purple-300' : 'text-cyan-300') : 'text-gray-600'}`}
+                                                className={`w-14 text-right cursor-pointer font-mono text-xs font-bold md:font-normal ${totalPrice > 0 ? (isKaliOrder ? 'text-purple-300' : 'text-cyan-300') : 'text-gray-600'}`}
                                             >
                                                 {totalPrice > 0 ? totalPrice.toFixed(2) : '-'}
                                             </span>
@@ -577,6 +653,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                     onClose={() => setNumpadOpen(false)} 
                     onSave={handleSaveQuantity} 
                     onDelete={() => handleDeleteItem(selectedItem)}
+                    onSwitchToPrice={handleSwitchToPriceFromNumpad}
                 />
             )}
             {selectedItem && isPriceNumpadOpen && (

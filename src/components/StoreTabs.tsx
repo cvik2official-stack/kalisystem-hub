@@ -50,7 +50,7 @@ const StoreTabs: React.FC = () => {
   };
 
   return (
-    <div className="flex-grow overflow-x-auto overflow-y-hidden hide-scrollbar flex justify-start md:justify-center">
+    <div className="flex-grow overflow-x-auto overflow-y-hidden hide-scrollbar flex justify-start md:justify-center" style={{ zoom: 1.1 }}>
       <nav className="flex space-x-2 px-1" aria-label="Tabs">
         <button
             key="ALL"

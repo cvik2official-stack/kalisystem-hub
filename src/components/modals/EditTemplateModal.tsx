@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useContext } from 'react';
 import { Supplier, SupplierName, StoreName } from '../../types';
 import { AppContext } from '../../context/AppContext';
@@ -19,16 +20,16 @@ const BotSettingCheckbox: React.FC<{
   onChange: (checked: boolean) => void;
   disabled?: boolean;
 }> = ({ id, label, checked, onChange, disabled }) => (
-  <div className="flex items-center">
+  <div className="flex items-center p-2 hover:bg-gray-800 rounded-lg transition-colors">
     <input
       id={id}
       type="checkbox"
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
       disabled={disabled}
-      className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-indigo-500"
+      className="h-4 w-4 rounded bg-gray-900 border-gray-600 text-indigo-600 focus:ring-offset-gray-900 focus:ring-indigo-500 cursor-pointer"
     />
-    <label htmlFor={id} className="ml-2 block text-sm text-gray-300">
+    <label htmlFor={id} className="ml-3 block text-sm text-gray-300 cursor-pointer flex-grow">
       {label}
     </label>
   </div>
@@ -36,18 +37,18 @@ const BotSettingCheckbox: React.FC<{
 
 const Accordion: React.FC<{ title: string; children: React.ReactNode; isOpen: boolean; onToggle: () => void; }> = ({ title, children, isOpen, onToggle }) => {
     return (
-        <div className="bg-gray-900 rounded-lg">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
             <button
                 onClick={onToggle}
-                className="flex justify-between items-center w-full p-3 text-left"
+                className="flex justify-between items-center w-full p-4 text-left hover:bg-gray-800/50 transition-colors"
             >
-                <h3 className="text-base font-semibold text-white">{title}</h3>
-                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isOpen ? 'rotate-180' : 'rotate-0'}`} viewBox="0 0 20 20" fill="currentColor">
+                <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wide">{title}</h3>
+                <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-500 ${isOpen ? 'rotate-180' : 'rotate-0'}`} viewBox="0 0 20 20" fill="currentColor">
                     <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
                 </svg>
             </button>
-            <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-                <div className="px-3 pb-3">
+            <div className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                <div className="px-4 pb-4 border-t border-gray-800">
                     {children}
                 </div>
             </div>
@@ -62,22 +63,18 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     const [isSaving, setIsSaving] = useState(false);
     const [isSending, setIsSending] = useState(false);
     
-    // States for bot settings
     const [showAttachInvoice, setShowAttachInvoice] = useState(false);
     const [showMissingItems, setShowMissingItems] = useState(false);
     const [showOkButton, setShowOkButton] = useState(false);
     const [showDriverOnWayButton, setShowDriverOnWayButton] = useState(false);
     const [includeLocation, setIncludeLocation] = useState(false);
     
-    // States for templates
     const [messageTemplate, setMessageTemplate] = useState('');
     
-    // States for Custom Message feature
     const [customMessage, setCustomMessage] = useState('');
     const [selectedStore, setSelectedStore] = useState<StoreName | ''>('');
     const [activeAccordions, setActiveAccordions] = useState<Set<string>>(new Set());
     
-    // States for one-time custom message options
     const [tempShowOk, setTempShowOk] = useState(false);
     const [tempShowDriver, setTempShowDriver] = useState(false);
     const [tempShowInvoice, setTempShowInvoice] = useState(false);
@@ -90,20 +87,16 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     useEffect(() => {
         if (isOpen) {
             const settings = supplier.botSettings || {};
-            
-            // Initialize checkbox states
             setShowAttachInvoice(!!settings.showAttachInvoice);
             setShowMissingItems(!!settings.showMissingItems);
             setShowOkButton(!!settings.showOkButton);
             setShowDriverOnWayButton(!!settings.showDriverOnWayButton);
             setIncludeLocation(!!settings.includeLocation);
 
-            // Initialize template states
             const currentMessageTemplate = settings.messageTemplate || defaultTemplate;
             setMessageTemplate(currentMessageTemplate);
             setCustomMessage(currentMessageTemplate);
             
-            // Reset custom message states
             setSelectedStore(state.activeStore as StoreName);
             setActiveAccordions(new Set());
             setTempShowOk(false);
@@ -129,7 +122,6 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
             ...supplier,
             botSettings: {
                 ...supplier.botSettings,
-                // FIX: Save an empty string to clear the template, or the template if it's different.
                 messageTemplate: messageTemplate.trim() === defaultTemplate.trim() ? undefined : messageTemplate.trim(),
                 showAttachInvoice,
                 showMissingItems,
@@ -145,9 +137,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
 
     const handleSendMessage = async () => {
         const { telegramBotToken } = state.settings;
-        if (!telegramBotToken || !supplier.chatId) {
-            notify('Bot Token or Supplier Chat ID is not configured.', 'error'); return;
-        }
+        if (!telegramBotToken || !supplier.chatId) { notify('Bot Token or Supplier Chat ID is not configured.', 'error'); return; }
 
         let messageToSend = customMessage.trim();
         if (!messageToSend) { notify('Cannot send an empty message.', 'error'); return; }
@@ -160,19 +150,12 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
         let finalStoreDisplay = selectedStore || '';
         if (tempIncludeLocation && selectedStore) {
             const store = state.stores.find(s => s.name === selectedStore);
-            if (store?.locationUrl) {
-                finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${escapeHtml(selectedStore)}</a>`;
-            }
+            if (store?.locationUrl) finalStoreDisplay = `<a href="${escapeHtml(store.locationUrl)}">${escapeHtml(selectedStore)}</a>`;
         } else {
             finalStoreDisplay = escapeHtml(finalStoreDisplay);
         }
 
-        const replacements = {
-            orderId: `MSG-${timeId}`,
-            storeName: finalStoreDisplay,
-            supplierName: escapeHtml(supplier.name),
-            items: '', // Custom messages don't have item lists
-        };
+        const replacements = { orderId: `MSG-${timeId}`, storeName: finalStoreDisplay, supplierName: escapeHtml(supplier.name), items: '' };
         messageToSend = replacePlaceholders(messageToSend, replacements);
         
         const buttons: { text: string; callback_data: string }[] = [];
@@ -184,9 +167,7 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
         let replyMarkup: { inline_keyboard: any[][] } | undefined = undefined;
         if (buttons.length > 0) {
             const keyboard: any[][] = [];
-            for (let i = 0; i < buttons.length; i += 2) {
-                keyboard.push(buttons.slice(i, i + 2));
-            }
+            for (let i = 0; i < buttons.length; i += 2) keyboard.push(buttons.slice(i, i + 2));
             replyMarkup = { inline_keyboard: keyboard };
         }
 
@@ -208,70 +189,76 @@ const EditTemplateModal: React.FC<EditTemplateModalProps> = ({ supplier, isOpen,
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-70 flex items-start md:items-center justify-center z-[60] p-4 pt-16 md:pt-4" onClick={onClose}>
-            <div className="relative bg-gray-800 rounded-xl shadow-2xl p-6 w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-                <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-white" aria-label="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-                <h2 className="text-xl font-bold text-white mb-2">Telegram Bot Options</h2>
-                <p className="text-sm text-gray-400 mb-4">for <span className="font-semibold text-gray-300">{supplier.name}</span></p>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-start md:items-center justify-center z-[60] p-4 pt-16 md:pt-4" onClick={onClose}>
+            <div className="relative bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+                
+                <div className="px-5 py-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
+                    <div>
+                        <h2 className="text-lg font-bold text-white">Bot Settings</h2>
+                        <p className="text-xs text-gray-400">for <span className="text-indigo-400">{supplier.name}</span></p>
+                    </div>
+                    <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors p-1 bg-gray-800 rounded-full hover:bg-gray-700">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+                </div>
 
-                <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2 -mr-2 hide-scrollbar">
-                    <div className="border-b border-gray-700 pb-4">
-                        <h3 className="text-base font-semibold text-white mb-2">Button Options</h3>
-                        <div className="grid grid-cols-2 gap-y-2 gap-x-4">
+                <div className="p-5 space-y-5 flex-grow overflow-y-auto hide-scrollbar">
+                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-800">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Buttons</h3>
+                        <div className="grid grid-cols-2 gap-2">
                             <BotSettingCheckbox id="showOkButton" label="✅ OK" checked={showOkButton} onChange={setShowOkButton} disabled={isSaving || isSending} />
-                            <BotSettingCheckbox id="showAttachInvoice" label="📎 Attach Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving || isSending} />
-                            <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver on Way" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving || isSending} />
-                            <BotSettingCheckbox id="showMissingItems" label="❗️ Missing Item" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showAttachInvoice" label="📎 Invoice" checked={showAttachInvoice} onChange={setShowAttachInvoice} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showDriverOnWayButton" label="🚚 Driver" checked={showDriverOnWayButton} onChange={setShowDriverOnWayButton} disabled={isSaving || isSending} />
+                            <BotSettingCheckbox id="showMissingItems" label="❗️ Missing" checked={showMissingItems} onChange={setShowMissingItems} disabled={isSaving || isSending} />
                         </div>
                     </div>
 
-                    <div className="border-b border-gray-700 pb-4">
-                         <h3 className="text-base font-semibold text-white mb-2">Message Options</h3>
-                         <BotSettingCheckbox id="includeLocation" label="Include store location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving || isSending} />
+                    <div className="bg-gray-800/50 rounded-xl p-4 border border-gray-800">
+                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Content</h3>
+                         <BotSettingCheckbox id="includeLocation" label="Include location link" checked={includeLocation} onChange={setIncludeLocation} disabled={isSaving || isSending} />
                     </div>
                     
                     <Accordion title="Message Template" isOpen={activeAccordions.has('template')} onToggle={() => toggleAccordion('template')}>
-                        <textarea value={messageTemplate} onChange={(e) => setMessageTemplate(e.target.value)} rows={5} className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500" />
+                        <textarea value={messageTemplate} onChange={(e) => setMessageTemplate(e.target.value)} rows={6} className="w-full bg-gray-800 text-gray-200 rounded-lg p-3 font-mono text-xs outline-none border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 leading-relaxed" />
                     </Accordion>
                     
                      <Accordion title="Send Custom Message" isOpen={activeAccordions.has('custom')} onToggle={() => toggleAccordion('custom')}>
-                        <textarea value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} rows={5} className="w-full bg-gray-700 text-gray-200 rounded-md p-2 font-mono text-xs outline-none ring-1 ring-gray-600 focus:ring-2 focus:ring-indigo-500" />
-                         <div className="mt-2">
-                             <Accordion title="Add Message Options" isOpen={activeAccordions.has('customOptions')} onToggle={() => toggleAccordion('customOptions')}>
-                                 <div className="space-y-2">
-                                     <h4 className="text-sm font-semibold text-white">One-time Buttons</h4>
-                                     <div className="grid grid-cols-2 gap-y-2 gap-x-4">
-                                         <BotSettingCheckbox id="tempShowOk" label="✅ OK" checked={tempShowOk} onChange={setTempShowOk} />
-                                         <BotSettingCheckbox id="tempShowInvoice" label="📎 Attach Invoice" checked={tempShowInvoice} onChange={setTempShowInvoice} />
-                                         <BotSettingCheckbox id="tempShowDriver" label="🚚 Driver on Way" checked={tempShowDriver} onChange={setTempShowDriver} />
-                                         <BotSettingCheckbox id="tempShowMissing" label="❗️ Missing Item" checked={tempShowMissing} onChange={setTempShowMissing} />
-                                     </div>
-                                     <h4 className="text-sm font-semibold text-white pt-2">One-time Options</h4>
-                                     <BotSettingCheckbox id="tempIncludeLocation" label="Include store location link" checked={tempIncludeLocation} onChange={setTempIncludeLocation} />
+                        <div className="space-y-3 pt-2">
+                            <textarea value={customMessage} onChange={(e) => setCustomMessage(e.target.value)} rows={5} className="w-full bg-gray-800 text-gray-200 rounded-lg p-3 font-mono text-xs outline-none border border-gray-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 leading-relaxed" />
+                            <div className="border-t border-gray-800 pt-3">
+                                 <h4 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">One-time Options</h4>
+                                 <div className="grid grid-cols-2 gap-2">
+                                     <BotSettingCheckbox id="tempShowOk" label="✅ OK" checked={tempShowOk} onChange={setTempShowOk} />
+                                     <BotSettingCheckbox id="tempShowInvoice" label="📎 Invoice" checked={tempShowInvoice} onChange={setTempShowInvoice} />
+                                     <BotSettingCheckbox id="tempShowDriver" label="🚚 Driver" checked={tempShowDriver} onChange={setTempShowDriver} />
+                                     <BotSettingCheckbox id="tempShowMissing" label="❗️ Missing" checked={tempShowMissing} onChange={setTempShowMissing} />
                                  </div>
-                             </Accordion>
-                         </div>
+                                 <div className="mt-2">
+                                    <BotSettingCheckbox id="tempIncludeLocation" label="Include location" checked={tempIncludeLocation} onChange={setTempIncludeLocation} />
+                                 </div>
+                            </div>
+                        </div>
                     </Accordion>
                 </div>
 
-                <div className="mt-6 flex justify-end items-center space-x-2">
+                <div className="px-5 py-4 bg-gray-800/30 border-t border-gray-800 flex justify-end items-center space-x-3">
                     {activeAccordions.has('custom') && isCustomMessageEdited && (
                         <>
                            {needsStoreForMessage && (
-                             <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value as StoreName)} className="bg-gray-700 text-white rounded-md px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                             <select value={selectedStore} onChange={(e) => setSelectedStore(e.target.value as StoreName)} className="bg-gray-800 text-white rounded-lg px-3 py-2 text-sm outline-none border border-gray-700 focus:border-indigo-500">
                                 <option value="" disabled>Select Store...</option>
                                 {state.stores.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
                              </select>
                            )}
-                           <button onClick={handleSendMessage} disabled={isSaving || isSending || (needsStoreForMessage && !selectedStore)} className="px-5 py-2 text-sm font-medium rounded-md bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-600">
+                           <button onClick={handleSendMessage} disabled={isSaving || isSending || (needsStoreForMessage && !selectedStore)} className="px-5 py-2 text-sm font-semibold rounded-lg bg-blue-600 hover:bg-blue-500 text-white disabled:bg-gray-800 disabled:text-gray-500 shadow-lg shadow-blue-900/20 transition-all">
                                {isSending ? 'Sending...' : 'Send Message'}
                            </button>
                         </>
                     )}
-                    <button onClick={handleSave} disabled={isSaving || isSending} className="px-5 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800">
-                        {isSaving ? '...' : 'Save'}
+                    <button onClick={handleSave} disabled={isSaving || isSending} className="px-6 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:bg-gray-800 disabled:text-gray-500 shadow-lg shadow-indigo-900/20 transition-all">
+                        {isSaving ? 'Saving...' : 'Save Changes'}
                     </button>
                 </div>
             </div>

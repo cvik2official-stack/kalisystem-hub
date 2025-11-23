@@ -1,28 +1,18 @@
 import { Order, OrderItem, ItemPrice, Supplier, Store, AppSettings, StoreName, PaymentMethod, SupplierName, Unit } from '../types';
 
-// Timezone offset for Asia/Phnom_Penh (UTC+7) in minutes
-const PHNOM_PENH_OFFSET = 7 * 60;
-// Business day starts at 6:00 AM
-const BUSINESS_DAY_START_HOUR = 6;
-
-// Helper to get a Date object adjusted for Phnom Penh timezone
-// The resulting Date object, when methods like .getUTCHours() or .toISOString() are used,
-// reflects the wall-clock time in Phnom Penh.
-export const getPhnomPenhDate = (date?: Date | string): Date => {
+// Helper to get the YYYY-MM-DD key for a given date based on LOCAL time
+// This replaces the complex Phnom Penh timezone logic to ensure WYSIWYG for the user.
+export const getLocalDateKey = (date?: Date | string): string => {
     const d = date ? new Date(date) : new Date();
-    // Get the time in UTC milliseconds
-    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
-    // Return a new Date object for Phnom Penh time
-    return new Date(utc + (PHNOM_PENH_OFFSET * 60000));
+    // Use strict local time formatting for YYYY-MM-DD
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };
 
-// Helper to get the YYYY-MM-DD key for a given date, adjusted for Phnom Penh timezone AND business day offset
-// Any time before 6:00 AM belongs to the PREVIOUS date.
-export const getPhnomPenhDateKey = (date?: Date | string): string => {
-    const ppDate = getPhnomPenhDate(date);
-    ppDate.setHours(ppDate.getHours() - BUSINESS_DAY_START_HOUR);
-    return ppDate.toISOString().split('T')[0];
-};
+// Deprecated but kept for compatibility if imported elsewhere, aliased to local key
+export const getPhnomPenhDateKey = getLocalDateKey;
 
 // Simple HTML escaper
 export const escapeHtml = (unsafe: string): string => {
@@ -138,12 +128,9 @@ export const generateKaliUnifyReport = (
         const end = new Date(endDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
         dateStr = `${start} - ${end}`;
     } else if (startDate) {
-        // If specific start date provided (single day report), use it directly
-        // Use noon UTC to avoid any timezone shift when printing
-        const reportDate = new Date(startDate + 'T12:00:00Z');
-        dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+        const reportDate = new Date(startDate);
+        dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     } else {
-        // Fallback to today if no date provided
         const reportDate = new Date();
         dateStr = reportDate.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
     }

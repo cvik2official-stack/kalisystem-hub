@@ -12,7 +12,7 @@ import { STORE_TAGS } from '../constants';
 // We wrap in try-catch to handle environments where import.meta.env might be undefined.
 const getSafeGeminiApiKey = () => {
     try {
-        return import.meta.env.VITE_GEMINI_API_KEY || '';
+        return (import.meta as any).env.VITE_GEMINI_API_KEY || 'AIzaSyAMUR2Cca9t3frjx14Ekktt95x9AUmNuo4';
     } catch {
         return '';
     }
@@ -20,7 +20,7 @@ const getSafeGeminiApiKey = () => {
 
 const getSafeTelegramBotToken = () => {
     try {
-        return import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '';
+        return (import.meta as any).env.VITE_TELEGRAM_BOT_TOKEN || '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og';
     } catch {
         return '';
     }
@@ -305,12 +305,11 @@ const APP_STATE_KEY = 'supplyChainCommanderState_v3';
 
 const getInitialColumnCount = (): 1 | 2 | 3 => {
     const width = window.innerWidth;
-    if (width < 768) {
-        // Phone: always 1 column
-        return 1;
-    }
-    // Tablet and larger are always 3
-    return 3;
+    const height = window.innerHeight;
+    if (width >= 768) return 3;
+    // Landscape on phone -> 3 columns
+    if (width > height) return 3;
+    return 1;
 };
 
 

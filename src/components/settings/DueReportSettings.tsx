@@ -1,7 +1,7 @@
 import React, { useContext, useMemo, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { Order, ItemPrice, StoreName, PaymentMethod, SupplierName } from '../../types';
-import { getLatestItemPrice, generateKaliUnifyReport, getPhnomPenhDateKey } from '../../utils/messageFormatter';
+import { getLatestItemPrice, generateKaliUnifyReport, getLocalDateKey } from '../../utils/messageFormatter';
 import { useNotifier } from '../../context/NotificationContext';
 import { sendDueReport } from '../../services/telegramService';
 
@@ -36,7 +36,8 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
         });
 
         kaliOrders.forEach(order => {
-            const dateKey = getPhnomPenhDateKey(order.completedAt);
+            // Use local date key
+            const dateKey = getLocalDateKey(order.completedAt);
             
             if (!spendMap[dateKey]) {
                 spendMap[dateKey] = {};
@@ -68,20 +69,19 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
         const dataKeys = [...Object.keys(dailyKALIspend), ...Array.from(topUpsMap.keys())];
         dataKeys.sort();
         
-        // Hardcoded start date as per requirements/context (Nov 1, 2025 based on previous context, or current year)
-        // Using 2025-11-01 as base since previous prompts implied this context
+        // Hardcoded start date
         const startDateStr = '2025-11-01'; 
-        const todayKey = getPhnomPenhDateKey();
+        const todayKey = getLocalDateKey();
         
         // Generate full date range
         const dates: string[] = [];
         let currentDate = new Date(startDateStr);
         const endDate = new Date(todayKey);
         
-        // Safety break to prevent infinite loops if dates are wild
+        // Safety break to prevent infinite loops
         let safety = 0;
-        while (currentDate <= endDate && safety < 1000) {
-            dates.push(currentDate.toISOString().split('T')[0]);
+        while (currentDate <= endDate && safety < 2000) {
+            dates.push(getLocalDateKey(currentDate));
             currentDate.setDate(currentDate.getDate() + 1);
             safety++;
         }
@@ -105,8 +105,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             
             runningDue = runningDue + topUp - totalSpent;
             
-            // Create a display date object (using noon to avoid timezone shifts)
-            const displayDate = new Date(dateKey + 'T12:00:00');
+            const displayDate = new Date(dateKey);
 
             rows.push({
                 date: displayDate,
@@ -140,7 +139,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
             
             const ordersForDate = orders.filter(order => {
                 if (!order.completedAt) return false;
-                const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+                const completedDateKey = getLocalDateKey(order.completedAt);
                 if (completedDateKey !== row.dateKey) return false;
                 
                 const supplier = suppliers.find(s => s.id === order.supplierId);

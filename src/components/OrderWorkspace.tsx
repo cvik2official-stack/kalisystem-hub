@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -6,19 +7,16 @@ import AddSupplierModal from './modals/AddSupplierModal';
 import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
-import { generateStoreReport, getPhnomPenhDateKey } from '../utils/messageFormatter';
+import { generateStoreReport, getLocalDateKey } from '../utils/messageFormatter';
 import PasteItemsModal from './modals/PasteItemsModal';
 import AddItemModal from './modals/AddItemModal';
 import StaffFoodModal from './modals/StaffFoodModal';
 
 const formatDateGroupHeader = (key: string): string => {
-  if (key === 'Today') return 'Today';
-  
-  const todayKey = getPhnomPenhDateKey();
-  
+  const todayKey = getLocalDateKey();
   const yesterdayDate = new Date();
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
+  const yesterdayKey = getLocalDateKey(yesterdayDate);
   
   if (key === todayKey) return 'Today'; 
   if (key === yesterdayKey) return 'Yesterday';
@@ -285,13 +283,13 @@ const OrderWorkspace: React.FC = () => {
   const handleGenerateStoreReport = () => {
     if (activeStore === 'Settings' || activeStore === 'ALL') return;
 
-    const todayKey = getPhnomPenhDateKey();
+    const todayKey = getLocalDateKey();
 
     // Use the filter function to ensure we see what the user sees (handles KALI view logic correctly)
     const relevantOrders = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
 
     const todaysCompletedOrders = relevantOrders.filter(o => {
-      return o.completedAt && getPhnomPenhDateKey(o.completedAt) === todayKey;
+      return o.completedAt && getLocalDateKey(o.completedAt) === todayKey;
     });
     
     if (todaysCompletedOrders.length === 0) {
@@ -320,17 +318,17 @@ const OrderWorkspace: React.FC = () => {
     const ordersToGroup = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
     const groups: Record<string, Order[]> = {};
 
-    const todayKey = getPhnomPenhDateKey();
+    const todayKey = getLocalDateKey();
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
+    const yesterdayKey = getLocalDateKey(yesterdayDate);
 
     // Ensure Today and Yesterday groups always exist
     groups['Today'] = [];
     groups[yesterdayKey] = [];
 
     ordersToGroup.forEach(order => {
-        const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+        const completedDateKey = getLocalDateKey(order.completedAt);
         const key = completedDateKey === todayKey ? 'Today' : completedDateKey;
         if (!groups[key]) {
             groups[key] = [];
@@ -380,11 +378,14 @@ const OrderWorkspace: React.FC = () => {
     const orderToMove = orders.find(o => o.id === draggedOrderId);
     if (!orderToMove) return;
 
-    const todayKey = getPhnomPenhDateKey();
+    const todayKey = getLocalDateKey();
+    
+    // If "Today" is dropped on, use today's key. 
+    // Otherwise, key IS the YYYY-MM-DD string for that group (e.g. Yesterday's actual date key).
     const dateKeyToUse = key === 'Today' ? todayKey : key;
 
-    // Create a date at noon in Phnom Penh for the target date, then get its UTC ISO string.
-    const targetDate = new Date(`${dateKeyToUse}T12:00:00.000+07:00`);
+    // Create a date at noon LOCAL time
+    const targetDate = new Date(`${dateKeyToUse}T12:00:00`);
 
     const updatePayload: Partial<Order> & { id: string } = { ...orderToMove, completedAt: targetDate.toISOString() };
 
@@ -648,20 +649,25 @@ const OrderWorkspace: React.FC = () => {
       );
   }
 
+  const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
+  const showDispatchColumn = !(activeStore === 'ALL' && dispatchingOrders.length === 0);
+
   return (
-    <div className="flex-grow flex overflow-hidden h-full space-x-4">
+    <div className="flex-grow flex overflow-hidden h-full space-x-2 md:space-x-4">
       {/* Desktop/Tablet 3-Column Layout */}
-      <div 
-        className={`flex-1 flex flex-col min-w-0 bg-gray-900/50 rounded-xl border ${dragOverColumn === OrderStatus.DISPATCHING ? 'border-indigo-500 bg-indigo-900/10' : 'border-transparent'}`}
-        onDragOver={(e) => { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}
-        onDragLeave={() => setDragOverColumn(null)}
-        onDrop={() => handleDropOnStatus(OrderStatus.DISPATCHING)}
-      >
-        <h2 className="text-lg font-bold text-white mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">Dispatch</h2>
-        <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar space-y-3">
-            <DispatchingColumnContent />
+      {showDispatchColumn && (
+        <div 
+            className={`flex-1 flex flex-col min-w-0 bg-gray-900/50 rounded-xl border ${dragOverColumn === OrderStatus.DISPATCHING ? 'border-indigo-500 bg-indigo-900/10' : 'border-transparent'}`}
+            onDragOver={(e) => { e.preventDefault(); setDragOverColumn(OrderStatus.DISPATCHING); }}
+            onDragLeave={() => setDragOverColumn(null)}
+            onDrop={() => handleDropOnStatus(OrderStatus.DISPATCHING)}
+        >
+            <h2 className="text-lg font-medium text-gray-400 mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">Dispatch</h2>
+            <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar space-y-3">
+                <DispatchingColumnContent />
+            </div>
         </div>
-      </div>
+      )}
 
       <div 
         className={`flex-1 flex flex-col min-w-0 bg-gray-900/50 rounded-xl border ${dragOverColumn === OrderStatus.ON_THE_WAY ? 'border-indigo-500 bg-indigo-900/10' : 'border-transparent'}`}
@@ -669,7 +675,7 @@ const OrderWorkspace: React.FC = () => {
         onDragLeave={() => setDragOverColumn(null)}
         onDrop={() => handleDropOnStatus(OrderStatus.ON_THE_WAY)}
       >
-        <h2 className="text-lg font-bold text-white mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">On the Way</h2>
+        <h2 className="text-lg font-medium text-gray-400 mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">On the Way</h2>
         <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar space-y-3">
             <OnTheWayColumnContent />
         </div>
@@ -681,7 +687,7 @@ const OrderWorkspace: React.FC = () => {
         onDragLeave={() => setDragOverColumn(null)}
         onDrop={() => handleDropOnStatus(OrderStatus.COMPLETED)}
       >
-        <h2 className="text-lg font-bold text-white mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">Completed</h2>
+        <h2 className="text-lg font-medium text-gray-400 mb-4 px-2 sticky top-0 bg-gray-900 z-10 py-2">Completed</h2>
         <div className="flex-grow overflow-y-auto px-2 pb-20 hide-scrollbar">
             <CompletedColumnContent />
         </div>
