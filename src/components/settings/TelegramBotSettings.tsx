@@ -1,13 +1,18 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { useNotifier } from '../../context/NotificationContext';
 import { setWebhook } from '../../services/telegramService';
 
 const TelegramBotSettings: React.FC = () => {
-    const { state } = useContext(AppContext);
+    const { state, dispatch } = useContext(AppContext);
     const { notify } = useNotifier();
     const [webhookUrl, setWebhookUrl] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
+    const [geminiKey, setGeminiKey] = useState('');
+    const [isSavingWebhook, setIsSavingWebhook] = useState(false);
+
+    useEffect(() => {
+        setGeminiKey(state.settings.geminiApiKey || '');
+    }, [state.settings.geminiApiKey]);
 
     const handleSetWebhook = async () => {
         const { telegramBotToken } = state.settings;
@@ -19,15 +24,20 @@ const TelegramBotSettings: React.FC = () => {
             notify('Please enter a valid HTTPS URL for the webhook.', 'error');
             return;
         }
-        setIsSaving(true);
+        setIsSavingWebhook(true);
         try {
             await setWebhook(webhookUrl.trim(), telegramBotToken);
             notify('Webhook set successfully!', 'success');
         } catch (e: any) {
             notify(`Failed to set webhook: ${e.message}`, 'error');
         } finally {
-            setIsSaving(false);
+            setIsSavingWebhook(false);
         }
+    };
+
+    const handleSaveGeminiKey = () => {
+        dispatch({ type: 'SAVE_SETTINGS', payload: { geminiApiKey: geminiKey.trim() } });
+        notify('Gemini API Key saved.', 'success');
     };
     
     return (
@@ -47,10 +57,28 @@ const TelegramBotSettings: React.FC = () => {
                     />
                     <button
                         onClick={handleSetWebhook}
-                        disabled={isSaving}
+                        disabled={isSavingWebhook}
                         className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:bg-indigo-800 disabled:cursor-wait"
                     >
-                        {isSaving ? 'Saving...' : 'Set Webhook'}
+                        {isSavingWebhook ? 'Saving...' : 'Set Webhook'}
+                    </button>
+                </div>
+            </div>
+
+            <div className="bg-gray-800 rounded-lg p-4">
+                <h3 className="text-lg font-semibold text-white mb-4">Gemini API</h3>
+                <div className="flex items-center space-x-2 max-w-2xl">
+                    <input
+                        type="password"
+                        value={geminiKey}
+                        onChange={(e) => setGeminiKey(e.target.value)}
+                        className="flex-grow bg-gray-900 text-gray-200 rounded-md p-2 outline-none ring-1 ring-gray-700 focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                        onClick={handleSaveGeminiKey}
+                        className="px-4 py-2 text-sm font-medium rounded-md bg-indigo-600 hover:bg-indigo-700 text-white"
+                    >
+                        Save
                     </button>
                 </div>
             </div>

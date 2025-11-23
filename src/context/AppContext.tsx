@@ -5,14 +5,14 @@ import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendReminderToSupplier, sendCustomMessageToSupplier } from '../services/telegramService';
 import { parseItemListLocally } from '../services/localParsingService';
 import parseItemListWithGemini from '../services/geminiService';
+import { STORE_TAGS } from '../constants';
 
 // Safely access environment variables. 
 // We use direct property access so build tools like Vite can statically replace them.
 // We wrap in try-catch to handle environments where import.meta.env might be undefined.
 const getSafeGeminiApiKey = () => {
     try {
-        // @ts-ignore
-        return import.meta.env?.VITE_GEMINI_API_KEY || '';
+        return import.meta.env.VITE_GEMINI_API_KEY || '';
     } catch {
         return '';
     }
@@ -20,12 +20,9 @@ const getSafeGeminiApiKey = () => {
 
 const getSafeTelegramBotToken = () => {
     try {
-        // @ts-ignore
-        const envToken = import.meta.env?.VITE_TELEGRAM_BOT_TOKEN;
-        // Fallback to the provided token if env var is missing
-        return envToken || '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og';
+        return import.meta.env.VITE_TELEGRAM_BOT_TOKEN || '';
     } catch {
-        return '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og';
+        return '';
     }
 };
 

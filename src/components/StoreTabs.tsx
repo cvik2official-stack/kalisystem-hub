@@ -1,7 +1,7 @@
-
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Store, StoreName } from '../types';
+import { stringToColorClass } from '../constants';
 
 const StoreTabs: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
@@ -66,26 +66,45 @@ const StoreTabs: React.FC = () => {
           >
             ALL
           </button>
-        {sortedStores.map(({ name }) => (
-          <button
-            key={name}
-            onClick={() => handleClick(name)}
-            onDragOver={(e) => handleDragOver(e, name)}
-            onDragLeave={() => setDragOverStore(null)}
-            onDrop={(e) => handleDrop(e, name)}
-            className={`
-              whitespace-nowrap py-2 px-2 border-b-2 font-medium text-sm transition-colors rounded-t-md
-              ${
-                activeStore === name
-                  ? 'border-indigo-500 text-indigo-400'
-                  : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
-              }
-              ${ dragOverStore === name ? 'bg-indigo-900/50' : ''}
-            `}
-          >
-            {name}
-          </button>
-        ))}
+        {sortedStores.map(({ name }) => {
+          // Use the centralized color logic for consistent styling
+          const colorClass = stringToColorClass(name);
+          // Extract just the text color part for the active state if needed, or use the whole class string
+          // The stringToColorClass returns 'bg-X text-Y border-Z'. 
+          // We want a border-bottom style here. Let's approximate by parsing or using a simpler mapping if strictly needed.
+          // However, the requirement was "apply corresponding store tag color".
+          
+          // Let's match the existing style pattern: border-color and text-color.
+          // We can cheat and use the text color from the class string by regex or just manual mapping if robust.
+          // But let's try to just apply the class when active for the text color, and map border manually?
+          // Or better, just use the text color class.
+          
+          const isActive = activeStore === name;
+          // Extract the color name (e.g., 'yellow', 'blue') from the class string to build the border class dynamically
+          const colorMatch = colorClass.match(/text-(\w+)-300/);
+          const colorName = colorMatch ? colorMatch[1] : 'indigo';
+          
+          return (
+            <button
+              key={name}
+              onClick={() => handleClick(name)}
+              onDragOver={(e) => handleDragOver(e, name)}
+              onDragLeave={() => setDragOverStore(null)}
+              onDrop={(e) => handleDrop(e, name)}
+              className={`
+                whitespace-nowrap py-2 px-2 border-b-2 font-medium text-sm transition-colors rounded-t-md
+                ${
+                  isActive
+                    ? `border-${colorName}-500 text-${colorName}-400`
+                    : 'border-transparent text-gray-400 hover:text-gray-200 hover:border-gray-500'
+                }
+                ${ dragOverStore === name ? 'bg-indigo-900/50' : ''}
+              `}
+            >
+              {name}
+            </button>
+          );
+        })}
       </nav>
     </div>
   );

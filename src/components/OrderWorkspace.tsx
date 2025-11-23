@@ -1,14 +1,15 @@
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
-import { STATUS_TABS } from '../constants';
+import { STATUS_TABS, StoreName } from '../constants';
 import SupplierCard from '../components/SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
-import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
+import { Order, OrderItem, OrderStatus, Supplier, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport, getPhnomPenhDateKey } from '../utils/messageFormatter';
 import PasteItemsModal from './modals/PasteItemsModal';
 import AddItemModal from './modals/AddItemModal';
+import StaffFoodModal from './modals/StaffFoodModal';
 
 const formatDateGroupHeader = (key: string): string => {
   if (key === 'Today') return 'Today';
@@ -30,14 +31,16 @@ const InlineAddOrder: React.FC<{
     onAddSupplier: () => void, 
     onPasteList: () => void,
     onSelectItem: () => void,
-    onQuickOrder: (qo: QuickOrder) => void
-}> = ({ onAddSupplier, onPasteList, onSelectItem, onQuickOrder }) => {
+    onQuickOrder: (qo: QuickOrder) => void,
+    onStaffFood?: () => void
+}> = ({ onAddSupplier, onPasteList, onSelectItem, onQuickOrder, onStaffFood }) => {
     const { state } = useContext(AppContext);
     const { activeStore, quickOrders } = state;
 
     if (activeStore === 'Settings' || activeStore === 'ALL') { return null; }
 
     const storeQuickOrders = quickOrders.filter(qo => qo.store === activeStore);
+    const isStaffFoodEnabled = activeStore === StoreName.SHANTI || activeStore === StoreName.WB;
 
     return (
         <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 w-full max-w-sm mx-auto my-4 transition-all hover:border-gray-600">
@@ -60,6 +63,12 @@ const InlineAddOrder: React.FC<{
                 <button onClick={onPasteList} className="text-gray-400 hover:text-white hover:bg-gray-700 font-medium transition-colors text-sm py-2 px-4 rounded-lg w-full border border-gray-600 hover:border-gray-500">
                     Paste a List
                 </button>
+                
+                {isStaffFoodEnabled && onStaffFood && (
+                    <button onClick={onStaffFood} className="text-pink-400 hover:text-white hover:bg-pink-600 font-medium transition-colors text-sm py-2 px-4 rounded-lg w-full border border-pink-500/30 hover:border-pink-500">
+                        Paste Staff Food List
+                    </button>
+                )}
 
                 {storeQuickOrders.length > 0 && (
                     <div className="pt-2">
@@ -92,6 +101,7 @@ const OrderWorkspace: React.FC = () => {
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [isStandaloneItemModalOpen, setIsStandaloneItemModalOpen] = useState(false);
+  const [isStaffFoodModalOpen, setIsStaffFoodModalOpen] = useState(false);
   
   const [itemForNewOrder, setItemForNewOrder] = useState<{ item: OrderItem; sourceOrderId: string } | null>(null);
   const [orderToChange, setOrderToChange] = useState<Order | null>(null);
@@ -463,6 +473,7 @@ const OrderWorkspace: React.FC = () => {
             onPasteList={() => setIsPasteModalOpen(true)} 
             onSelectItem={() => setIsStandaloneItemModalOpen(true)}
             onQuickOrder={handleQuickOrder}
+            onStaffFood={() => setIsStaffFoodModalOpen(true)}
         />
       </>
     );
@@ -634,6 +645,7 @@ const OrderWorkspace: React.FC = () => {
                   onItemSelect={handleStandaloneItemSelect}
                   order={null}
               />
+              <StaffFoodModal isOpen={isStaffFoodModalOpen} onClose={() => setIsStaffFoodModalOpen(false)} />
               <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setIsPasteModalOpen(false)} />
           </div>
       );
@@ -690,6 +702,7 @@ const OrderWorkspace: React.FC = () => {
           onItemSelect={handleStandaloneItemSelect}
           order={null}
       />
+      <StaffFoodModal isOpen={isStaffFoodModalOpen} onClose={() => setIsStaffFoodModalOpen(false)} />
       <PasteItemsModal isOpen={isPasteModalOpen} onClose={() => setIsPasteModalOpen(false)} />
       {headerContextMenu && (
           <ContextMenu

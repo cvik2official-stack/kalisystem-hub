@@ -33,7 +33,11 @@ const parseItemListWithGemini = async (
       2.  If a parsed item does not match any existing item, provide the 'newItemName' with the name you parsed from the text. These are likely unique items, special requests, or typos.
       3.  Always provide a quantity. Default to 1 if not specified.
       4.  **SPECIAL QUANTITY RULE**: If the user asks for "Mayonnaise" (or "mayo"), you MUST ignore any quantity specified in the text and ALWAYS return a quantity of 6 and a unit of "pc". For example, "mayo x2" or "1 mayonnaise" must both result in \`{"quantity": 6, "unit": "pc"}\` when parsed.
-      5.  **CRITICAL UNIT RULE**: This is the most important rule. You must follow it precisely.
+      5.  **COMPLEX EXPANSION RULE**: If the user input contains "Red+green+yellow 1 kg" (or similar variations implying a mix of 3 bell peppers), you MUST expand this into THREE separate items in the output list:
+          - "Red bell pepper" with quantity 2 and unit "pc"
+          - "Green bell pepper" with quantity 2 and unit "pc"
+          - "Yellow bell pepper" with quantity 2 and unit "pc"
+      6.  **CRITICAL UNIT RULE**: This is the most important rule. You must follow it precisely.
           -   **For Matched Items (using 'matchedItemId'):** You MUST OMIT the 'unit' field entirely in the JSON output. The database already has the correct unit. Do NOT return a unit for these items.
           -   **For New Items (using 'newItemName'):** If you can identify a unit, you MUST normalize it to one of the following exact, lowercase, singular values: ${validUnits.join(', ')}.
           -   **MANDATORY NORMALIZATION EXAMPLES:**
@@ -43,7 +47,7 @@ const parseItemListWithGemini = async (
               -   User input like "rolls" MUST become "roll".
               -   User input like "btls", "bottle", "bottles" MUST become "bt".
           -   If no unit is found for a new item, omit the 'unit' field.
-      6.  **CUSTOM ALIASING RULES**: Apply these specific aliases. If the user text contains the key, you should treat it as the value for matching purposes.
+      7.  **CUSTOM ALIASING RULES**: Apply these specific aliases. If the user text contains the key, you should treat it as the value for matching purposes.
           ${aliasingRulesString}
       
       EXISTING ITEM DATABASE (for matching):

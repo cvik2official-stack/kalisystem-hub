@@ -1,6 +1,7 @@
 import React, { useContext, useState, useMemo, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
-import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName } from '../types';
+import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName, StoreName } from '../types';
+import ContextMenu from './ContextMenu';
 import AddSupplierModal from './modals/AddSupplierModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
 import NumpadModal from './modals/NumpadModal';
@@ -10,7 +11,7 @@ import { generateOrderMessage } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
 import { getLatestItemPrice } from '../utils/messageFormatter';
-import ContextMenu from './ContextMenu';
+import { stringToColorClass } from '../constants';
 
 interface SupplierCardProps {
   order: Order;
@@ -331,8 +332,12 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
 
     const handleSendToTelegram = async () => {
         const { settings, suppliers, stores } = state;
-        if (!supplier || !supplier.chatId || !settings.telegramBotToken) {
-            notify('Supplier Chat ID or Bot Token is not configured.', 'error');
+        if (!supplier) {
+             notify('Supplier not found.', 'error');
+             return;
+        }
+        if (!supplier.chatId || !settings.telegramBotToken) {
+            notify('Supplier Chat ID or Bot Token is not configured. Cannot send message.', 'error');
             return;
         }
         
@@ -352,9 +357,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         }
     };
 
-    const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && supplier?.chatId;
+    // Modified condition: show button based on status only, ignoring chat ID presence
+    const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
     const isKaliOrder = order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI;
     
+    // *** NEW LOGIC: Check for stock movement indicators ***
+    const isStockOut = order.supplierName === SupplierName.STOCK_OUT;
+    const isStockIn = order.store === StoreName.STOCK02 && order.supplierName !== SupplierName.STOCK_OUT;
+
     const paymentBadgeClasses = useMemo(() => {
         switch (order.paymentMethod) {
             case PaymentMethod.KALI: return 'bg-purple-500/10 text-purple-300 border-purple-500/30 hover:bg-purple-500/20';
@@ -385,7 +395,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                 <div className="p-3 flex justify-between items-center">
                     <div className="flex-grow min-w-0 mr-2 cursor-pointer flex items-center overflow-hidden" onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)}>
                         {showStoreName && (
-                            <span className="text-[10px] font-bold bg-gray-700 text-gray-300 px-1.5 py-0.5 rounded uppercase tracking-wide mr-2 flex-shrink-0">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide mr-2 flex-shrink-0 border ${stringToColorClass(order.store)}`}>
                                 {order.store}
                             </span>
                         )}
@@ -496,10 +506,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                                 {item.name}
                                             </span>
                                         )}
-                                        {item.isNew && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full flex-shrink-0"></span>}
+                                        {item.isNew && <span className="ml-2 w-2 h-2 bg-lime-500 rounded-full flex-shrink-0"></span>}
                                     </div>
                                     
-                                    <div className="flex items-center space-x-3 flex-shrink-0 ml-2">
+                                    <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
+                                        {/* STOCK INDICATORS - UPDATED COLORS */}
+                                        {isStockOut && <span className="text-[9px] bg-yellow-900 text-yellow-200 px-1 rounded">OUT</span>}
+                                        {isStockIn && <span className="text-[9px] bg-cyan-900 text-cyan-200 px-1 rounded">IN</span>}
+
                                         <button 
                                             onClick={(e) => handleQuantityOrPriceClick(e, item)}
                                             className="text-gray-400 hover:text-white tabular-nums"

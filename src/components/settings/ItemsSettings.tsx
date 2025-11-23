@@ -9,18 +9,41 @@ interface ItemsSettingsProps {
     setMenuOptions: (options: any[]) => void;
 }
 
+// Map specific tags to specific styles
+const SPECIAL_TAG_COLORS: Record<string, string> = {
+    'KALI': 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+    'CV2': 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+    'WB': 'bg-green-500/20 text-green-300 border-green-500/30',
+    'SHANTI': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    'STI': 'bg-blue-500/20 text-blue-300 border-blue-500/30', // Alias for SHANTI
+    'STOCKO2': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
+    'O2': 'bg-orange-500/20 text-orange-300 border-orange-500/30', // Alias for STOCKO2
+    'new': 'bg-lime-500/20 text-lime-300 border-lime-500/30',
+    'stock': 'bg-gray-500/20 text-gray-300 border-gray-500/30',
+};
+
 const TAG_COLORS = [
     'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    'bg-green-500/20 text-green-300 border-green-500/30',
-    'bg-purple-500/20 text-purple-300 border-purple-500/30',
-    'bg-orange-500/20 text-orange-300 border-orange-500/30',
     'bg-pink-500/20 text-pink-300 border-pink-500/30',
     'bg-teal-500/20 text-teal-300 border-teal-500/30',
     'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-    'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+    'bg-red-500/20 text-red-300 border-red-500/30',
 ];
 
 const stringToColorClass = (str: string) => {
+    // Check for explicit colors first (case-insensitive check for keys)
+    const upperStr = str.toUpperCase();
+    
+    // Direct matches for proper casing or lowercase "new"/"stock"
+    if (SPECIAL_TAG_COLORS[str]) return SPECIAL_TAG_COLORS[str];
+    
+    // Case-insensitive fallback for known store tags
+    const keys = Object.keys(SPECIAL_TAG_COLORS);
+    for (const key of keys) {
+        if (key.toUpperCase() === upperStr) return SPECIAL_TAG_COLORS[key];
+    }
+
+    // Default hashing for random tags
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
@@ -63,7 +86,7 @@ const ItemUnitSelect = React.memo(({ value, onUpdate }: { value: Unit, onUpdate:
     </select>
 ));
 
-const ItemStockInput = React.memo(({ value, onUpdate }: { value: number | undefined, onUpdate: (val: string) => void }) => (
+const ItemStockInput = React.memo(({ value, onUpdate }: { value: number | undefined | null, onUpdate: (val: string) => void }) => (
     <input
         type="text"
         inputMode="decimal"
@@ -91,7 +114,6 @@ const ItemTagsInput = React.memo(({ value, onUpdate }: { value: string[] | undef
     const [isEditing, setIsEditing] = useState(false);
     const [localValue, setLocalValue] = useState((value || []).join(', '));
 
-    // Sync local state if prop updates from outside while not editing
     useEffect(() => {
         if (!isEditing) {
             setLocalValue((value || []).join(', '));
@@ -127,7 +149,7 @@ const ItemTagsInput = React.memo(({ value, onUpdate }: { value: string[] | undef
     return (
         <div 
             onClick={() => setIsEditing(true)} 
-            className="flex flex-wrap gap-1 cursor-pointer min-h-[28px] items-center hover:bg-gray-800/50 rounded p-1 -m-1"
+            className="flex flex-wrap gap-1 cursor-pointer min-h-[28px] items-center hover:bg-gray-800/50 rounded p-1"
         >
             {(value && value.length > 0) ? value.map(tag => (
                 <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded border ${stringToColorClass(tag)}`}>
@@ -156,7 +178,7 @@ const ItemRow = React.memo(({ item, suppliers, isGrouped, latestPrice, onUpdate,
         <tr className="hover:bg-gray-700/50">
             {isGrouped && (
                 <td className="px-1 py-2 whitespace-nowrap text-sm text-gray-300 w-[40px]">
-                    {/* Drag handle placeholder or implementation if draggable logic is restored here */}
+                    {/* Drag handle placeholder */}
                 </td>
             )}
             <td className="px-1 py-1 whitespace-nowrap text-sm text-gray-300 w-[250px]">
@@ -204,7 +226,6 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
@@ -291,9 +312,10 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
     }
 
     if (field === 'stockQuantity') {
-        const newQty = typeof value === 'string' && value.trim() === '' ? undefined : parseFloat(value);
+        const newQty = typeof value === 'string' && value.trim() === '' ? null : parseFloat(value);
         if (item.stockQuantity === newQty) return;
-        if (newQty === undefined || !isNaN(newQty)) {
+        // Allow null (empty string) or valid number
+        if (newQty === null || !isNaN(newQty)) {
             await actions.updateItem({ ...item, stockQuantity: newQty });
         } else {
             notify('Invalid stock quantity.', 'error');
@@ -309,12 +331,16 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
     // Standard Item Fields
     if (String(item[field as keyof Item] ?? '') === String(value)) return;
 
-    const finalName = field === 'name' ? String(value).trim() : item.name;
+    let finalName = field === 'name' ? String(value).trim() : item.name;
     const finalSupplierId = field === 'supplierId' ? value : item.supplierId;
 
-    if (field === 'name' && !finalName) {
-      notify('Item name cannot be empty.', 'error');
-      return;
+    if (field === 'name') {
+        if (!finalName) {
+            notify('Item name cannot be empty.', 'error');
+            return;
+        }
+        // Capitalize first letter of first word
+        finalName = finalName.charAt(0).toUpperCase() + finalName.slice(1);
     }
     
     // Duplicate check
@@ -375,11 +401,8 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   const toggleGroup = (supplierName: string) => {
       setExpandedGroups(prev => {
           const newSet = new Set(prev);
-          if (newSet.has(supplierName)) {
-              newSet.delete(supplierName);
-          } else {
-              newSet.add(supplierName);
-          }
+          if (newSet.has(supplierName)) newSet.delete(supplierName);
+          else newSet.add(supplierName);
           return newSet;
       });
   };
@@ -412,51 +435,55 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
     notify('Items exported to CSV.', 'success');
   }, [filteredItems, state.itemPrices, notify]);
 
+  // Clear menu options on unmount
   useEffect(() => {
-    const options = [
-        { label: 'Search', action: () => setIsSearchVisible(prev => !prev) },
-        { label: 'Add New', action: handleAddNewItem },
-        { label: isGrouped ? 'Ungroup' : 'Group by Supplier', action: () => setIsGrouped(!isGrouped) },
-        { label: 'Export to CSV', action: handleExportItemsCsv }
-    ];
-    setMenuOptions(options);
     return () => setMenuOptions([]);
-  }, [handleAddNewItem, setMenuOptions, isGrouped, handleExportItemsCsv]);
+  }, [setMenuOptions]);
 
   return (
     <div className="flex flex-col flex-grow w-full lg:w-3/4">
         {/* Filter Bar */}
-        {allTags.length > 0 && (
-             <div className="mb-4 flex flex-wrap gap-2">
-                 {allTags.map(tag => (
-                     <button
-                         key={tag}
-                         onClick={() => toggleTagFilter(tag)}
-                         className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors border ${
-                             activeTags.has(tag) 
-                             ? stringToColorClass(tag) + ' ring-1 ring-white'
-                             : stringToColorClass(tag) + ' opacity-70 hover:opacity-100'
-                         }`}
-                     >
-                         {tag}
+        <div className="mb-4 flex flex-col space-y-4">
+            <div className="flex items-center justify-between">
+                 <div className="flex items-center space-x-2 flex-grow">
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full max-w-xs bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none text-sm focus:border-indigo-500 transition-colors"
+                        placeholder="Search items..."
+                    />
+                     <button onClick={handleAddNewItem} className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors" title="Add New Item">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                      </button>
-                 ))}
-             </div>
-        )}
-
-        {isSearchVisible && (
-            <div className="mb-4">
-                <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    autoFocus
-                    onBlur={() => { if(!searchTerm) setIsSearchVisible(false)} }
-                    className="w-64 bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none"
-                    placeholder="Search items..."
-                />
+                     <button onClick={handleExportItemsCsv} className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-md transition-colors" title="Export to CSV">
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                     </button>
+                     <button onClick={() => setIsGrouped(!isGrouped)} className={`p-2 rounded-md transition-colors ${isGrouped ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`} title={isGrouped ? "Ungroup" : "Group by Supplier"}>
+                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                     </button>
+                 </div>
             </div>
-        )}
+
+            {allTags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {allTags.map(tag => (
+                        <button
+                            key={tag}
+                            onClick={() => toggleTagFilter(tag)}
+                            className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors border ${
+                                activeTags.has(tag) 
+                                ? stringToColorClass(tag) + ' ring-1 ring-white'
+                                : stringToColorClass(tag) + ' opacity-70 hover:opacity-100'
+                            }`}
+                        >
+                            {tag}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+
       <div className="overflow-x-auto hide-scrollbar">
           <table className="min-w-full divide-y divide-gray-700">
               <thead className="bg-gray-800">
