@@ -1,11 +1,35 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Item, ParsedItem, Unit } from '../types';
+import { Item, ParsedItem, Unit, StoreName } from '../types';
+
+export const DEFAULT_AI_PARSING_RULES: { global: Record<string, string>, stores: Record<string, Record<string, string>> } = {
+    global: {
+        "Chicken": "Chicken breast",
+        "Beef": "Beef (rump)",
+        "Mushroom can": "Mushroom",
+        "Cabbage": "Cabbage (white)",
+        "chocolate syrup": "chocolate topping",
+        "pizza flour": "flour (25kg)",
+        "mushroom": "Mushroom fresh",
+        "mushrooms": "Mushroom fresh",
+        "mushrooms white": "Mushroom fresh",
+        "french fries": "French fries (crinkle cut - GUD)",
+    },
+    stores: {
+        [StoreName.SHANTI]: {
+            "french fries": "french fries (straight cut - NOWACO)"
+        },
+        [StoreName.CV2]: {
+             "cucumber": "cucumber long"
+        }
+    }
+};
 
 const parseItemListWithGemini = async (
   text: string,
   existingItems: Item[],
   apiKey: string,
-  aiRules?: { aliases: Record<string, string> }
+  aiRules?: { aliases: Record<string, string> },
+  storeName?: string
 ): Promise<ParsedItem[]> => {
   if (!apiKey) {
     throw new Error("Gemini API key is not configured. Please add it in Settings.");
@@ -13,9 +37,22 @@ const parseItemListWithGemini = async (
   
   const validUnits = Object.values(Unit);
 
+  // Merge defaults with user rules
+  let combinedAliases = { ...DEFAULT_AI_PARSING_RULES.global };
+  
+  // Apply store specific defaults if applicable
+  if (storeName && DEFAULT_AI_PARSING_RULES.stores[storeName]) {
+      combinedAliases = { ...combinedAliases, ...DEFAULT_AI_PARSING_RULES.stores[storeName] };
+  }
+
+  // Apply user overrides (they take precedence)
+  if (aiRules && aiRules.aliases) {
+      combinedAliases = { ...combinedAliases, ...aiRules.aliases };
+  }
+
   let aliasingRulesString = "No custom aliases provided.";
-  if (aiRules && aiRules.aliases && Object.keys(aiRules.aliases).length > 0) {
-      aliasingRulesString = Object.entries(aiRules.aliases)
+  if (Object.keys(combinedAliases).length > 0) {
+      aliasingRulesString = Object.entries(combinedAliases)
           .map(([key, value]) => `- "${key}" should be treated as "${value}".`)
           .join('\n');
   }

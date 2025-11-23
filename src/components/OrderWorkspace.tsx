@@ -1,9 +1,9 @@
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
-import { STATUS_TABS, StoreName } from '../constants';
+import { STATUS_TABS } from '../constants';
 import SupplierCard from '../components/SupplierCard';
 import AddSupplierModal from './modals/AddSupplierModal';
-import { Order, OrderItem, OrderStatus, Supplier, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
+import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport, getPhnomPenhDateKey } from '../utils/messageFormatter';
@@ -381,9 +381,6 @@ const OrderWorkspace: React.FC = () => {
     if (!orderToMove) return;
 
     const todayKey = getPhnomPenhDateKey();
-    
-    // If "Today" is dropped on, use today's key. 
-    // Otherwise, key IS the YYYY-MM-DD string for that group (e.g. Yesterday's actual date key).
     const dateKeyToUse = key === 'Today' ? todayKey : key;
 
     // Create a date at noon in Phnom Penh for the target date, then get its UTC ISO string.

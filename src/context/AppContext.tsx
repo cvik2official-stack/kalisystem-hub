@@ -343,23 +343,7 @@ const getInitialState = (): AppState => {
       isAiEnabled: true,
       geminiApiKey: envGemini,
       telegramBotToken: envTelegram,
-      aiParsingRules: {
-        global: {
-          "Chicken": "Chicken breast",
-          "Beef": "Beef (rump)",
-          "Mushroom can": "Mushroom",
-          "Cabbage": "Cabbage (white)",
-          "chocolate syrup": "chocolate topping",
-          "pizza flour": "flour (25kg)",
-          "mushroom": "Mushroom fresh",
-          "mushrooms": "Mushroom fresh",
-          "mushrooms white": "Mushroom fresh",
-          "french fries": "French fries (crinkle cut - GUD)",
-        },
-        [StoreName.SHANTI]: {
-            "french fries": "french fries (straight cut - NOWACO)"
-        }
-      },
+      aiParsingRules: {}, // Initialize empty, defaults handled by service
       receiptTemplates: {},
       messageTemplates: {
         defaultOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}',
@@ -573,10 +557,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         
         // Stock management logic
         if (previousOrder && previousOrder.status !== OrderStatus.COMPLETED && order.status === OrderStatus.COMPLETED) {
-            const isStockMovement = order.supplierName === SupplierName.STOCK || order.paymentMethod === PaymentMethod.STOCK;
+            const isStockMovement = order.supplierName === SupplierName.STOCK_OUT || order.paymentMethod === PaymentMethod.STOCK;
             
             if (isStockMovement) {
-                const direction = order.supplierName === SupplierName.STOCK ? -1 : 1;
+                const direction = order.supplierName === SupplierName.STOCK_OUT ? -1 : 1;
                 const itemDbUpdatePromises: Promise<any>[] = [];
                 const stockUpdatesForState: { itemId: string; stockQuantity: number }[] = [];
 
@@ -719,15 +703,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (isAiEnabled) {
             const geminiApiKey = state.settings.geminiApiKey;
             if (!geminiApiKey) { notify('Gemini API key not set.', 'error'); return; }
-            const rules = state.settings.aiParsingRules || {};
-            const activeStoreRules = rules[store] || {};
-            const combinedAliases = { ...(rules.global || {}), ...activeStoreRules };
-            parsedItems = await parseItemListWithGemini(text, state.items, geminiApiKey, { aliases: combinedAliases });
+            
+            // Get rules for this store from the service's updated signature
+            // We pass only user overrides here if any, but the service handles merging defaults now.
+            // Actually, the context still holds the user's custom rules in `state.settings.aiParsingRules`.
+            // We pass them to the service, which merges them with DEFAULT_AI_PARSING_RULES.
+            const rulesForApi = { aliases: state.settings.aiParsingRules?.[store] || {} }; // Pass only specific overrides if needed, or the whole object structure.
+            // The service expects `aiRules?: { aliases: Record<string, string> }`.
+            // The user overrides in settings are structured as `global` and per-store.
+            // Let's pass the merged user aliases (global + store).
+            const userGlobal = state.settings.aiParsingRules?.global || {};
+            const userStore = state.settings.aiParsingRules?.[store] || {};
+            const userCombined = { ...userGlobal, ...userStore };
+
+            parsedItems = await parseItemListWithGemini(text, state.items, geminiApiKey, { aliases: userCombined }, store);
         } else {
             parsedItems = await parseItemListLocally(text, state.items);
         }
         
-        const stockSupplier = state.suppliers.find(s => s.name === SupplierName.STOCK);
+        const stockSupplier = state.suppliers.find(s => s.name === SupplierName.STOCK_OUT);
         const ordersBySupplier: Record<string, { supplier: Supplier, items: OrderItem[] }> = {};
 
         for (const pItem of parsedItems) {
@@ -738,6 +732,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (pItem.matchedItemId) {
                 const existingItem = state.items.find(i => i.id === pItem.matchedItemId);
                 if (existingItem) {
+                    // Store Exclusivity Logic
+                    if (existingItem.tags && existingItem.tags.length > 0) {
+                        const itemStoreTags = existingItem.tags.filter(tag => STORE_TAGS.includes(tag));
+                        if (itemStoreTags.length > 0) {
+                            const normalizeStore = (s: string) => {
+                                const up = s.toUpperCase();
+                                if (up === 'STI') return 'SHANTI';
+                                if (up === 'O2') return 'STOCKO2';
+                                return up;
+                            };
+                            const activeStoreNorm = normalizeStore(store);
+                            const hasMatchingTag = itemStoreTags.some(tag => normalizeStore(tag) === activeStoreNorm);
+                            
+                            if (!hasMatchingTag) {
+                                continue; // Skip this item entirely as it doesn't belong to this store
+                            }
+                        }
+                    }
+
                     masterItem = existingItem;
                     supplier = state.suppliers.find(s => s.id === existingItem.supplierId) || null;
                     orderItem = { itemId: existingItem.id, name: existingItem.name, quantity: pItem.quantity, unit: existingItem.unit };
@@ -757,17 +770,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
             }
 
-            // Stock availability check
-            if (masterItem && stockSupplier && supplier?.id === stockSupplier.id) {
-                if ((masterItem.stockQuantity ?? 0) < orderItem!.quantity) {
-                    const primarySupplier = state.suppliers.find(s => s.id === masterItem!.supplierId);
-                    if (primarySupplier) {
-                        supplier = primarySupplier; // Re-assign supplier for grouping
-                        notify(`Insufficient stock for "${masterItem.name}". Rerouting to ${primarySupplier.name}.`, 'info');
-                    } else {
-                        notify(`Could not find primary supplier for "${masterItem.name}". Item skipped.`, 'error');
-                        continue; // Skip this item
-                    }
+            // Stock availability check & Routing
+            if (masterItem && stockSupplier && orderItem) {
+                // Check if item has 'stock' tag
+                if (masterItem.tags && masterItem.tags.includes('stock')) {
+                     if ((masterItem.stockQuantity || 0) >= orderItem.quantity) {
+                         supplier = stockSupplier; // Route to STOCK-OUT
+                     }
                 }
             }
 
