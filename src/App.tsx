@@ -189,9 +189,14 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogin = (user: TelegramUser) => {
-      actions.login(user);
-      notify(`Welcome, ${user.first_name}!`, 'success');
+  const handleLogin = async (user: TelegramUser) => {
+      try {
+          await actions.login(user);
+          notify(`Welcome, ${user.first_name}!`, 'success');
+      } catch (e: any) {
+          // Error is already notified by wrapper, but we can do specific handling here if needed
+          console.error("Login failed", e);
+      }
   };
 
   const isDragging = !!draggedOrderId || !!draggedItem;
@@ -248,6 +253,8 @@ const App: React.FC = () => {
 
   const greenDotAnimationClass = useMemo(() => {
     if (syncStatus === 'syncing') return 'animate-spin';
+    if (syncStatus === 'offline') return 'opacity-50';
+    if (syncStatus === 'error') return 'animate-pulse bg-red-500';
     return 'sonar-emitter';
   }, [syncStatus]);
 
@@ -282,7 +289,7 @@ const App: React.FC = () => {
                             first_name: "Dev", 
                             last_name: "User", 
                             username: "dev_user", 
-                            auth_date: Date.now(), 
+                            auth_date: Math.floor(Date.now() / 1000), 
                             hash: "mock_hash" 
                         })}
                         className="text-xs text-gray-600 hover:text-gray-400 underline"
@@ -331,10 +338,14 @@ const App: React.FC = () => {
                             {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
                         </button>
                         <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">
-                            {hasUnread && <span className="absolute inset-0 rounded-full sonar-emitter text-red-500"></span>}
+                            {hasUnread ? (
+                                <span className="absolute inset-0 rounded-full sonar-emitter text-red-500"></span>
+                            ) : (
+                                <span className="absolute inset-0 rounded-full"></span>
+                            )}
                         </button>
                         <button onClick={handleGreenDotClick} className="relative w-4 h-4 bg-green-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-500" title="Sync with Database">
-                            <span className={`absolute inset-0 rounded-full bg-green-500 ${greenDotAnimationClass}`}></span>
+                            <span className={`absolute inset-0 rounded-full ${syncStatus === 'error' ? 'bg-red-500' : syncStatus === 'offline' ? 'bg-gray-500' : 'bg-green-500'} ${greenDotAnimationClass}`}></span>
                         </button>
                     </div>
 

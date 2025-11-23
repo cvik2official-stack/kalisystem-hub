@@ -1,7 +1,7 @@
 
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
 import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, TelegramUser, AppState } from '../types';
-import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
+import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder, verifyTelegramLogin } from '../services/supabaseService';
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendCustomMessageToSupplier } from '../services/telegramService';
 import { parseItemListLocally } from '../services/localParsingService';
@@ -115,7 +115,7 @@ export interface AppContextActions {
     pasteItemsForStore: (text: string, store: StoreName) => Promise<void>;
     addQuickOrder: (quickOrder: Omit<QuickOrder, 'id'>) => Promise<void>;
     deleteQuickOrder: (id: string) => Promise<void>;
-    login: (user: TelegramUser) => void;
+    login: (user: TelegramUser) => Promise<void>;
     logout: () => void;
 }
 
@@ -430,7 +430,7 @@ export const AppContext = createContext<{
       pasteItemsForStore: async () => {},
       addQuickOrder: async () => {},
       deleteQuickOrder: async () => {},
-      login: () => {},
+      login: async () => {},
       logout: () => {},
   }
 });
@@ -816,9 +816,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notify('Quick Order deleted.', 'success');
     },
     syncWithSupabase,
-    login: (user) => {
-        localStorage.setItem(AUTH_KEY, JSON.stringify(user));
-        dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+    login: async (user) => {
+        // Allow bypass for local dev using a specific mock hash
+        if (user.hash === 'mock_hash') {
+            localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+            dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+            return;
+        }
+
+        try {
+            await verifyTelegramLogin(user, state.settings.supabaseUrl, state.settings.supabaseKey);
+            localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+            dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+        } catch (e: any) {
+            console.error('Login verification failed:', e);
+            throw e; // Re-throw for UI handling
+        }
     },
     logout: () => {
         localStorage.removeItem(AUTH_KEY);
@@ -837,6 +850,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 if (e.name !== 'AbortError' && !e.message.includes('Failed to fetch')) {
                     notify(`Error: ${e.message}`, 'error');
                 }
+                throw e; // Re-throw to allow specific error handling in components
             }
         };
       }

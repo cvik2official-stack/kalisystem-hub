@@ -1,3 +1,4 @@
+
 /*
   NOTE FOR DATABASE SETUP:
   This service now supports an 'invoice_amount' for orders and 'bot_settings' for suppliers.
@@ -72,7 +73,7 @@
   );
 
 */
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp, QuickOrder } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp, QuickOrder, TelegramUser } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -653,6 +654,39 @@ export const deleteQuickOrder = async ({ id, url, key }: { id: string, url: stri
         headers: getHeaders(key)
     });
     if (!response.ok) throw new Error(`Failed to delete quick order: ${await response.text()}`);
+};
+
+// --- AUTHENTICATION ---
+export const verifyTelegramLogin = async (user: TelegramUser, url: string, key: string): Promise<void> => {
+    // This function invokes the 'telegram-bot' Edge Function to verify the hash.
+    // We assume the Edge Function is deployed at `${url}/functions/v1/telegram-bot`.
+    // If you use a custom domain for functions, update this URL accordingly.
+    
+    // Construct the function URL. Standard Supabase structure.
+    const functionUrl = `${url}/functions/v1/telegram-bot`;
+    
+    const payload = {
+        action: 'verify_auth',
+        auth_data: user
+    };
+
+    const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+            ...getHeaders(key),
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Verification failed: ${errorText}`);
+    }
+
+    const result = await response.json();
+    if (!result.success) {
+        throw new Error('Authentication failed: Invalid credentials.');
+    }
 };
 
 
