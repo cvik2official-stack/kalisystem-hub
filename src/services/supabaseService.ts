@@ -314,11 +314,19 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
         }, []);
 };
 
-export const getAcknowledgedOrderUpdates = async ({ orderIds, url, key }: { orderIds: string[]; url: string; key: string }): Promise<{id: string, order_id: string}[]> => {
+export const pollOrderUpdates = async ({ orderIds, url, key }: { orderIds: string[]; url: string; key: string }): Promise<{id: string, order_id: string, is_acknowledged: boolean, delivery_status: string | null}[]> => {
     const headers = getHeaders(key);
-    const response = await fetch(`${url}/rest/v1/orders?select=id,order_id&id=in.(${orderIds.join(',')})&is_acknowledged=eq.true`, { headers });
+    // Fetch status for all requested IDs to check for *any* changes. 
+    // We do not filter by state here (e.g. is_acknowledged=true), we just fetch current state.
+    // 'no-store' cache ensures we get fresh data every poll.
+    const response = await fetch(`${url}/rest/v1/orders?select=id,order_id,is_acknowledged,delivery_status&id=in.(${orderIds.join(',')})`, { 
+        headers,
+        cache: 'no-store'
+    });
+    
     if (!response.ok) {
-        console.warn(`Failed to fetch order updates: ${await response.text()}`);
+        // Only warn if it's not a connection error (which browser handles)
+        console.warn(`Failed to poll order updates: ${await response.text()}`);
         return [];
     }
     return await response.json();

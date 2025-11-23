@@ -96,5 +96,12 @@ export const stringToColorClass = (str: string) => {
 export const REPORT_START_DATE = '2025-11-01';
 export const REPORT_INITIAL_BALANCE = 146.26;
 
-// PLEASE UPDATE THIS WITH YOUR ACTUAL BOT USERNAME (without @)
-export const TELEGRAM_BOT_USERNAME = 'KaliSystemBot';
+const getEnvVar = (key: string, defaultValue: string): string => {
+    try {
+        return (import.meta as any).env?.[key] || defaultValue;
+    } catch {
+        return defaultValue;
+    }
+};
+
+export const TELEGRAM_BOT_USERNAME = getEnvVar('VITE_TELEGRAM_BOT_USERNAME', 'kali6tembot');

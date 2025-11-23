@@ -275,6 +275,22 @@ const App: React.FC = () => {
                       />
                   </div>
                   
+                  <div className="mt-4">
+                    <button 
+                        onClick={() => handleLogin({ 
+                            id: 12345, 
+                            first_name: "Dev", 
+                            last_name: "User", 
+                            username: "dev_user", 
+                            auth_date: Date.now(), 
+                            hash: "mock_hash" 
+                        })}
+                        className="text-xs text-gray-600 hover:text-gray-400 underline"
+                    >
+                        Dev Bypass (Localhost/Testing)
+                    </button>
+                  </div>
+                  
                   <div className="mt-8 text-xs text-gray-600">
                       Authorized personnel only.
                   </div>
