@@ -258,6 +258,8 @@ const App: React.FC = () => {
     return 'sonar-emitter';
   }, [syncStatus]);
 
+  /* 
+  // GATEKEEPER TEMPORARILY DISABLED
   if (!isAuthenticated) {
       return (
           <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
@@ -305,6 +307,7 @@ const App: React.FC = () => {
           </div>
       );
   }
+  */
 
   if (!isInitialized) {
     return (
@@ -351,10 +354,24 @@ const App: React.FC = () => {
 
                     {/* Right: Menu Button (Order 3 on Desktop) */}
                     <div className="flex items-center space-x-3 landscape:order-3 md:order-3">
-                        {user && (
-                            <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-700 hidden md:block">
-                                <img src={user.photo_url} alt="User" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                        {!isAuthenticated ? (
+                            <div style={{ transform: 'scale(0.85)', transformOrigin: 'right center' }}>
+                                <TelegramLoginButton 
+                                    botName={TELEGRAM_BOT_USERNAME} 
+                                    onAuth={handleLogin} 
+                                    buttonSize="medium" 
+                                    cornerRadius={12} 
+                                    requestAccess={true} 
+                                    usePic={false}
+                                    className="flex items-center"
+                                />
                             </div>
+                        ) : (
+                            user && (
+                                <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-700 hidden md:block">
+                                    <img src={user.photo_url} alt="User" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
+                                </div>
+                            )
                         )}
                         <button onClick={handleHeaderMenuClick} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white rounded-full hover:bg-gray-800 focus:outline-none transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

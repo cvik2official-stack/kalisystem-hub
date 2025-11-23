@@ -9,6 +9,7 @@ interface TelegramLoginButtonProps {
   cornerRadius?: number;
   requestAccess?: boolean;
   usePic?: boolean;
+  className?: string;
 }
 
 const TelegramLoginButton: React.FC<TelegramLoginButtonProps> = ({ 
@@ -17,7 +18,8 @@ const TelegramLoginButton: React.FC<TelegramLoginButtonProps> = ({
     buttonSize = 'large', 
     cornerRadius = 12, 
     requestAccess = true, 
-    usePic = true 
+    usePic = true,
+    className = "flex justify-center mt-4"
 }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -52,7 +54,7 @@ const TelegramLoginButton: React.FC<TelegramLoginButtonProps> = ({
     };
   }, [botName, onAuth, buttonSize, cornerRadius, requestAccess, usePic]);
 
-  return <div ref={wrapperRef} className="flex justify-center mt-4" />;
+  return <div ref={wrapperRef} className={className} />;
 };
 
 export default TelegramLoginButton;
