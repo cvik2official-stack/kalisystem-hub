@@ -5,17 +5,17 @@ import EditTemplateModal from '../modals/EditTemplateModal';
 import { useNotifier } from '../../context/NotificationContext';
 
 const PaymentMethodBadge: React.FC<{ method?: PaymentMethod }> = ({ method }) => {
-    if (!method) return <span className="text-gray-500">-</span>;
+    if (!method) return <span className="text-gray-600 text-xs">-</span>;
     const colors: Record<string, string> = {
-        [PaymentMethod.ABA]: 'bg-blue-500/50 text-blue-300',
-        [PaymentMethod.CASH]: 'bg-green-500/50 text-green-300',
-        [PaymentMethod.KALI]: 'bg-purple-500/50 text-purple-300',
-        [PaymentMethod.STOCK]: 'bg-gray-500/50 text-gray-300',
-        [PaymentMethod.MISHA]: 'bg-orange-500/50 text-orange-300',
+        [PaymentMethod.ABA]: 'bg-blue-500/10 text-blue-300 border-blue-500/30',
+        [PaymentMethod.CASH]: 'bg-green-500/10 text-green-300 border-green-500/30',
+        [PaymentMethod.KALI]: 'bg-purple-500/10 text-purple-300 border-purple-500/30',
+        [PaymentMethod.STOCK]: 'bg-gray-500/10 text-gray-300 border-gray-500/30',
+        [PaymentMethod.MISHA]: 'bg-orange-500/10 text-orange-300 border-orange-500/30',
     };
     return (
-        <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors[method]}`}>
-            {method.toUpperCase()}
+        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${colors[method] || 'bg-gray-700/50 text-gray-400 border-gray-600/50'}`}>
+            {method}
         </span>
     );
 };
@@ -37,7 +37,6 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
   const [editingSupplierId, setEditingSupplierId] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Supplier>>({});
   
-  // FIX: Moved `filteredSuppliers` declaration before its usage.
   const filteredSuppliers = useMemo(() => {
     const sortedSuppliers = [...state.suppliers].sort((a, b) => a.name.localeCompare(b.name));
     if (!searchTerm.trim()) {
@@ -128,7 +127,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
                 value={editFormData.name || ''}
                 autoFocus
                 onChange={(e) => handleInputChange('name', e.target.value.toUpperCase() as SupplierName)}
-                className="bg-gray-900 p-1 w-full rounded outline-none text-white whitespace-nowrap"
+                className="bg-gray-800 p-1 w-full rounded outline-none text-white whitespace-nowrap"
             />
           ) : supplier.name}
         </div>
@@ -140,7 +139,7 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
         <select
             value={editFormData.paymentMethod || ''}
             onChange={(e) => handleInputChange('paymentMethod', e.target.value as PaymentMethod)}
-            className="bg-gray-900 p-1 w-full rounded outline-none"
+            className="bg-gray-800 p-1 w-full rounded outline-none text-sm"
         >
             <option value="">-</option>
             {Object.values(PaymentMethod).map(method => (
@@ -156,9 +155,9 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
             type="text"
             value={editFormData.chatId || ''}
             onChange={(e) => handleInputChange('chatId', e.target.value)}
-            className="bg-gray-900 p-1 w-full rounded outline-none font-mono"
+            className="bg-gray-800 p-1 w-full rounded outline-none font-mono text-xs"
         />
-      ) : supplier.chatId || '-'
+      ) : <span className="text-xs font-mono text-gray-500">{supplier.chatId || '-'}</span>
     },
     {
       id: 'contact', header: 'Contact',
@@ -167,9 +166,9 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
             type="text"
             value={editFormData.contact || ''}
             onChange={(e) => handleInputChange('contact', e.target.value)}
-            className="bg-gray-900 p-1 w-full rounded outline-none font-mono"
+            className="bg-gray-800 p-1 w-full rounded outline-none font-mono text-xs"
         />
-      ) : supplier.contact || '-'
+      ) : <span className="text-xs text-gray-500">{supplier.contact || '-'}</span>
     },
     {
       id: 'actions', header: 'Actions',
@@ -182,22 +181,22 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
         <div className="flex items-center justify-end space-x-2">
             <button
               onClick={() => handleOpenTemplateEditor(supplier)}
-              className="p-1 rounded-full text-gray-400 hover:bg-gray-600 hover:text-white"
+              className="p-1 rounded-full text-gray-500 hover:bg-gray-700 hover:text-white transition-colors"
               aria-label="Edit bot options"
               title="Edit bot options"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
                 <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h1a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
               </svg>
             </button>
             <button
               onClick={() => handleEditClick(supplier)}
-              className="p-1 rounded-full text-indigo-400 hover:bg-indigo-600 hover:text-white"
+              className="p-1 rounded-full text-indigo-400 hover:bg-indigo-600 hover:text-white transition-colors"
               aria-label="Edit supplier details"
               title="Edit supplier details"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" />
                 <path fillRule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clipRule="evenodd" />
               </svg>
@@ -223,21 +222,21 @@ const SuppliersSettings: React.FC<SuppliersSettingsProps> = ({ setMenuOptions })
             </div>
         )}
       <div className="overflow-x-auto hide-scrollbar">
-          <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-800">
+          <table className="min-w-full divide-y divide-gray-800">
+              <thead className="bg-transparent border-b border-gray-800">
                   <tr>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[150px]">Name</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Payment Method</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Chat ID</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Contact</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Actions</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[150px]">Name</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[120px]">Payment</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[120px]">Chat ID</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[120px]">Contact</th>
+                      <th scope="col" className="px-3 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider w-[80px]">Actions</th>
                   </tr>
               </thead>
-              <tbody className="bg-gray-800 divide-y divide-gray-700">
+              <tbody className="bg-transparent divide-y divide-gray-800">
                   {filteredSuppliers.map(supplier => (
-                      <tr key={supplier.id} className="hover:bg-gray-700/50">
+                      <tr key={supplier.id} className="hover:bg-gray-800/30 transition-colors">
                           {columns.map(col => (
-                              <td key={col.id} className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
+                              <td key={col.id} className="px-3 py-3 whitespace-nowrap text-sm text-gray-300">
                                   {col.cell(supplier)}
                               </td>
                           ))}

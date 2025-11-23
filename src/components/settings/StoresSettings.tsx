@@ -45,7 +45,7 @@ const StoresSettings: React.FC = () => {
           type="text"
           defaultValue={store.chatId || ''}
           onBlur={(e) => handleStoreUpdate(store, 'chatId', e.target.value)}
-          className="bg-transparent p-1 w-full rounded focus:bg-gray-900 outline-none font-mono"
+          className="bg-transparent p-1 w-full rounded focus:bg-gray-900 outline-none font-mono text-gray-300 focus:text-white"
         />
       )
     },
@@ -57,7 +57,7 @@ const StoresSettings: React.FC = () => {
               type="text"
               defaultValue={store.locationUrl || ''}
               onBlur={(e) => handleStoreUpdate(store, 'locationUrl', e.target.value)}
-              className="bg-transparent p-1 w-full rounded focus:bg-gray-900 outline-none font-mono truncate"
+              className="bg-transparent p-1 w-full rounded focus:bg-gray-900 outline-none font-mono truncate text-gray-300 focus:text-white"
             />
         </div>
       )
@@ -68,17 +68,17 @@ const StoresSettings: React.FC = () => {
   return (
     <div className="flex flex-col flex-grow w-full lg:w-3/4">
       <div className="overflow-x-auto hide-scrollbar">
-          <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-800">
+          <table className="min-w-full divide-y divide-gray-800">
+              <thead className="bg-transparent border-b border-gray-800">
                   <tr>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[200px]">Store Name</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[200px]">Chat ID</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[400px]">Location URL</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[200px]">Store Name</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[200px]">Chat ID</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[400px]">Location URL</th>
                   </tr>
               </thead>
-              <tbody className="bg-gray-800 divide-y divide-gray-700">
+              <tbody className="bg-transparent divide-y divide-gray-800">
                   {sortedStores.map(store => (
-                      <tr key={store.id} className="hover:bg-gray-700/50">
+                      <tr key={store.id} className="hover:bg-gray-800/30 transition-colors">
                           {columns.map(col => (
                               <td key={col.id} className="px-3 py-2 whitespace-nowrap text-sm text-gray-300">
                                   {col.cell(store)}

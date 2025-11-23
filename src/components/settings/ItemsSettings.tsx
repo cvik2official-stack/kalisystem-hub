@@ -175,7 +175,7 @@ interface ItemRowProps {
 
 const ItemRow = React.memo(({ item, suppliers, isGrouped, latestPrice, onUpdate, onEdit, onDelete }: ItemRowProps) => {
     return (
-        <tr className="hover:bg-gray-700/50">
+        <tr className="hover:bg-gray-800/30 transition-colors">
             {isGrouped && (
                 <td className="px-1 py-2 whitespace-nowrap text-sm text-gray-300 w-[40px]">
                     {/* Drag handle placeholder */}
@@ -225,7 +225,6 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   const { notify } = useNotifier();
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
   
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedItemForModal, setSelectedItemForModal] = useState<Item | null>(null);
@@ -367,27 +366,44 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   }, [state.items, state.suppliers, state.itemPrices, actions, notify]);
 
 
-  const handleAddNewItem = useCallback(async () => {
+  const handleAddNewItem = useCallback(() => {
+    // Open modal with a temporary "new" item template
+    // We don't create it in DB yet.
     const defaultSupplier = state.suppliers.find(s => s.name === SupplierName.MARKET) || state.suppliers[0];
-    if (!defaultSupplier) {
-        notify('Please create a supplier first.', 'error');
-        return;
-    }
-    setIsCreating(true);
-    try {
-        const newItem = await actions.addItem({
-            name: 'New Item',
-            unit: Unit.PC,
-            supplierId: defaultSupplier.id,
-            supplierName: defaultSupplier.name,
-        });
-        notify('New item added. You can now edit its details.', 'success');
-        setSelectedItemForModal(newItem);
-        setIsEditModalOpen(true);
-    } finally {
-        setIsCreating(false);
-    }
-  }, [state.suppliers, actions, notify]);
+    const newItemTemplate: Item = {
+        id: 'temp_new_item',
+        name: '',
+        unit: Unit.PC,
+        supplierId: defaultSupplier?.id || '',
+        supplierName: defaultSupplier?.name || ('' as SupplierName),
+    };
+    setSelectedItemForModal(newItemTemplate);
+    setIsEditModalOpen(true);
+  }, [state.suppliers]);
+
+  const handleSaveFromModal = async (itemToSave: Item | Omit<Item, 'id'>, price?: number) => {
+      const isNew = 'id' in itemToSave && itemToSave.id === 'temp_new_item';
+      
+      // 1. Create or Update Item
+      let savedItem: Item;
+      if (isNew) {
+          const { id, ...itemData } = itemToSave as Item; // strip temp id
+          savedItem = await actions.addItem(itemData);
+      } else {
+          await actions.updateItem(itemToSave as Item);
+          savedItem = itemToSave as Item;
+      }
+
+      // 2. Update Price if provided
+      if (price !== undefined && price !== null && !isNaN(price)) {
+          await actions.upsertItemPrice({
+              itemId: savedItem.id,
+              supplierId: savedItem.supplierId,
+              unit: savedItem.unit,
+              price: price
+          });
+      }
+  };
 
   const handleDeleteItem = useCallback(async (itemId: string) => {
     await actions.deleteItem(itemId);
@@ -441,37 +457,34 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
   }, [setMenuOptions]);
 
   return (
-    <div className="flex flex-col flex-grow w-full lg:w-3/4">
+    <div className="flex flex-col flex-grow w-full lg:w-3/4 px-2 md:px-0">
         {/* Filter Bar */}
-        <div className="mb-4 flex flex-col space-y-4">
-            <div className="flex items-center justify-between">
-                 <div className="flex items-center space-x-2 flex-grow">
-                    <input
-                        type="text"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full max-w-xs bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none text-sm focus:border-indigo-500 transition-colors"
-                        placeholder="Search items..."
-                    />
-                     <button onClick={handleAddNewItem} className="p-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md transition-colors" title="Add New Item">
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                     </button>
-                     <button onClick={handleExportItemsCsv} className="p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-md transition-colors" title="Export to CSV">
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                     </button>
-                     <button onClick={() => setIsGrouped(!isGrouped)} className={`p-2 rounded-md transition-colors ${isGrouped ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`} title={isGrouped ? "Ungroup" : "Group by Supplier"}>
-                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                     </button>
-                 </div>
+        <div className="mb-4 flex flex-col landscape:flex-row md:flex-row md:items-center gap-4">
+            <div className="flex items-center space-x-2 flex-shrink-0">
+                <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full max-w-xs bg-gray-900 border border-gray-700 text-gray-200 rounded-md p-2 outline-none text-sm focus:border-indigo-500 transition-colors"
+                />
+                 <button onClick={handleAddNewItem} className="p-2 text-gray-400 hover:text-white border border-gray-700 hover:bg-gray-800 rounded-md transition-colors" title="Add New Item">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                 </button>
+                 <button onClick={handleExportItemsCsv} className="p-2 text-gray-400 hover:text-white border border-gray-700 hover:bg-gray-800 rounded-md transition-colors" title="Export to CSV">
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                 </button>
+                 <button onClick={() => setIsGrouped(!isGrouped)} className={`p-2 rounded-md transition-colors ${isGrouped ? 'bg-indigo-600 text-white border border-indigo-500' : 'text-gray-400 hover:text-white border border-gray-700 hover:bg-gray-800'}`} title={isGrouped ? "Ungroup" : "Group by Supplier"}>
+                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                 </button>
             </div>
 
             {allTags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 flex-grow overflow-x-auto hide-scrollbar pb-1 md:pb-0 landscape:pb-0">
                     {allTags.map(tag => (
                         <button
                             key={tag}
                             onClick={() => toggleTagFilter(tag)}
-                            className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors border ${
+                            className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors whitespace-nowrap border ${
                                 activeTags.has(tag) 
                                 ? stringToColorClass(tag) + ' ring-1 ring-white'
                                 : stringToColorClass(tag) + ' opacity-70 hover:opacity-100'
@@ -485,26 +498,26 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
         </div>
 
       <div className="overflow-x-auto hide-scrollbar">
-          <table className="min-w-full divide-y divide-gray-700">
-              <thead className="bg-gray-800">
+          <table className="min-w-full divide-y divide-gray-800">
+              <thead className="bg-transparent border-b border-gray-800">
                   <tr>
                       {isGrouped && <th scope="col" className="w-[40px]"></th>}
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[250px]">Name</th>
-                      {!isGrouped && <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[120px]">Supplier</th>}
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[70px]">Unit</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Stock</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Price</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[150px]">Tags</th>
-                      <th scope="col" className="px-3 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider w-[80px]">Actions</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[250px]">Name</th>
+                      {!isGrouped && <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[120px]">Supplier</th>}
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[70px]">Unit</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[80px]">Stock</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[80px]">Price</th>
+                      <th scope="col" className="px-3 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider w-[150px]">Tags</th>
+                      <th scope="col" className="px-3 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider w-[80px]">Actions</th>
                   </tr>
               </thead>
-              <tbody className="bg-gray-800 divide-y divide-gray-700">
+              <tbody className="bg-transparent divide-y divide-gray-800">
                   {isGrouped && groupedItems ? (
                       Object.keys(groupedItems).map(supplierName => {
                         const isExpanded = expandedGroups.has(supplierName);
                         return (
                           <React.Fragment key={supplierName}>
-                              <tr className="bg-gray-700/50">
+                              <tr className="bg-gray-800/50">
                                   <td colSpan={7} className="px-3 py-2 text-sm font-bold text-white cursor-pointer" onClick={(e) => { e.stopPropagation(); toggleGroup(supplierName);}}>
                                       <div className="flex items-center space-x-1">
                                           <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 transform transition-transform text-gray-400 ${isExpanded ? 'rotate-0' : '-rotate-90'}`} viewBox="0 0 20 20" fill="currentColor">
@@ -551,8 +564,9 @@ const ItemsSettings: React.FC<ItemsSettingsProps> = ({ setMenuOptions }) => {
             item={selectedItemForModal}
             isOpen={isEditModalOpen}
             onClose={() => setIsEditModalOpen(false)}
-            onSave={actions.updateItem}
+            onSave={handleSaveFromModal}
             onDelete={handleDeleteItem}
+            initialPrice={getLatestItemPrice(selectedItemForModal.id, selectedItemForModal.supplierId, state.itemPrices)?.price}
         />
       )}
     </div>

@@ -7,12 +7,16 @@ import AddSupplierModal from './modals/AddSupplierModal';
 import { Order, OrderItem, OrderStatus, Supplier, StoreName, PaymentMethod, SupplierName, Unit, ItemPrice, QuickOrder, Item } from '../types';
 import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
-import { generateStoreReport, getLocalDateKey } from '../utils/messageFormatter';
+import { generateStoreReport, getLocalDateKey, generateKaliUnifyReport, getLatestItemPrice } from '../utils/messageFormatter';
+import { sendDueReport } from '../services/telegramService';
 import PasteItemsModal from './modals/PasteItemsModal';
 import AddItemModal from './modals/AddItemModal';
 import StaffFoodModal from './modals/StaffFoodModal';
 
 const formatDateGroupHeader = (key: string): string => {
+  if (key === 'Today') return 'Today';
+  if (key === 'Yesterday') return 'Yesterday';
+
   const todayKey = getLocalDateKey();
   const yesterdayDate = new Date();
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
@@ -22,6 +26,7 @@ const formatDateGroupHeader = (key: string): string => {
   if (key === yesterdayKey) return 'Yesterday';
 
   const [year, month, day] = key.split('-').map(Number);
+  if (!year || !month || !day) return key; // Fallback if parsing fails
   return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
 };
 
@@ -93,7 +98,7 @@ const InlineAddOrder: React.FC<{
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, itemPrices, initialAction } = state;
+  const { activeStore, orders, suppliers, draggedOrderId, columnCount, activeStatus, draggedItem, itemPrices, initialAction, dueReportTopUps, settings } = state;
   const { notify } = useNotifier();
 
   const [isSupplierSelectModalOpen, setSupplierSelectModalOpen] = useState(false);
@@ -115,6 +120,9 @@ const OrderWorkspace: React.FC = () => {
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
   
+  // State for sending report
+  const [isSendingReport, setIsSendingReport] = useState(false);
+
   useEffect(() => {
       if (initialAction && activeStore !== 'Settings' && activeStore !== 'ALL') {
           if (initialAction === 'paste-list') {
@@ -313,6 +321,92 @@ const OrderWorkspace: React.FC = () => {
         notify(`Failed to copy report: ${err}`, 'error');
     });
   };
+
+  const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
+      return order.items.reduce((total, item) => {
+          if (item.isSpoiled) return total;
+          const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price ?? 0;
+          return total + ((item.price ?? latestPrice) * item.quantity);
+      }, 0);
+  };
+
+  const handleSendDueReport = async (dateKey: string) => {
+      if (!settings.telegramBotToken) {
+          notify('Telegram Bot Token is not set in Settings.', 'error');
+          return;
+      }
+
+      setIsSendingReport(true);
+      try {
+          // 1. Calculate previous due (Running balance from Nov 1st 2025)
+          const startDateStr = '2025-11-01';
+          const hardcodedInitialBalance = 146.26;
+          
+          const storesToTrack = [StoreName.CV2, StoreName.SHANTI, StoreName.STOCK02, StoreName.WB];
+          
+          // Generate dates from start to current dateKey
+          const dates: string[] = [];
+          let currentDate = new Date(startDateStr);
+          const endDate = new Date(dateKey);
+          
+          // Safety break
+          let safety = 0;
+          while (currentDate <= endDate && safety < 2000) {
+              dates.push(getLocalDateKey(currentDate));
+              currentDate.setDate(currentDate.getDate() + 1);
+              safety++;
+          }
+
+          const topUpsMap = new Map(dueReportTopUps.map(t => [t.date, t.amount]));
+          
+          let runningDue = hardcodedInitialBalance;
+          
+          // Loop through all days UP TO (but not including) the current dateKey to calculate previousDue
+          // Actually, the report generation function takes "previousDue" which is the due amount BEFORE today's transactions.
+          // So we iterate up to dateKey - 1 day.
+          
+          // Filter orders relevant for calculation (KALI payment or KALI supplier)
+          const kaliOrders = orders.filter(o => {
+              if (o.status !== 'completed' || !o.completedAt) return false;
+              const supplier = suppliers.find(s => s.id === o.supplierId);
+              const paymentMethod = o.paymentMethod || supplier?.paymentMethod;
+              return paymentMethod === PaymentMethod.KALI || supplier?.name === SupplierName.KALI;
+          });
+
+          for (const dKey of dates) {
+              if (dKey === dateKey) break; // Stop before today
+
+              const topUp = topUpsMap.get(dKey) || 0;
+              
+              let dailySpend = 0;
+              kaliOrders.forEach(order => {
+                  if (getLocalDateKey(order.completedAt) === dKey && storesToTrack.includes(order.store)) {
+                      dailySpend += calculateOrderTotal(order, itemPrices);
+                  }
+              });
+              
+              runningDue = runningDue + topUp - dailySpend;
+          }
+
+          const previousDue = runningDue;
+          const topUpToday = topUpsMap.get(dateKey) || 0;
+
+          // 2. Get orders for the current dateKey
+          const ordersForReport = kaliOrders.filter(order => 
+              getLocalDateKey(order.completedAt) === dateKey
+          );
+
+          // 3. Generate & Send
+          const message = generateKaliUnifyReport(ordersForReport, itemPrices, previousDue, topUpToday, dateKey, dateKey);
+          await sendDueReport(message, settings.telegramBotToken);
+          notify(`Due Report for ${dateKey} sent!`, 'success');
+
+      } catch (e: any) {
+          notify(`Failed to send report: ${e.message}`, 'error');
+      } finally {
+          setIsSendingReport(false);
+      }
+  };
   
   const groupedCompletedOrders = useMemo(() => {
     const ordersToGroup = getFilteredOrdersForStatus(OrderStatus.COMPLETED);
@@ -506,6 +600,7 @@ const OrderWorkspace: React.FC = () => {
           const ordersInDateGroup = groupedCompletedOrders[key] || [];
           const isExpanded = expandedGroups.has(key);
           const isDragOver = dragOverDateGroup === key;
+          const todayKey = getLocalDateKey();
           
           // Sort orders within date group by store then supplier (same logic as before)
           const sortedOrdersInGroup = [...ordersInDateGroup].sort((a, b) => {
@@ -546,11 +641,16 @@ const OrderWorkspace: React.FC = () => {
                 <div className="flex items-center space-x-2">
                     {key === 'Today' && activeStore !== 'ALL' && activeStore !== 'Settings' && (
                         <button 
-                            onClick={(e) => { e.stopPropagation(); handleGenerateStoreReport(); }} 
-                            className="text-xs text-gray-400 hover:text-indigo-400 font-medium p-1 hover:bg-gray-700 rounded"
-                            title="Copy Store Report"
+                            onClick={(e) => { e.stopPropagation(); handleSendDueReport(todayKey); }} 
+                            className="text-xs text-gray-400 hover:text-indigo-400 font-medium p-1 hover:bg-gray-700 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+                            title="Send Due Report"
+                            disabled={isSendingReport}
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" /></svg>
+                            {isSendingReport ? (
+                                <svg className="animate-spin h-4 w-4 text-indigo-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+                            )}
                         </button>
                     )}
                 </div>

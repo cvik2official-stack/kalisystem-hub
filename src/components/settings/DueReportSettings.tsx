@@ -199,24 +199,24 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
     return (
         <div className="flex flex-col flex-grow w-full">
             <div className="overflow-x-auto hide-scrollbar">
-                <table className="min-w-full divide-y divide-gray-700">
-                    <thead className="bg-gray-800">
+                <table className="min-w-full divide-y divide-gray-800">
+                    <thead className="bg-transparent border-b border-gray-800">
                         <tr>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">Date</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">Top Up</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">CV2</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">STI</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">O2</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">WB</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider text-indigo-400">Due</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider text-yellow-500">Spent</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">Diff</th>
-                            <th scope="col" className="px-1 md:px-2 py-3 text-center text-[10px] md:text-xs font-medium text-gray-400 uppercase tracking-wider">Act</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">Date</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">Top Up</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">CV2</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">STI</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">O2</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">WB</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider text-indigo-400">Due</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider text-yellow-500">Spent</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">Diff</th>
+                            <th scope="col" className="px-1 md:px-2 py-3 text-center text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider">Act</th>
                         </tr>
                     </thead>
-                    <tbody className="bg-gray-800 divide-y divide-gray-700">
+                    <tbody className="bg-transparent divide-y divide-gray-800">
                         {reportRows.map((row, index) => (
-                            <tr key={row.dateKey} className="hover:bg-gray-700/50">
+                            <tr key={row.dateKey} className="hover:bg-gray-800/30 transition-colors">
                                 <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-300">
                                     {row.date.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}
                                 </td>
@@ -227,7 +227,7 @@ const DueReportSettings: React.FC<DueReportSettingsProps> = ({ setMenuOptions })
                                         defaultValue={row.topUp || ''}
                                         onBlur={(e) => handleTopUpChange(row.dateKey, e.target.value)}
                                         placeholder="-"
-                                        className="bg-transparent p-1 w-14 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-left"
+                                        className="bg-transparent p-1 w-14 rounded focus:bg-gray-900 focus:ring-1 focus:ring-indigo-500 text-left text-gray-300 outline-none"
                                     />
                                 </td>
                                 <td className="px-1 md:px-2 py-2 whitespace-nowrap text-xs text-gray-400 text-left">{formatCurrency(row.cv2)}</td>

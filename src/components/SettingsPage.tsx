@@ -1,4 +1,3 @@
-
 import React, { useContext, useState } from 'react';
 import ItemsSettings from './settings/ItemsSettings';
 import SuppliersSettings from './settings/SuppliersSettings';
@@ -47,7 +46,7 @@ const SettingsPage: React.FC = () => {
 
 
   return (
-    <div className="mt-2 flex flex-col flex-grow">
+    <div className="-mt-2 flex flex-col flex-grow">
       <div>
         <nav className="-mb-px flex space-x-2 md:space-x-6 items-center overflow-x-auto hide-scrollbar">
           {tabs.map((tab) => (

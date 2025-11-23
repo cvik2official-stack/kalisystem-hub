@@ -191,10 +191,20 @@ const NumpadModal: React.FC<NumpadModalProps> = ({ item, isOpen, onClose, onSave
             <span className="text-xs font-bold uppercase tracking-wider">{selectedUnit || 'UNIT'}</span>
           </button>
           
-          {/* Bottom Row */}
-          <div className="col-span-2">
-             {renderKey('0')}
-          </div>
+          {/* Bottom Row - 0 Key */}
+          {isUnitMode ? (
+              <button 
+                onClick={() => handleInput('0')} 
+                className={`${unitBtn} col-span-2`}
+              >
+                  <span className="text-xs font-bold opacity-50 absolute top-1 left-2">0</span>
+                  <span className="text-sm font-bold uppercase tracking-wider">{UNIT_MAPPING.find(m => m.key === '0')?.unit}</span>
+              </button>
+          ) : (
+              <button onClick={() => handleInput('0')} className={`${numBtn} col-span-2`}>
+                  0
+              </button>
+          )}
           
           {/* Dot / Price Switch */}
           <button onClick={() => handleInput('.')} className={`${numBtn} aspect-square relative`}>
