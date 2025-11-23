@@ -1,4 +1,3 @@
-
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -11,6 +10,7 @@ import { generateStoreReport, getLocalDateKey, generateKaliUnifyReport, getLates
 import { sendDueReport } from '../services/telegramService';
 import { calculateDueReportData } from '../services/reportService';
 import { formatDateGroupHeader } from '../utils/dateUtils';
+import { sortOrdersDefault } from '../utils/sortUtils';
 import PasteItemsModal from './modals/PasteItemsModal';
 import AddItemModal from './modals/AddItemModal';
 import StaffFoodModal from './modals/StaffFoodModal';
@@ -187,25 +187,7 @@ const OrderWorkspace: React.FC = () => {
           filtered = orders.filter(order => order.store === activeStore && order.status === status);
       }
       
-      const customSortOrder: string[] = ['KALI', 'STOCK'];
-      const lastSupplier = 'PISEY';
-
-      return filtered.sort((a, b) => {
-          const nameA = a.supplierName;
-          const nameB = b.supplierName;
-
-          if (nameA === lastSupplier && nameB !== lastSupplier) return 1;
-          if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
-
-          const indexA = customSortOrder.indexOf(nameA);
-          const indexB = customSortOrder.indexOf(nameB);
-
-          if (indexA > -1 && indexB > -1) return indexA - indexB;
-          if (indexA > -1) return -1;
-          if (indexB > -1) return 1;
-          
-          return nameA.localeCompare(nameB);
-      });
+      return sortOrdersDefault(filtered);
   };
   
   const handleGenerateStoreReport = () => {
@@ -465,22 +447,7 @@ const OrderWorkspace: React.FC = () => {
           const isDragOver = dragOverDateGroup === key;
           const todayKey = getLocalDateKey();
           
-          // Sort orders within date group by store then supplier (same logic as before)
-          const sortedOrdersInGroup = [...ordersInDateGroup].sort((a, b) => {
-              const storeCompare = a.store.localeCompare(b.store);
-              if (storeCompare !== 0) return storeCompare;
-              
-              const nameA = a.supplierName;
-              const nameB = b.supplierName;
-              if (nameA === 'PISEY' && nameB !== 'PISEY') return 1;
-              if (nameB === 'PISEY' && nameA !== 'PISEY') return -1;
-              const indexA = ['KALI', 'STOCK'].indexOf(nameA);
-              const indexB = ['KALI', 'STOCK'].indexOf(nameB);
-              if (indexA > -1 && indexB > -1) return indexA - indexB;
-              if (indexA > -1) return -1;
-              if (indexB > -1) return 1;
-              return nameA.localeCompare(nameB);
-          });
+          const sortedOrdersInGroup = sortOrdersDefault(ordersInDateGroup);
 
           return (
             <div 

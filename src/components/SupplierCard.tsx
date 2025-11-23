@@ -1,4 +1,3 @@
-
 import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName, StoreName } from '../types';
@@ -14,6 +13,7 @@ import { sendOrderToSupplierOnTelegram, sendDeliveryCheckToStore } from '../serv
 import { useNotifier } from '../context/NotificationContext';
 import { getLatestItemPrice } from '../utils/messageFormatter';
 import { stringToColorClass } from '../constants';
+import { normalizeInputPrice } from '../utils/currencyUtils';
 
 interface SupplierCardProps {
   order: Order;
@@ -272,8 +272,8 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
           newTotalPrice = parseFloat(trimmedPriceStr);
       }
   
-      if (newTotalPrice !== null && newTotalPrice > 1000) {
-          newTotalPrice = newTotalPrice / 4000;
+      if (newTotalPrice !== null) {
+          newTotalPrice = normalizeInputPrice(newTotalPrice);
       }
   
       if (newTotalPrice === null) {

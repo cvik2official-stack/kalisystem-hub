@@ -1,4 +1,5 @@
 import { Order, OrderItem, ItemPrice, Supplier, Store, AppSettings, StoreName, PaymentMethod, SupplierName, Unit } from '../types';
+import { formatPrice as formatPriceUtil } from './currencyUtils';
 
 // Helper to get the YYYY-MM-DD key for a given date based on LOCAL time
 // This replaces the complex Phnom Penh timezone logic to ensure WYSIWYG for the user.
@@ -42,7 +43,7 @@ export const getLatestItemPrice = (itemId: string, supplierId: string, itemPrice
     return prices.sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())[0];
 };
 
-const formatPrice = (price: number): string => price.toFixed(2);
+const formatPrice = (price: number): string => formatPriceUtil(price);
 
 // Generate order message for Telegram
 export const generateOrderMessage = (order: Order, format: 'html' | 'plain', suppliers: Supplier[], stores: Store[], settings: AppSettings): string => {

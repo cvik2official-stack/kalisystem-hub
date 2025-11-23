@@ -1,6 +1,6 @@
 
 import React, { createContext, useReducer, ReactNode, Dispatch, useEffect, useCallback } from 'react';
-import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder } from '../types';
+import { Item, Order, OrderItem, OrderStatus, Store, StoreName, Supplier, SupplierName, Unit, ItemPrice, PaymentMethod, AppSettings, SyncStatus, SettingsTab, DueReportTopUp, Notification, QuickOrder, TelegramUser, AppState } from '../types';
 import { getItemsAndSuppliersFromSupabase, getOrdersFromSupabase, addOrder as supabaseAddOrder, updateOrder as supabaseUpdateOrder, deleteOrder as supabaseDeleteOrder, addItem as supabaseAddItem, updateItem as supabaseUpdateItem, deleteItem as supabaseDeleteItem, updateSupplier as supabaseUpdateSupplier, addSupplier as supabaseAddSupplier, updateStore as supabaseUpdateStore, supabaseUpsertItemPrice, deleteSupplier as supabaseDeleteSupplier, upsertDueReportTopUp as supabaseUpsertDueReportTopUp, addQuickOrder as supabaseAddQuickOrder, deleteQuickOrder as supabaseDeleteQuickOrder } from '../services/supabaseService';
 import { useNotifier, useNotificationDispatch } from './NotificationContext';
 import { sendCustomMessageToSupplier } from '../services/telegramService';
@@ -10,11 +10,9 @@ import { STORE_TAGS } from '../constants';
 import { useBackgroundSync } from '../hooks/useBackgroundSync';
 
 // Safely access environment variables. 
-// We use direct property access so build tools like Vite can statically replace them.
-// We wrap in try-catch to handle environments where import.meta.env might be undefined.
 const getSafeGeminiApiKey = () => {
     try {
-        return (import.meta as any).env.VITE_GEMINI_API_KEY || 'AIzaSyAMUR2Cca9t3frjx14Ekktt95x9AUmNuo4';
+        return (import.meta as any).env.VITE_GEMINI_API_KEY || '';
     } catch {
         return '';
     }
@@ -22,7 +20,23 @@ const getSafeGeminiApiKey = () => {
 
 const getSafeTelegramBotToken = () => {
     try {
-        return (import.meta as any).env.VITE_TELEGRAM_BOT_TOKEN || '8347024604:AAFyAKVNeW_tPbpU79W9UsLtP4FRDInh7Og';
+        return (import.meta as any).env.VITE_TELEGRAM_BOT_TOKEN || '';
+    } catch {
+        return '';
+    }
+};
+
+const getSafeUnifyChatId = () => {
+    try {
+        return (import.meta as any).env.VITE_KALI_UNIFY_CHAT_ID || '';
+    } catch {
+        return '';
+    }
+};
+
+const getSafeZapChatId = () => {
+    try {
+        return (import.meta as any).env.VITE_KALI_ZAP_CHAT_ID || '';
     } catch {
         return '';
     }
@@ -42,31 +56,6 @@ const normalizeUnit = (unit?: string): Unit | undefined => {
         default: if (Object.values(Unit).includes(u as Unit)) return u as Unit; return undefined;
     }
 };
-
-export interface AppState {
-  stores: Store[];
-  activeStore: StoreName | 'Settings' | 'ALL';
-  suppliers: Supplier[];
-  items: Item[];
-  itemPrices: ItemPrice[];
-  orders: Order[];
-  quickOrders: QuickOrder[];
-  dueReportTopUps: DueReportTopUp[];
-  notifications: Notification[];
-  activeStatus: OrderStatus;
-  activeSettingsTab: SettingsTab;
-  orderIdCounters: Record<string, number>;
-  settings: AppSettings;
-  isLoading: boolean;
-  isInitialized: boolean;
-  syncStatus: SyncStatus;
-  isDualPaneMode: boolean;
-  cardWidth: number | null;
-  draggedOrderId: string | null;
-  draggedItem: { item: OrderItem; sourceOrderId: string } | null;
-  columnCount: 1 | 2 | 3;
-  initialAction: string | null;
-}
 
 export type Action =
   | { type: 'SET_ACTIVE_STORE'; payload: StoreName | 'Settings' | 'ALL' }
@@ -100,7 +89,9 @@ export type Action =
   | { type: 'CLEAR_INITIAL_ACTION' }
   | { type: '_BATCH_UPDATE_ITEMS_STOCK'; payload: { itemId: string; stockQuantity: number }[] }
   | { type: 'ADD_QUICK_ORDER'; payload: QuickOrder }
-  | { type: 'DELETE_QUICK_ORDER'; payload: string };
+  | { type: 'DELETE_QUICK_ORDER'; payload: string }
+  | { type: 'LOGIN_SUCCESS'; payload: TelegramUser }
+  | { type: 'LOGOUT' };
 
 
 export interface AppContextActions {
@@ -124,6 +115,8 @@ export interface AppContextActions {
     pasteItemsForStore: (text: string, store: StoreName) => Promise<void>;
     addQuickOrder: (quickOrder: Omit<QuickOrder, 'id'>) => Promise<void>;
     deleteQuickOrder: (id: string) => Promise<void>;
+    login: (user: TelegramUser) => void;
+    logout: () => void;
 }
 
 
@@ -298,19 +291,24 @@ const appReducer = (state: AppState, action: Action): AppState => {
         return { ...state, quickOrders: [...state.quickOrders, action.payload] };
     case 'DELETE_QUICK_ORDER':
         return { ...state, quickOrders: state.quickOrders.filter(q => q.id !== action.payload) };
+    case 'LOGIN_SUCCESS':
+        return { ...state, isAuthenticated: true, user: action.payload };
+    case 'LOGOUT':
+        return { ...state, isAuthenticated: false, user: null };
     default:
       return state;
   }
 };
 
 const APP_STATE_KEY = 'supplyChainCommanderState_v3';
+const AUTH_KEY = 'telegram_auth_user';
 
 const getInitialColumnCount = (): 1 | 2 | 3 => {
     const width = window.innerWidth;
     const height = window.innerHeight;
-    if (width >= 768) return 3;
-    // Landscape on phone -> 3 columns
+    // Check for landscape on mobile
     if (width > height) return 3;
+    if (width >= 768) return 3;
     return 1;
 };
 
@@ -324,6 +322,13 @@ const getInitialState = (): AppState => {
 
   const envGemini = getSafeGeminiApiKey();
   const envTelegram = getSafeTelegramBotToken();
+  
+  // Check for persistent auth
+  let persistedUser: TelegramUser | null = null;
+  try {
+      const savedUser = localStorage.getItem(AUTH_KEY);
+      if (savedUser) persistedUser = JSON.parse(savedUser);
+  } catch (e) { console.warn("Could not load auth", e); }
 
   const initialState: AppState = {
     stores: [],
@@ -344,7 +349,7 @@ const getInitialState = (): AppState => {
       isAiEnabled: true,
       geminiApiKey: envGemini,
       telegramBotToken: envTelegram,
-      aiParsingRules: {}, // Initialize empty, defaults handled by service
+      aiParsingRules: {},
       receiptTemplates: {},
       messageTemplates: {
         defaultOrder: '<b>#️⃣ Order {{orderId}}</b>\n🚚 Delivery order\n📌 <b>{{storeName}}</b>\n\n{{items}}',
@@ -361,19 +366,23 @@ const getInitialState = (): AppState => {
     cardWidth: null,
     columnCount: 3,
     initialAction: null,
+    isAuthenticated: !!persistedUser,
+    user: persistedUser,
   };
 
   const finalState = { ...initialState, ...loadedState };
-  // Prioritize initial settings for critical infrastructure if missing, but respect user overrides if present
   finalState.settings = { ...initialState.settings, ...loadedState.settings };
   
-  // Ensure keys are set if environment variables exist and state is empty
   if (!finalState.settings.geminiApiKey && envGemini) {
       finalState.settings.geminiApiKey = envGemini;
   }
   if (!finalState.settings.telegramBotToken && envTelegram) {
       finalState.settings.telegramBotToken = envTelegram;
   }
+  
+  // Restore auth state overrides from local storage logic above
+  finalState.isAuthenticated = !!persistedUser;
+  finalState.user = persistedUser;
   
   if ((finalState as any).quickOrders === undefined) finalState.quickOrders = [];
   
@@ -421,6 +430,8 @@ export const AppContext = createContext<{
       pasteItemsForStore: async () => {},
       addQuickOrder: async () => {},
       deleteQuickOrder: async () => {},
+      login: () => {},
+      logout: () => {},
   }
 });
 
@@ -429,7 +440,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const { notify } = useNotifier();
   const { addNotification } = useNotificationDispatch();
   
-  // Use the background sync hook
   useBackgroundSync(state, dispatch, notify);
   
   useEffect(() => {
@@ -444,7 +454,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dispatch({ type: 'SET_COLUMN_COUNT', payload: getInitialColumnCount() });
     };
     window.addEventListener('resize', handleResize);
-    // Set initial count on mount
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
   }, [dispatch]);
@@ -548,7 +557,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const updatedOrder = await supabaseUpdateOrder({ order, url: state.settings.supabaseUrl, key: state.settings.supabaseKey });
         dispatch({ type: 'UPDATE_ORDER', payload: updatedOrder });
         
-        // Notification for "On the Way"
         if (previousOrder && previousOrder.status !== OrderStatus.ON_THE_WAY && order.status === OrderStatus.ON_THE_WAY) {
             const notification: Notification = {
                 id: Date.now(),
@@ -559,7 +567,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             addNotification(notification.message);
         }
         
-        // Stock management logic
         if (previousOrder && previousOrder.status !== OrderStatus.COMPLETED && order.status === OrderStatus.COMPLETED) {
             const isStockMovement = order.supplierName === SupplierName.STOCK_OUT || order.paymentMethod === PaymentMethod.STOCK;
             
@@ -607,7 +614,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const newItems = order.items.filter(i => 
             !(i.itemId === itemToDelete.itemId && i.isSpoiled === itemToDelete.isSpoiled && i.name === itemToDelete.name)
         );
-        // Do not delete the order if it becomes empty. Let the on-blur handler do it.
         await actions.updateOrder({ ...order, items: newItems });
         notify('Item removed.', 'success');
     },
@@ -708,14 +714,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const geminiApiKey = state.settings.geminiApiKey;
             if (!geminiApiKey) { notify('Gemini API key not set.', 'error'); return; }
             
-            // Get rules for this store from the service's updated signature
-            // We pass only user overrides here if any, but the service handles merging defaults now.
-            // Actually, the context still holds the user's custom rules in `state.settings.aiParsingRules`.
-            // We pass them to the service, which merges them with DEFAULT_AI_PARSING_RULES.
-            const rulesForApi = { aliases: state.settings.aiParsingRules?.[store] || {} }; // Pass only specific overrides if needed, or the whole object structure.
-            // The service expects `aiRules?: { aliases: Record<string, string> }`.
-            // The user overrides in settings are structured as `global` and per-store.
-            // Let's pass the merged user aliases (global + store).
             const userGlobal = state.settings.aiParsingRules?.global || {};
             const userStore = state.settings.aiParsingRules?.[store] || {};
             const userCombined = { ...userGlobal, ...userStore };
@@ -736,7 +734,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (pItem.matchedItemId) {
                 const existingItem = state.items.find(i => i.id === pItem.matchedItemId);
                 if (existingItem) {
-                    // Store Exclusivity Logic
                     if (existingItem.tags && existingItem.tags.length > 0) {
                         const itemStoreTags = existingItem.tags.filter(tag => STORE_TAGS.includes(tag));
                         if (itemStoreTags.length > 0) {
@@ -748,9 +745,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                             };
                             const activeStoreNorm = normalizeStore(store);
                             const hasMatchingTag = itemStoreTags.some(tag => normalizeStore(tag) === activeStoreNorm);
-                            
                             if (!hasMatchingTag) {
-                                continue; // Skip this item entirely as it doesn't belong to this store
+                                continue; 
                             }
                         }
                     }
@@ -774,12 +770,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 }
             }
 
-            // Stock availability check & Routing
             if (masterItem && stockSupplier && orderItem) {
-                // Check for item has 'stock' tag
                 if (masterItem.tags && masterItem.tags.includes('stock')) {
                      if ((masterItem.stockQuantity || 0) >= orderItem.quantity) {
-                         supplier = stockSupplier; // Route to STOCK-OUT
+                         supplier = stockSupplier; 
                      }
                 }
             }
@@ -822,9 +816,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notify('Quick Order deleted.', 'success');
     },
     syncWithSupabase,
+    login: (user) => {
+        localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+        dispatch({ type: 'LOGIN_SUCCESS', payload: user });
+    },
+    logout: () => {
+        localStorage.removeItem(AUTH_KEY);
+        dispatch({ type: 'LOGOUT' });
+    },
   };
 
-  // Global error handler for actions
   const wrappedActions = { ...actions };
   for (const actionName in wrappedActions) {
       if (Object.prototype.hasOwnProperty.call(wrappedActions, actionName)) {

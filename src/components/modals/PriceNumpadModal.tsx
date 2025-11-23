@@ -1,6 +1,6 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { OrderItem, Unit } from '../../types';
+import { normalizeInputPrice } from '../../utils/currencyUtils';
 
 interface PriceNumpadModalProps {
   item: OrderItem;
@@ -60,9 +60,7 @@ const PriceNumpadModal: React.FC<PriceNumpadModalProps> = ({ item, isOpen, onClo
   const handleSave = () => {
     let numericValue = parseFloat(value);
     if (!isNaN(numericValue) && value) {
-      if (numericValue > 1000) {
-        numericValue = numericValue / 4000;
-      }
+      numericValue = normalizeInputPrice(numericValue);
       onSave(numericValue, selectedUnit);
     }
   };

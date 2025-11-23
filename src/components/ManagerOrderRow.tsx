@@ -3,6 +3,7 @@ import { Order, OrderItem, OrderStatus, PaymentMethod, SupplierName, Unit, Suppl
 import { AppContext } from '../context/AppContext';
 import { getLatestItemPrice } from '../utils/messageFormatter';
 import { useNotifier } from '../context/NotificationContext';
+import { normalizeInputPrice } from '../utils/currencyUtils';
 
 interface ManagerOrderRowProps {
     order: Order;
@@ -106,7 +107,9 @@ const ManagerOrderRow: React.FC<ManagerOrderRowProps> = ({
             newTotalPrice = parseFloat(trimmedPriceStr);
         }
 
-        if (newTotalPrice !== null && newTotalPrice > 1000) newTotalPrice /= 4000;
+        if (newTotalPrice !== null) {
+            newTotalPrice = normalizeInputPrice(newTotalPrice);
+        }
 
         if (newTotalPrice === null) {
             const { price, ...itemWithoutPrice } = itemToUpdate;
@@ -201,10 +204,8 @@ const ManagerOrderRow: React.FC<ManagerOrderRowProps> = ({
                         </button>
                     )}
                     
-                    {/* Mobile Context Menu Trigger - Replaces the separate context menu logic with inline buttons for desktop, but keeps simple menu trigger if needed. For now, implementing hover actions directly is cleaner for the row view */}
                     <button className="md:hidden text-gray-500 hover:text-white p-1 flex-shrink-0" onClick={(e) => { 
                         e.stopPropagation(); 
-                        // Trigger parent context menu logic if needed, but for now inline buttons work well on tap
                         onChangeSupplier(order);
                     }}>
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>

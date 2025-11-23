@@ -5,6 +5,7 @@ import { generateOrderMessage, getLocalDateKey } from '../utils/messageFormatter
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
 import { formatDateGroupHeader } from '../utils/dateUtils';
+import { sortOrdersDefault } from '../utils/sortUtils';
 import ManagerOrderRow from './ManagerOrderRow';
 
 import NumpadModal from './modals/NumpadModal';
@@ -211,16 +212,6 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         setIsChangeSupplierModalOpen(false);
     };
 
-    const sortOrders = (orders: Order[]) => {
-        return orders.sort((a, b) => {
-            const nameA = a.supplierName; const nameB = b.supplierName;
-            if (nameA === 'PISEY' && nameB !== 'PISEY') return 1; if (nameB === 'PISEY' && nameA !== 'PISEY') return -1;
-            const indexA = ['KALI', 'STOCK'].indexOf(nameA); const indexB = ['KALI', 'STOCK'].indexOf(nameB);
-            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-            return nameA.localeCompare(nameB);
-        });
-    };
-
     const title = singleColumn ? singleColumn.replace(/_/g, ' ') : '';
 
     return (
@@ -292,7 +283,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                                                         <div key={storeName}>
                                                             <h4 className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1 pl-1">{storeName}</h4>
                                                             <div className="space-y-1 pl-2 border-l-2 border-gray-700/50">
-                                                                {sortOrders(ordersByStore[storeName]).map(order => (
+                                                                {sortOrdersDefault(ordersByStore[storeName]).map(order => (
                                                                     <ManagerOrderRow
                                                                         key={order.id}
                                                                         order={order}
@@ -326,7 +317,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                     ) : (
                     sortedStoreNames.map(storeName => {
                         const isStoreExpanded = expandedStores.has(storeName);
-                        const storeOrders = sortOrders(groupedByStore[storeName] || []);
+                        const storeOrders = sortOrdersDefault(groupedByStore[storeName] || []);
                         if (storeOrders.length === 0) return null;
 
                         return (

@@ -62,7 +62,7 @@ const TelegramBotSettings: React.FC = () => {
                     <button
                         onClick={handleSetWebhook}
                         disabled={isSavingWebhook}
-                        className="px-6 py-3 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                        className="px-6 py-3 text-sm font-semibold rounded-xl text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 hover:border-indigo-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                     >
                         {isSavingWebhook ? 'Saving...' : 'Set Webhook'}
                     </button>
@@ -80,7 +80,7 @@ const TelegramBotSettings: React.FC = () => {
                     />
                     <button
                         onClick={handleSaveBotToken}
-                        className="px-6 py-3 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all"
+                        className="px-6 py-3 text-sm font-semibold rounded-xl text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 hover:border-indigo-400 transition-all"
                     >
                         Save
                     </button>
@@ -98,7 +98,7 @@ const TelegramBotSettings: React.FC = () => {
                     />
                     <button
                         onClick={handleSaveGeminiKey}
-                        className="px-6 py-3 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/20 transition-all"
+                        className="px-6 py-3 text-sm font-semibold rounded-xl text-indigo-400 hover:text-indigo-300 border border-indigo-500/30 hover:border-indigo-400 transition-all"
                     >
                         Save
                     </button>

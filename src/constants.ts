@@ -1,3 +1,4 @@
+
 export enum StoreName {
     CV2 = 'CV2',
     STOCK02 = 'STOCKO2',
@@ -91,3 +92,9 @@ export const stringToColorClass = (str: string) => {
     const index = Math.abs(hash) % TAG_COLORS.length;
     return TAG_COLORS[index];
 };
+
+export const REPORT_START_DATE = '2025-11-01';
+export const REPORT_INITIAL_BALANCE = 146.26;
+
+// PLEASE UPDATE THIS WITH YOUR ACTUAL BOT USERNAME (without @)
+export const TELEGRAM_BOT_USERNAME = 'KaliSystemBot';
