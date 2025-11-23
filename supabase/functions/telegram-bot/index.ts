@@ -1,3 +1,4 @@
+
 // @deno-types="https://unpkg.com/@supabase/functions-js@2.4.1/src/edge-runtime.d.ts"
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
@@ -182,6 +183,23 @@ async function handleMessage(message: any) {
     if (!message.text) return;
     const { chat, text } = message;
     try {
+        // Check for dynamic Quick Order patterns: /cv2..., /sti..., /o2..., /wb...
+        const quickOrderRegex = /^\/(cv2|sti|o2|wb)(.+)$/i;
+        const match = text.match(quickOrderRegex);
+
+        if (match) {
+            const storeCode = match[1].toUpperCase();
+            const qoName = match[2]; // The rest of the string is the quick order name
+            
+            let storeName = storeCode;
+            if (storeCode === 'STI') storeName = 'SHANTI';
+            if (storeCode === 'O2') storeName = 'STOCKO2';
+            // CV2 and WB map directly
+
+            await handleDynamicQuickOrder(chat.id, storeName, qoName);
+            return;
+        }
+
         if (text === '/whoami') {
             const { from } = message;
             const responseText = `*Chat ID:* \`${chat.id}\`\n*User ID:* \`${from.id}\`\n*Name:* ${from.first_name || ''} ${from.last_name || ''}`.trim();
@@ -193,6 +211,7 @@ async function handleMessage(message: any) {
         } else if (text === '/due') {
             await handleDueReport(chat.id);
         } else if (text === '/salmon') {
+            // Legacy support, can now be handled by /cv2salmon if a quick order named "salmon" exists for CV2
             await handleSalmonOrder(chat.id);
         }
     } catch (e) {
@@ -290,7 +309,64 @@ async function handleDueReport(chatId: number) {
     await sendMessageToChat(chatId, report, 'HTML');
 }
 
+// Generic handler for dynamic quick orders (e.g., /cv2salmon)
+async function handleDynamicQuickOrder(chatId: number, storeName: string, quickOrderName: string) {
+    const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+    
+    // Case-insensitive search for name, exact match for store
+    const { data: qo, error: qoError } = await supabase.from('quick_orders')
+        .select('*, suppliers(*)')
+        .eq('store', storeName)
+        .ilike('name', quickOrderName.trim())
+        .limit(1)
+        .maybeSingle();
+        
+    if (qoError || !qo) {
+        await sendMessageToChat(chatId, `Quick Order "<b>${quickOrderName}</b>" for store <b>${storeName}</b> not found.`);
+        return;
+    }
+
+    await createAndNotifyQuickOrder(supabase, qo, chatId);
+}
+
+// Extracted logic to create order and notify
+async function createAndNotifyQuickOrder(supabase: any, quickOrder: any, chatId: number) {
+    const now = new Date();
+    const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
+    const newOrderId = `${dateStr}_${quickOrder.suppliers.name}_${quickOrder.store}_BOT`;
+    
+    const { data: order, error: orderError } = await supabase.from('orders').insert({
+        order_id: newOrderId,
+        store: quickOrder.store,
+        supplier_id: quickOrder.supplier_id,
+        status: 'on_the_way',
+        is_sent: true,
+        created_at: now.toISOString(),
+        modified_at: now.toISOString(),
+        items: quickOrder.items
+    }).select().single();
+
+    if (orderError) {
+        await sendMessageToChat(chatId, `Failed to create order: ${orderError.message}`);
+        return;
+    }
+
+    if (TELEGRAM_BOT_TOKEN && quickOrder.suppliers.chat_id) {
+        const itemsList = (quickOrder.items as any[]).map(i => `${i.name} x${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join('\n');
+        const msg = `<b>Order ${newOrderId} for ${quickOrder.store}</b>\n${itemsList}`;
+        
+        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: quickOrder.suppliers.chat_id, text: msg, parse_mode: 'HTML' })
+        });
+    }
+
+    await sendMessageToChat(chatId, `✅ <b>${quickOrder.name}</b> for <b>${quickOrder.store}</b> created and sent!`, 'HTML');
+}
+
 async function handleSalmonOrder(chatId: number) {
+    // Deprecated: Use dynamic handler, but kept for existing hardcoded behavior
     const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
     
     const { data: qo, error: qoError } = await supabase.from('quick_orders')
@@ -303,39 +379,8 @@ async function handleSalmonOrder(chatId: number) {
         await sendMessageToChat(chatId, "Salmon quick order not found.");
         return;
     }
-
-    const now = new Date();
-    const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
-    const newOrderId = `${dateStr}_${qo.suppliers.name}_${qo.store}_BOT`;
     
-    const { data: order, error: orderError } = await supabase.from('orders').insert({
-        order_id: newOrderId,
-        store: qo.store,
-        supplier_id: qo.supplier_id,
-        status: 'on_the_way',
-        is_sent: true,
-        created_at: now.toISOString(),
-        modified_at: now.toISOString(),
-        items: qo.items
-    }).select().single();
-
-    if (orderError) {
-        await sendMessageToChat(chatId, `Failed to create order: ${orderError.message}`);
-        return;
-    }
-
-    if (TELEGRAM_BOT_TOKEN && qo.suppliers.chat_id) {
-        const itemsList = (qo.items as any[]).map(i => `${i.name} x${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join('\n');
-        const msg = `<b>Order ${newOrderId} for ${qo.store}</b>\n${itemsList}`;
-        
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: qo.suppliers.chat_id, text: msg, parse_mode: 'HTML' })
-        });
-    }
-
-    await sendMessageToChat(chatId, `Salmon order created and sent to ${qo.suppliers.name}!`);
+    await createAndNotifyQuickOrder(supabase, qo, chatId);
 }
 
 
@@ -362,43 +407,8 @@ async function handleTriggerQuickOrder(queryId: string, quickOrderId: string, ch
         return;
     }
 
-    const now = new Date();
-    const dateStr = `${now.getDate().toString().padStart(2, '0')}${ (now.getMonth() + 1).toString().padStart(2, '0')}`;
-    const newOrderId = `${dateStr}_${qo.suppliers.name}_${qo.store}_BOT`;
-    
-    // Create the order in 'dispatch' status first, then move to 'on_the_way' to simulate flow
-    // But for a quick trigger, let's just go straight to 'on_the_way' and 'is_sent'
-    const { data: order, error: orderError } = await supabase.from('orders').insert({
-        order_id: newOrderId,
-        store: qo.store,
-        supplier_id: qo.supplier_id,
-        status: 'on_the_way',
-        is_sent: true,
-        created_at: now.toISOString(),
-        modified_at: now.toISOString(),
-        items: qo.items
-    }).select().single();
-
-    if (orderError) {
-        await answerCallbackQuery(queryId, `Error creating order: ${orderError.message}`, true);
-        return;
-    }
-
-    // Notify Supplier
-    if (TELEGRAM_BOT_TOKEN && qo.suppliers.chat_id) {
-        const itemsList = (qo.items as any[]).map(i => `${i.name} x${i.quantity}${i.unit ? ' ' + i.unit : ''}`).join('\n');
-        const msg = `<b>Order ${newOrderId} for ${qo.store}</b>\n${itemsList}`;
-        
-        // We use fetch directly here to avoid importing the frontend helper which might have node deps
-        await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: qo.suppliers.chat_id, text: msg, parse_mode: 'HTML' })
-        });
-    }
-
+    await createAndNotifyQuickOrder(supabase, qo, chatId);
     await answerCallbackQuery(queryId, `Quick Order "${qo.name}" executed!`);
-    await sendMessageToChat(chatId, `✅ Quick Order <b>${qo.name}</b> created for ${qo.store}!`, 'HTML');
 }
 
 async function handleApproveOrder(queryId: string, orderId: string) {

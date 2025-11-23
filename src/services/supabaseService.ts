@@ -189,12 +189,15 @@ export const getItemsAndSuppliersFromSupabase = async ({ url, key }: SupabaseCre
     const itemPricesData: ItemPriceFromDb[] = await itemPricesResponse.json();
     const dueReportTopUpsData: DueReportTopUpFromDb[] = await dueReportTopUpsResponse.json();
     
-    const stores: Store[] = storesData.map(s => ({
-      id: s.id,
-      name: s.name,
-      chatId: s.chat_id,
-      locationUrl: s.location_url,
-    }));
+    const validStoreNames = new Set(Object.values(StoreName));
+    const stores: Store[] = storesData
+      .filter(s => validStoreNames.has(s.name))
+      .map(s => ({
+        id: s.id,
+        name: s.name,
+        chatId: s.chat_id,
+        locationUrl: s.location_url,
+      }));
     
     const supplierMap = new Map<string, Supplier>(suppliersData.map((s) => [s.id, {
         id: s.id,

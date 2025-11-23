@@ -8,6 +8,7 @@ import PaymentMethodModal from './modals/PaymentMethodModal';
 import NumpadModal from './modals/NumpadModal';
 import PriceNumpadModal from './modals/PriceNumpadModal';
 import AddItemModal from './modals/AddItemModal';
+import SaveQuickOrderModal from './modals/SaveQuickOrderModal';
 import { generateOrderMessage } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
@@ -48,6 +49,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     const [isNumpadOpen, setNumpadOpen] = useState(false);
     const [isPriceNumpadOpen, setIsPriceNumpadOpen] = useState(false);
     const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+    
+    // State for Quick Order Save
+    const [isSaveQuickOrderModalOpen, setIsSaveQuickOrderModalOpen] = useState(false);
 
     // Sync collapse state with order status changes
     useEffect(() => {
@@ -158,7 +162,29 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
             });
         }
 
+        if (order.status === OrderStatus.ON_THE_WAY) {
+             options.push({ 
+                label: 'Dispatch', 
+                action: async () => {
+                    await actions.updateOrder({ 
+                        ...order, 
+                        status: OrderStatus.DISPATCHING,
+                        isSent: false,
+                        isReceived: false,
+                        completedAt: undefined
+                    });
+                    notify(`Order moved back to Dispatch.`, 'success');
+                }
+            });
+        }
+
         options.push({ label: 'Change Supplier', action: () => setChangeSupplierModalOpen(true) });
+        
+        // Add Save as Quick Order option
+        if (order.items.length > 0) {
+            options.push({ label: 'Save as Quick Order', action: () => setIsSaveQuickOrderModalOpen(true) });
+        }
+
         options.push({ label: 'Drop', action: () => actions.deleteOrder(order.id), isDestructive: true });
         
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -671,6 +697,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                     onClose={() => setIsAddItemModalOpen(false)} 
                     onItemSelect={handleAddItem}
                     order={order}
+                />
+            )}
+            {isSaveQuickOrderModalOpen && (
+                <SaveQuickOrderModal
+                    isOpen={isSaveQuickOrderModalOpen}
+                    onClose={() => setIsSaveQuickOrderModalOpen(false)}
+                    orderId={order.id}
                 />
             )}
             {contextMenu && (

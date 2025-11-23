@@ -1,7 +1,7 @@
 
 import React, { useState, useContext, useMemo } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { Order, Item, OrderStatus, Unit } from '../../types';
+import { Order, Item, OrderStatus, Unit, SupplierName } from '../../types';
 import { useNotifier } from '../../context/NotificationContext';
 
 interface AddItemModalProps {
@@ -21,10 +21,21 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
     const itemsInOrder = new Set(order?.items.map(i => i.itemId) || []);
     const availableItems = state.items.filter(i => !itemsInOrder.has(i.id));
 
-    const searchLower = search.toLowerCase();
-    const searchFiltered = !search
-      ? availableItems
-      : availableItems.filter(item => 
+    const searchLower = search.trim().toLowerCase();
+
+    if (!searchLower) {
+        // If searching within a specific order context, show only that supplier's items by default
+        if (order) {
+            return availableItems
+                .filter(i => i.supplierId === order.supplierId)
+                .sort((a, b) => a.name.localeCompare(b.name));
+        }
+        // Standalone/Global add: show all items sorted
+        return availableItems.sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    // If searching, search globally across all items
+    const searchFiltered = availableItems.filter(item => 
           item.name.toLowerCase().includes(searchLower) || 
           item.supplierName.toLowerCase().includes(searchLower)
         );
@@ -96,12 +107,6 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
 
   if (!isOpen) return null;
 
-  const indicatorColor = !order 
-    ? 'bg-gray-500' 
-    : order.status === OrderStatus.DISPATCHING ? 'bg-blue-500' :
-      order.status === OrderStatus.ON_THE_WAY ? 'bg-yellow-500' :
-      'bg-green-500';
-
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-start md:items-center justify-center z-50 p-4 pt-16 md:pt-4" onClick={onClose}>
       <div className="relative bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
@@ -109,7 +114,6 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
         {/* Header */}
         <div className="px-5 py-4 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
             <div className="flex items-center space-x-3 overflow-hidden">
-                <div className={`w-2 h-8 rounded-full ${indicatorColor} flex-shrink-0`}></div>
                 <h2 className="text-lg font-bold text-white truncate">
                     {order ? (
                         <>Add to <span className="text-gray-300 font-medium">{order.supplierName}</span></>
@@ -179,13 +183,13 @@ const AddItemModal: React.FC<AddItemModalProps> = ({ isOpen, onClose, onItemSele
                         onClick={() => handleItemClick(item)} 
                         className="w-full text-left p-3 rounded-xl hover:bg-gray-800 border border-transparent hover:border-gray-700 transition-all group flex justify-between items-center"
                     >
-                        <div className="flex flex-col min-w-0 mr-3">
-                            <span className="text-gray-200 font-medium truncate group-hover:text-white">{item.name}</span>
-                            <span className="text-gray-500 text-xs truncate">{item.supplierName}</span>
+                        <span className="text-gray-200 font-medium truncate group-hover:text-white mr-3 flex-grow">{item.name}</span>
+                        <div className="flex items-center space-x-2 flex-shrink-0">
+                             <span className="text-gray-500 text-xs truncate max-w-[80px] sm:max-w-[120px]">{item.supplierName}</span>
+                             <span className="text-gray-600 text-xs font-mono bg-gray-800/50 px-2 py-1 rounded group-hover:bg-gray-900 group-hover:text-gray-400 transition-colors">
+                                {item.unit}
+                            </span>
                         </div>
-                        <span className="text-gray-600 text-xs font-mono bg-gray-800/50 px-2 py-1 rounded group-hover:bg-gray-900 group-hover:text-gray-400 transition-colors">
-                            {item.unit}
-                        </span>
                     </button>
                     ))
                 )}
