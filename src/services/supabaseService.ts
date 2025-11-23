@@ -43,6 +43,9 @@
   -- Add a numeric column for stock quantity on items
   ALTER TABLE public.items ADD COLUMN IF NOT EXISTS stock_quantity NUMERIC;
   
+  -- Add a text column for delivery status tracking
+  ALTER TABLE public.orders ADD COLUMN IF NOT EXISTS delivery_status TEXT;
+
   -- Create the table for Due Report top-up amounts
   CREATE TABLE IF NOT EXISTS public.due_report_top_ups (
     date DATE PRIMARY KEY,
@@ -122,6 +125,7 @@ interface OrderFromDb {
     payment_method?: PaymentMethod;
     is_acknowledged?: boolean;
     reminder_sent_at?: string;
+    delivery_status?: 'pending' | 'received' | 'not_yet';
 }
 
 interface ItemPriceFromDb {
@@ -300,6 +304,7 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
                     paymentMethod: order.payment_method,
                     isAcknowledged: order.is_acknowledged,
                     reminderSentAt: order.reminder_sent_at,
+                    deliveryStatus: order.delivery_status,
                     items: order.items || [], 
                 });
             } else {
@@ -342,6 +347,7 @@ export const addOrder = async ({ order, url, key }: { order: Order; url: string;
         payment_method: orderData.paymentMethod,
         is_acknowledged: orderData.isAcknowledged,
         reminder_sent_at: orderData.reminderSentAt,
+        delivery_status: orderData.deliveryStatus,
     };
 
     const orderResponse = await fetch(`${url}/rest/v1/orders?select=*`, {
@@ -379,6 +385,7 @@ export const updateOrder = async ({ order, url, key }: { order: Order; url: stri
         payment_method: order.paymentMethod,
         is_acknowledged: order.isAcknowledged,
         reminder_sent_at: order.reminderSentAt,
+        delivery_status: order.deliveryStatus,
     };
     const orderResponse = await fetch(`${url}/rest/v1/orders?id=eq.${order.id}`, {
         method: 'PATCH',

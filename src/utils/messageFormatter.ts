@@ -105,7 +105,7 @@ export const generateStoreReport = (orders: Order[]): string => {
 };
 
 // Calculate total for an order
-const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
+export const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
     return order.items.reduce((total, item) => {
         if (item.isSpoiled) return total;
         const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price ?? 0;

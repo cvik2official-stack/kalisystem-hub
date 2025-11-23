@@ -94,6 +94,7 @@ export interface Order {
   paymentMethod?: PaymentMethod;
   isAcknowledged?: boolean;
   reminderSentAt?: string;
+  deliveryStatus?: 'pending' | 'received' | 'not_yet';
 }
 
 export interface QuickOrder {

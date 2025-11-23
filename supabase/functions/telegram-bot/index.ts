@@ -228,6 +228,8 @@ async function handleCallbackQuery(query: any) {
   const action = parts.join('_');
   if (action === 'approve_order' && recordId) await handleApproveOrder(id, recordId);
   else if (action === 'trigger_qo' && recordId) await handleTriggerQuickOrder(id, recordId, message.chat.id);
+  else if (action === 'delivery_yes' && recordId) await handleDeliveryResponse(id, recordId, 'received');
+  else if (action === 'delivery_no' && recordId) await handleDeliveryResponse(id, recordId, 'not_yet');
 }
 
 // --- Helpers ---
@@ -420,6 +422,23 @@ async function handleApproveOrder(queryId: string, orderId: string) {
   } catch (e) {
     await answerCallbackQuery(queryId, "An internal error occurred.", true);
   }
+}
+
+async function handleDeliveryResponse(queryId: string, orderId: string, status: 'received' | 'not_yet') {
+    try {
+        const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '');
+        const { data, error } = await supabase.from('orders').update({ delivery_status: status }).eq('id', orderId).select().single();
+        
+        if (error) {
+            await answerCallbackQuery(queryId, "Error updating status.", true);
+            return;
+        }
+        
+        const replyText = status === 'received' ? "All right! Thanx!" : "Ok, I will check, Thx";
+        await answerCallbackQuery(queryId, replyText);
+    } catch (e) {
+        await answerCallbackQuery(queryId, "An internal error occurred.", true);
+    }
 }
 
 // --- Telegram API Helpers ---

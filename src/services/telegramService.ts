@@ -139,6 +139,29 @@ export const sendReminderToSupplier = async (
 };
 
 /**
+ * Sends a check message to the store asking if they received the order.
+ * @param order The order object.
+ * @param storeChatId The chat ID of the store.
+ * @param token The Telegram bot token.
+ */
+export const sendDeliveryCheckToStore = async (
+    order: Order,
+    storeChatId: string,
+    token: string
+): Promise<void> => {
+    const message = `An order from <b>${escapeHtml(order.supplierName)}</b> has been placed, did you receive it yet?`;
+    
+    const replyMarkup: ReplyMarkup = {
+        inline_keyboard: [[
+            { text: "Yes", callback_data: `delivery_yes_${order.id}` },
+            { text: "Not yet", callback_data: `delivery_no_${order.id}` }
+        ]]
+    };
+
+    await sendMessage(token, storeChatId, message, replyMarkup);
+};
+
+/**
  * Sends a custom message to a supplier's chat.
  * @param supplier The supplier object containing the chat ID.
  * @param message The message text to send, assumed to be HTML formatted.

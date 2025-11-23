@@ -10,7 +10,7 @@ import PriceNumpadModal from './modals/PriceNumpadModal';
 import AddItemModal from './modals/AddItemModal';
 import SaveQuickOrderModal from './modals/SaveQuickOrderModal';
 import { generateOrderMessage } from '../utils/messageFormatter';
-import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
+import { sendOrderToSupplierOnTelegram, sendDeliveryCheckToStore } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
 import { getLatestItemPrice } from '../utils/messageFormatter';
 import { stringToColorClass } from '../constants';
@@ -125,6 +125,31 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         }
     };
 
+    const handleCheckReceived = async () => {
+        const { settings, stores } = state;
+        const store = stores.find(s => s.name === order.store);
+        
+        if (!store || !store.chatId || !settings.telegramBotToken) {
+            notify('Store Chat ID or Bot Token not set.', 'error');
+            return;
+        }
+
+        try {
+            await sendDeliveryCheckToStore(order, store.chatId, settings.telegramBotToken);
+            // Set local state to pending immediately
+            await actions.updateOrder({ ...order, deliveryStatus: 'pending' });
+            notify(`Sent check to ${store.name}.`, 'success');
+        } catch (e: any) {
+            notify(`Failed to send check: ${e.message}`, 'error');
+        }
+    };
+
+    const handleClearDeliveryStatus = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        await actions.updateOrder({ ...order, deliveryStatus: undefined });
+        notify('Delivery status cleared.', 'info');
+    };
+
     const handleHeaderActionsClick = (e: React.MouseEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -146,6 +171,14 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                 }
             });
         } else {
+            options.push({
+                label: 'Add Item',
+                action: () => setIsAddItemModalOpen(true)
+            });
+            options.push({
+                label: 'Received yet',
+                action: handleCheckReceived
+            });
             options.push({ 
                 label: 'Move to Yesterday', 
                 action: async () => {
@@ -482,6 +515,37 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
         }
     }, [order.paymentMethod]);
 
+    const renderDeliveryStatusBadge = () => {
+        if (!order.deliveryStatus) return null;
+        
+        let classes = '';
+        let text = '';
+        
+        switch(order.deliveryStatus) {
+            case 'pending':
+                classes = 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30 hover:bg-yellow-500/20';
+                text = 'Pending';
+                break;
+            case 'received':
+                classes = 'bg-green-500/10 text-green-300 border-green-500/30 hover:bg-green-500/20';
+                text = 'Received';
+                break;
+            case 'not_yet':
+                classes = 'bg-red-500/10 text-red-300 border-red-500/30 hover:bg-red-500/20';
+                text = 'Not yet';
+                break;
+        }
+        
+        return (
+            <button 
+                onClick={handleClearDeliveryStatus}
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide flex-shrink-0 flex items-center space-x-1 border transition-colors mr-2 ${classes}`}
+            >
+                {text}
+            </button>
+        );
+    };
+
     return (
         <>
             <div 
@@ -504,6 +568,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                         <h3 className={`text-sm font-bold truncate mr-2 ${isKaliOrder ? 'text-purple-400' : 'text-white'}`}>
                             {order.supplierName}
                         </h3>
+                        
+                        {renderDeliveryStatusBadge()}
+
                         <button 
                             onClick={(e) => { e.stopPropagation(); setPaymentMethodModalOpen(true); }}
                             className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide flex-shrink-0 flex items-center space-x-1 border transition-colors ${paymentBadgeClasses}`}

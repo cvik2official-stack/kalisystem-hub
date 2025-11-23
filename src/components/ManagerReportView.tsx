@@ -1,34 +1,18 @@
-
-import React, { useContext, useMemo, useState, useRef, useEffect } from 'react';
-import { Order, StoreName, OrderItem, Unit, PaymentMethod, OrderStatus, SupplierName, Supplier, Item } from '../types';
+import React, { useContext, useMemo, useState } from 'react';
+import { Order, OrderItem, OrderStatus, Unit, PaymentMethod, Supplier, Item } from '../types';
 import { AppContext } from '../context/AppContext';
-import { getLatestItemPrice, generateOrderMessage, getPhnomPenhDateKey } from '../utils/messageFormatter';
+import { generateOrderMessage, getLocalDateKey } from '../utils/messageFormatter';
 import { sendOrderToSupplierOnTelegram } from '../services/telegramService';
 import { useNotifier } from '../context/NotificationContext';
+import { formatDateGroupHeader } from '../utils/dateUtils';
+import ManagerOrderRow from './ManagerOrderRow';
+
 import NumpadModal from './modals/NumpadModal';
 import PaymentMethodModal from './modals/PaymentMethodModal';
 import AddItemModal from './modals/AddItemModal';
 import AddSupplierModal from './modals/AddSupplierModal';
 import PasteItemsModal from './modals/PasteItemsModal';
-import ContextMenu from './ContextMenu';
 import PriceNumpadModal from './modals/PriceNumpadModal';
-
-
-const formatDateGroupHeader = (key: string): string => {
-    if (key === 'Today') return 'Today';
-    
-    const todayKey = getPhnomPenhDateKey();
-  
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
-    
-    if (key === todayKey) return 'Today'; 
-    if (key === yesterdayKey) return 'Yesterday';
-  
-    const [year, month, day] = key.split('-').map(Number);
-    return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
-};
 
 interface ManagerReportViewProps {
     orders: Order[];
@@ -38,33 +22,25 @@ interface ManagerReportViewProps {
     showStoreName?: boolean;
 }
 
-
 const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
     const { state, dispatch, actions } = useContext(AppContext);
-    const { suppliers, itemPrices, draggedItem, draggedOrderId } = state;
+    const { suppliers, itemPrices, draggedItem } = state;
     const { notify } = useNotifier();
     const { orders, singleColumn, onItemDrop, hideTitle, showStoreName } = props;
     
-    const [editingNameId, setEditingNameId] = useState<string | null>(null);
-    const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+    // Global Modal States
     const [paymentModalOrder, setPaymentModalOrder] = useState<Order | null>(null);
-    
-    // Numpad States
     const [numpadItem, setNumpadItem] = useState<{ order: Order, item: OrderItem } | null>(null);
     const [priceNumpadItem, setPriceNumpadItem] = useState<{ order: Order, item: OrderItem } | null>(null);
-    
-    // Modal States
     const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
     const [orderForAddItem, setOrderForAddItem] = useState<Order | null>(null);
     const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState(false);
     const [isPasteItemsModalOpen, setIsPasteItemsModalOpen] = useState(false);
     
-    // Context Menu & Change Supplier
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; options: any[] } | null>(null);
     const [isChangeSupplierModalOpen, setIsChangeSupplierModalOpen] = useState(false);
     const [orderToChangeSupplier, setOrderToChangeSupplier] = useState<Order | null>(null);
 
-
+    // Derived Data
     const columnOrders = useMemo(() => {
         if (!singleColumn) return orders;
         const statusMap = { 'dispatch': OrderStatus.DISPATCHING, 'on_the_way': OrderStatus.ON_THE_WAY, 'completed': OrderStatus.COMPLETED };
@@ -76,27 +52,20 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         if (singleColumn !== 'completed') return {};
         
         const groups: Record<string, Order[]> = {};
-        const todayKey = getPhnomPenhDateKey();
+        const todayKey = getLocalDateKey();
         const yesterdayDate = new Date();
         yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-        const yesterdayKey = getPhnomPenhDateKey(yesterdayDate);
+        const yesterdayKey = getLocalDateKey(yesterdayDate);
         
         columnOrders.forEach(order => {
-            const completedDateKey = getPhnomPenhDateKey(order.completedAt);
+            const completedDateKey = getLocalDateKey(order.completedAt);
             const key = completedDateKey === todayKey ? 'Today' : completedDateKey;
-            if (!groups[key]) {
-                groups[key] = [];
-            }
+            if (!groups[key]) groups[key] = [];
             groups[key].push(order);
         });
 
-        // Also ensure "Today" and "Yesterday" groups exist, even if empty.
-        if (!groups['Today']) {
-            groups['Today'] = [];
-        }
-        if (!groups[yesterdayKey]) {
-            groups[yesterdayKey] = [];
-        }
+        if (!groups['Today']) groups['Today'] = [];
+        if (!groups[yesterdayKey]) groups[yesterdayKey] = [];
         
         return groups;
     }, [columnOrders, singleColumn]);
@@ -110,16 +79,11 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         });
     }, [groupedCompletedOrders, singleColumn]);
 
-
+    // Expansion States
     const [expandedStores, setExpandedStores] = useState<Set<string>>(new Set(columnOrders.map(o => o.store)));
-    
-    // Initialize expanded suppliers to exclude completed orders by default
     const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(() => {
-        // Initially expand all orders EXCEPT completed ones
         return new Set(columnOrders.filter(o => o.status !== OrderStatus.COMPLETED).map(o => o.id));
     });
-
-    // Added state for expanded date groups in completed column
     const [expandedDateGroups, setExpandedDateGroups] = useState<Set<string>>(new Set(['Today']));
 
     const groupedByStore = useMemo(() => {
@@ -131,13 +95,14 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         return storeGroups;
     }, [columnOrders]);
     
-    const customSortOrder: string[] = ['KALI', 'STOCK'];
-    const lastSupplier = 'PISEY';
-    
     const sortedStoreNames = useMemo(() => Object.keys(groupedByStore).sort((a, b) => a.localeCompare(b)), [groupedByStore]);
 
+    // Handlers
+    const toggleStore = (storeName: string) => setExpandedStores(prev => { const newSet = new Set(prev); if (newSet.has(storeName)) newSet.delete(storeName); else newSet.add(storeName); return newSet; });
+    const toggleSupplier = (orderId: string) => setExpandedSuppliers(prev => { const newSet = new Set(prev); if (newSet.has(orderId)) newSet.delete(orderId); else newSet.add(orderId); return newSet; });
+    const toggleDateGroup = (dateKey: string) => setExpandedDateGroups(prev => { const newSet = new Set(prev); if (newSet.has(dateKey)) newSet.delete(dateKey); else newSet.add(dateKey); return newSet; });
+
     const handleItemDragStart = (e: React.DragEvent, item: OrderItem, sourceOrderId: string) => {
-        if (editingNameId || editingPriceId) { e.preventDefault(); return; }
         e.stopPropagation();
         dispatch({ type: 'SET_DRAGGED_ITEM', payload: { item, sourceOrderId } });
     };
@@ -147,94 +112,13 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         if (draggedItem) onItemDrop(destinationOrderId);
     };
 
-    const handleItemNameSave = async (order: Order, itemToUpdate: OrderItem, newName: string) => {
-        setEditingNameId(null);
-        const trimmedName = newName.trim();
-        if (itemToUpdate.name === trimmedName || trimmedName === '') return;
-        const updatedItems = order.items.map(i => (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) ? { ...i, name: trimmedName } : i);
-        await actions.updateOrder({ ...order, items: updatedItems });
-        notify("Item name updated for this order.", "info");
-    };
-
-    const handleSaveInlinePrice = async (order: Order, itemToUpdate: OrderItem, totalPriceStr: string) => {
-      setEditingPriceId(null);
-      let newTotalPrice: number | null;
-      const trimmedPriceStr = totalPriceStr.trim();
-  
-      if (trimmedPriceStr === '') {
-        newTotalPrice = null;
-      } else if (trimmedPriceStr.startsWith('=')) {
-        try {
-          const expression = trimmedPriceStr.substring(1);
-          newTotalPrice = new Function('return ' + expression)();
-          if (typeof newTotalPrice !== 'number' || !isFinite(newTotalPrice)) {
-            notify('Invalid calculation result.', 'error');
-            return;
-          }
-        } catch (e) {
-          notify('Invalid formula.', 'error');
-          return;
-        }
-      } else {
-        newTotalPrice = parseFloat(trimmedPriceStr);
-      }
-      
-      if (newTotalPrice !== null && newTotalPrice > 1000) newTotalPrice /= 4000;
-      
-      if (newTotalPrice === null) {
-        const { price, ...itemWithoutPrice } = itemToUpdate;
-        if (itemToUpdate.price !== undefined) await actions.updateOrder({ ...order, items: order.items.map(i => i.itemId === itemToUpdate.itemId ? itemWithoutPrice : i) });
-        return;
-      }
-      if (itemToUpdate.quantity === 0) { notify('Cannot set price for item with quantity 0.', 'error'); return; }
-      if (newTotalPrice !== null && !isNaN(newTotalPrice) && newTotalPrice >= 0) {
-        const newUnitPrice = newTotalPrice / itemToUpdate.quantity;
-        
-        // Check for existing master price
-        const existingMaster = state.itemPrices.find(p => 
-            p.itemId === itemToUpdate.itemId && 
-            p.supplierId === order.supplierId &&
-            p.unit === itemToUpdate.unit
-        );
-
-        if (!existingMaster) {
-            // Create Default
-            await actions.upsertItemPrice({
-                itemId: itemToUpdate.itemId,
-                supplierId: order.supplierId,
-                price: newUnitPrice,
-                unit: itemToUpdate.unit || Unit.PC
-            });
-            // Clear override
-            const updatedItems = order.items.map(i => 
-                (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) 
-                ? { ...i, price: undefined } 
-                : i
-            );
-            await actions.updateOrder({ ...order, items: updatedItems });
-            notify('Price set as default.', 'success');
-        } else {
-            // Set Override
-            const updatedItems = order.items.map(i => 
-                (i.itemId === itemToUpdate.itemId && i.isSpoiled === itemToUpdate.isSpoiled) 
-                ? { ...i, price: newUnitPrice } 
-                : i
-            );
-            await actions.updateOrder({ ...order, items: updatedItems });
-        }
-      } else {
-        notify('Invalid price.', 'error');
-      }
-    };
-    
     const handleSendToTelegram = async (order: Order) => {
-        const { settings, suppliers, stores } = state;
-        const currentSupplier = suppliers.find(s => s.id === order.supplierId);
+        const { settings, suppliers: allSuppliers, stores } = state;
+        const currentSupplier = allSuppliers.find(s => s.id === order.supplierId);
         if (!currentSupplier || !currentSupplier.chatId || !settings.telegramBotToken) { notify('Supplier Chat ID or Bot Token is not configured.', 'error'); return; }
         try {
-            await sendOrderToSupplierOnTelegram(order, currentSupplier, generateOrderMessage(order, 'html', suppliers, stores, settings), settings.telegramBotToken);
+            await sendOrderToSupplierOnTelegram(order, currentSupplier, generateOrderMessage(order, 'html', allSuppliers, stores, settings), settings.telegramBotToken);
             notify(`Order sent to ${order.supplierName}.`, 'success');
-            // Auto move to on the way if dispatching
             if (order.status === OrderStatus.DISPATCHING) {
                 await actions.updateOrder({ ...order, isSent: true, status: OrderStatus.ON_THE_WAY });
             }
@@ -243,9 +127,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         }
     };
 
-    const handleQuantityClick = (order: Order, item: OrderItem) => {
-        setNumpadItem({ order, item });
-    };
+    const handleQuantityClick = (order: Order, item: OrderItem) => setNumpadItem({ order, item });
 
     const handleSwitchToPriceFromNumpad = () => {
         if (numpadItem) {
@@ -275,33 +157,15 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         if (!priceNumpadItem) return;
         const { order, item } = priceNumpadItem;
         
-        // Check for existing master price
-        const existingMaster = state.itemPrices.find(p => 
-            p.itemId === item.itemId && 
-            p.supplierId === order.supplierId &&
-            p.unit === unit
-        );
+        const existingMaster = itemPrices.find(p => p.itemId === item.itemId && p.supplierId === order.supplierId && p.unit === unit);
 
         if (!existingMaster) {
-            await actions.upsertItemPrice({
-                itemId: item.itemId,
-                supplierId: order.supplierId,
-                price: price,
-                unit: unit
-            });
-            const updatedItems = order.items.map(i => 
-                (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) 
-                ? { ...i, quantity: i.quantity, unit: unit, price: undefined } 
-                : i
-            );
+            await actions.upsertItemPrice({ itemId: item.itemId, supplierId: order.supplierId, price: price, unit: unit });
+            const updatedItems = order.items.map(i => (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) ? { ...i, quantity: i.quantity, unit: unit, price: undefined } : i);
             await actions.updateOrder({ ...order, items: updatedItems });
             notify('Price set as default.', 'success');
         } else {
-            const updatedItems = order.items.map(i => 
-                (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) 
-                ? { ...i, price, unit } 
-                : i
-            );
+            const updatedItems = order.items.map(i => (i.itemId === item.itemId && i.isSpoiled === item.isSpoiled) ? { ...i, price, unit } : i);
             await actions.updateOrder({ ...order, items: updatedItems });
         }
         setPriceNumpadItem(null);
@@ -314,31 +178,15 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         }
     };
 
-    const handleOpenAddItemModal = (order: Order) => {
-        setOrderForAddItem(order);
-        setIsAddItemModalOpen(true);
-    };
-
     const handleAddItemFromModal = async (item: Item) => {
         if (!orderForAddItem) return;
-        
         const existingItemIndex = orderForAddItem.items.findIndex(i => i.itemId === item.id && !i.isSpoiled);
-        
         let newItems;
         if (existingItemIndex > -1) {
             newItems = [...orderForAddItem.items];
-            newItems[existingItemIndex] = {
-                ...newItems[existingItemIndex],
-                quantity: newItems[existingItemIndex].quantity + 1
-            };
+            newItems[existingItemIndex] = { ...newItems[existingItemIndex], quantity: newItems[existingItemIndex].quantity + 1 };
         } else {
-            const newItem: OrderItem = {
-                itemId: item.id,
-                name: item.name,
-                quantity: 1,
-                unit: item.unit,
-                isNew: orderForAddItem.status === OrderStatus.ON_THE_WAY,
-            };
+            const newItem: OrderItem = { itemId: item.id, name: item.name, quantity: 1, unit: item.unit, isNew: orderForAddItem.status === OrderStatus.ON_THE_WAY };
             newItems = [...orderForAddItem.items, newItem];
         }
         await actions.updateOrder({ ...orderForAddItem, items: newItems });
@@ -358,162 +206,22 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
             const newSupplierFromDb = await actions.addSupplier({ name: newSupplier.name });
             supplierToUse = newSupplierFromDb;
         }
-        await actions.updateOrder({ 
-            ...orderToChangeSupplier, 
-            supplierId: supplierToUse.id, 
-            supplierName: supplierToUse.name, 
-            paymentMethod: supplierToUse.paymentMethod 
-        });
+        await actions.updateOrder({ ...orderToChangeSupplier, supplierId: supplierToUse.id, supplierName: supplierToUse.name, paymentMethod: supplierToUse.paymentMethod });
         setOrderToChangeSupplier(null);
         setIsChangeSupplierModalOpen(false);
     };
-    
-    const handleCardMenuClick = (e: React.MouseEvent, order: Order) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const options = [
-            { label: 'Change Supplier', action: () => { setOrderToChangeSupplier(order); setIsChangeSupplierModalOpen(true); } },
-            { label: 'Delete Order', action: () => actions.deleteOrder(order.id), isDestructive: true },
-        ];
-        setContextMenu({ x: e.clientX, y: e.clientY, options });
+
+    const sortOrders = (orders: Order[]) => {
+        return orders.sort((a, b) => {
+            const nameA = a.supplierName; const nameB = b.supplierName;
+            if (nameA === 'PISEY' && nameB !== 'PISEY') return 1; if (nameB === 'PISEY' && nameA !== 'PISEY') return -1;
+            const indexA = ['KALI', 'STOCK'].indexOf(nameA); const indexB = ['KALI', 'STOCK'].indexOf(nameB);
+            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
+            return nameA.localeCompare(nameB);
+        });
     };
 
-    const renderItemsForSupplier = (order: Order) => (
-        <ul className="text-sm">
-            {order.items.map(item => {
-                const uniqueItemId = `${item.itemId}-${item.isSpoiled ? 'spoiled' : 'clean'}`;
-                const latestPriceInfo = getLatestItemPrice(item.itemId, order.supplierId, itemPrices);
-                const unitPrice = item.price ?? latestPriceInfo?.price ?? 0;
-                const totalPrice = unitPrice * item.quantity;
-                const isKaliOrder = order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI;
-                const isStockMovement = order.supplierName === SupplierName.STOCK_OUT || order.paymentMethod === PaymentMethod.STOCK;
-                const isEditingName = editingNameId === uniqueItemId;
-                const isEditingPrice = editingPriceId === uniqueItemId;
-
-                const itemNameContent = isEditingName ? (
-                    <input 
-                        type="text" 
-                        defaultValue={item.name} 
-                        autoFocus 
-                        onBlur={(e) => handleItemNameSave(order, item, e.target.value)} 
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} 
-                        className="bg-gray-700 text-white p-0 w-full rounded outline-none"
-                    />
-                ) : (
-                    <span onClick={() => setEditingNameId(uniqueItemId)} className="truncate cursor-pointer hover:text-white">{item.name}</span>
-                );
-
-                const itemQuantityContent = (
-                     <span className="text-right w-12 cursor-pointer hover:bg-gray-700 p-1 -m-1 rounded-md" onClick={() => handleQuantityClick(order, item)}>
-                        {item.quantity}{item.unit}
-                    </span>
-                );
-
-                const itemPriceContent = isEditingPrice ? (
-                     <input 
-                        type="text" 
-                        inputMode="decimal" 
-                        defaultValue={totalPrice > 0 ? totalPrice.toFixed(2) : ''} 
-                        autoFocus 
-                        onBlur={(e) => handleSaveInlinePrice(order, item, e.target.value)} 
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} 
-                        className={`bg-gray-700 p-0 w-16 text-right rounded outline-none font-mono ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}
-                    />
-                ) : (
-                    <span onClick={() => setEditingPriceId(uniqueItemId)} className={`font-mono text-right w-16 cursor-pointer hover:bg-gray-700 p-1 -m-1 rounded-md ${isKaliOrder ? 'text-purple-300' : 'text-cyan-300'}`}>
-                        {totalPrice > 0 ? totalPrice.toFixed(2) : '-'}
-                    </span>
-                );
-
-                return (
-                    <li key={uniqueItemId} className="flex items-center group py-0.5" draggable={!isEditingName && !isEditingPrice} onDragStart={(e) => handleItemDragStart(e, item, order.id)} onDragEnd={() => dispatch({ type: 'SET_DRAGGED_ITEM', payload: null })}>
-                        <div className="flex-grow truncate pr-2">{itemNameContent}</div>
-                        <div className="flex items-center space-x-1 ml-1 flex-shrink-0">
-                            {isStockMovement ? (
-                                order.supplierName === SupplierName.STOCK_OUT ? (
-                                    <span className="font-semibold text-yellow-400">out</span>
-                                ) : ( // This implicitly means paymentMethod is STOCK if the outer condition is true
-                                    <span className="font-semibold text-green-400">in</span>
-                                )
-                            ) : null}
-                            <div className="w-12 text-right">{itemQuantityContent}</div>
-                            <div className="w-16 text-right">{itemPriceContent}</div>
-                        </div>
-                    </li>
-                );
-            })}
-             {(singleColumn === 'dispatch' || singleColumn === 'on_the_way') && (
-                 <li className="mt-2">
-                    <button 
-                        onClick={() => handleOpenAddItemModal(order)} 
-                        className="text-left text-gray-500 hover:text-white hover:bg-gray-700/50 text-sm p-1 pl-2 rounded-md w-full transition-colors flex items-center"
-                    >
-                        <span className="mr-1">+</span> Add item
-                    </button>
-                 </li>
-             )}
-        </ul>
-    );
-
-    const toggleStore = (storeName: string) => setExpandedStores(prev => { const newSet = new Set(prev); if (newSet.has(storeName)) newSet.delete(storeName); else newSet.add(storeName); return newSet; });
-    const toggleSupplier = (orderId: string) => setExpandedSuppliers(prev => { const newSet = new Set(prev); if (newSet.has(orderId)) newSet.delete(orderId); else newSet.add(orderId); return newSet; });
-    const toggleDateGroup = (dateKey: string) => setExpandedDateGroups(prev => { const newSet = new Set(prev); if (newSet.has(dateKey)) newSet.delete(dateKey); else newSet.add(dateKey); return newSet; });
-    
     const title = singleColumn ? singleColumn.replace(/_/g, ' ') : '';
-    
-    // Updated colors to match the badge text colors
-    const paymentBadgeColors: Record<string, string> = {
-        [PaymentMethod.ABA]: 'text-blue-300',
-        [PaymentMethod.CASH]: 'text-green-300',
-        [PaymentMethod.KALI]: 'text-purple-300',
-        [PaymentMethod.STOCK]: 'text-gray-300',
-        [PaymentMethod.MISHA]: 'text-orange-300',
-    };
-
-    const renderOrderCard = (order: Order, options: { showStoreName?: boolean } = {}) => {
-        const { showStoreName: showStoreNameProp = showStoreName } = options;
-        const supplier = suppliers.find(s => s.id === order.supplierId);
-        const paymentMethod = order.paymentMethod || supplier?.paymentMethod;
-        const cardTotal = order.items.reduce((total, item) => {
-             if (item.isSpoiled) return total;
-             const unitPrice = item.price ?? getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price ?? 0;
-             return total + (unitPrice * item.quantity);
-        }, 0);
-        const isSupplierExpanded = expandedSuppliers.has(order.id);
-        const isKaliOrder = order.supplierName === SupplierName.KALI || paymentMethod === PaymentMethod.KALI;
-        const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY) && supplier?.chatId;
-        const paymentColorClass = paymentMethod ? (paymentBadgeColors[paymentMethod] || 'text-gray-400') : 'text-gray-600';
-
-        return (
-             <div key={order.id} onDragOver={(e) => { if(draggedItem) e.preventDefault(); }} onDrop={(e) => handleDropOnSupplier(e, order.id)} className="py-1">
-                <div onClick={() => toggleSupplier(order.id)} className="flex items-center justify-between text-xs font-bold uppercase space-x-2 cursor-pointer group">
-                    <div className="flex items-center space-x-2 overflow-hidden flex-grow min-w-0">
-                        {showStoreNameProp && <span className="font-semibold text-gray-500 whitespace-nowrap">{order.store}</span>}
-                        <span className={`whitespace-nowrap truncate ${isKaliOrder ? 'text-purple-300' : 'text-gray-300'}`}>{order.supplierName}</span>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); setPaymentModalOrder(order); }}
-                            className={`font-semibold whitespace-nowrap hover:underline flex-shrink-0 ${paymentColorClass}`}
-                        >
-                            {paymentMethod || 'PAYMENT'}
-                        </button>
-                        {singleColumn !== 'dispatch' && cardTotal > 0 && <span className={`whitespace-nowrap flex-shrink-0 ${paymentColorClass}`}>{cardTotal.toFixed(2)}</span>}
-                    </div>
-                    
-                    <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {canSendTelegram && (
-                            <button onClick={(e) => {e.stopPropagation(); handleSendToTelegram(order);}} className="text-blue-400 hover:text-white p-1 flex-shrink-0" title="Send to Telegram">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.51.71l-4.84-3.56-2.22 2.15c-.22.21-.4.33-.7.33z"></path></svg>
-                            </button>
-                        )}
-                        <button onClick={(e) => handleCardMenuClick(e, order)} className="text-gray-500 hover:text-white p-1 flex-shrink-0">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                        </button>
-                    </div>
-                </div>
-                {isSupplierExpanded && renderItemsForSupplier(order)}
-            </div>
-        );
-    };
 
     return (
         <>
@@ -554,20 +262,8 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                             {sortedCompletedGroupKeys.map(key => {
                                 const ordersInDateGroup = groupedCompletedOrders[key] || [];
                                 const isDateExpanded = expandedDateGroups.has(key);
-
-                                const ordersByStore = ordersInDateGroup.reduce((acc, order) => {
-                                    if (!acc[order.store]) {
-                                        acc[order.store] = [];
-                                    }
-                                    acc[order.store].push(order);
-                                    return acc;
-                                }, {} as Record<string, Order[]>);
-                    
-                                const sortedStoresInGroup = Object.keys(ordersByStore).sort();
-
-                                if (ordersInDateGroup.length === 0 && formatDateGroupHeader(key) !== 'Today' && formatDateGroupHeader(key) !== 'Yesterday') {
-                                    return null;
-                                }
+                                
+                                if (ordersInDateGroup.length === 0 && formatDateGroupHeader(key) !== 'Today' && formatDateGroupHeader(key) !== 'Yesterday') return null;
 
                                 return (
                                     <div key={key}>
@@ -582,28 +278,45 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                                         </button>
                                         {isDateExpanded && (
                                             <div className="space-y-3 mb-6 ml-2">
-                                                {ordersInDateGroup.length > 0 ? (
-                                                    sortedStoresInGroup.map(storeName => {
-                                                        const storeOrders = ordersByStore[storeName].sort((a, b) => {
-                                                            const nameA = a.supplierName; const nameB = b.supplierName;
-                                                            if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
-                                                            const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
-                                                            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-                                                            return nameA.localeCompare(nameB);
-                                                        });
-                        
-                                                        return (
-                                                            <div key={storeName}>
-                                                                <h4 className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1 pl-1">{storeName}</h4>
-                                                                <div className="space-y-1 pl-2 border-l-2 border-gray-700/50">
-                                                                    {storeOrders.map(order => renderOrderCard(order, { showStoreName: false }))}
-                                                                </div>
+                                                {(() => {
+                                                    const ordersByStore = ordersInDateGroup.reduce((acc, order) => {
+                                                        if (!acc[order.store]) acc[order.store] = [];
+                                                        acc[order.store].push(order);
+                                                        return acc;
+                                                    }, {} as Record<string, Order[]>);
+                                                    const sortedStoresInGroup = Object.keys(ordersByStore).sort();
+                                                    
+                                                    if (ordersInDateGroup.length === 0) return <div className="text-gray-600 text-xs pl-2 italic">No completed orders.</div>;
+
+                                                    return sortedStoresInGroup.map(storeName => (
+                                                        <div key={storeName}>
+                                                            <h4 className="text-gray-500 text-xs font-semibold uppercase tracking-wider mb-1 pl-1">{storeName}</h4>
+                                                            <div className="space-y-1 pl-2 border-l-2 border-gray-700/50">
+                                                                {sortOrders(ordersByStore[storeName]).map(order => (
+                                                                    <ManagerOrderRow
+                                                                        key={order.id}
+                                                                        order={order}
+                                                                        suppliers={suppliers}
+                                                                        itemPrices={itemPrices}
+                                                                        showStoreName={false}
+                                                                        isExpanded={expandedSuppliers.has(order.id)}
+                                                                        onToggleExpand={() => toggleSupplier(order.id)}
+                                                                        onUpdateOrder={actions.updateOrder}
+                                                                        onDeleteOrder={actions.deleteOrder}
+                                                                        onChangeSupplier={(o) => { setOrderToChangeSupplier(o); setIsChangeSupplierModalOpen(true); }}
+                                                                        onItemDrop={handleDropOnSupplier}
+                                                                        onDragItemStart={handleItemDragStart}
+                                                                        onQuantityClick={handleQuantityClick}
+                                                                        onSendTelegram={handleSendToTelegram}
+                                                                        onAddModalOpen={(o) => { setOrderForAddItem(o); setIsAddItemModalOpen(true); }}
+                                                                        onPaymentClick={(o) => { setPaymentModalOrder(o); }}
+                                                                        singleColumn={singleColumn}
+                                                                    />
+                                                                ))}
                                                             </div>
-                                                        );
-                                                    })
-                                                ) : (
-                                                    <div className="text-gray-600 text-xs pl-2 italic">No completed orders.</div>
-                                                )}
+                                                        </div>
+                                                    ));
+                                                })()}
                                             </div>
                                         )}
                                     </div>
@@ -613,14 +326,7 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                     ) : (
                     sortedStoreNames.map(storeName => {
                         const isStoreExpanded = expandedStores.has(storeName);
-                        const storeOrders = (groupedByStore[storeName] || []).sort((a, b) => {
-                            const nameA = a.supplierName; const nameB = b.supplierName;
-                            if (nameA === lastSupplier && nameB !== lastSupplier) return 1; if (nameB === lastSupplier && nameA !== lastSupplier) return -1;
-                            const indexA = customSortOrder.indexOf(nameA); const indexB = customSortOrder.indexOf(nameB);
-                            if (indexA > -1 && indexB > -1) return indexA - indexB; if (indexA > -1) return -1; if (indexB > -1) return 1;
-                            return nameA.localeCompare(nameB);
-                        });
-                        
+                        const storeOrders = sortOrders(groupedByStore[storeName] || []);
                         if (storeOrders.length === 0) return null;
 
                         return (
@@ -633,9 +339,27 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
                                 </button>
                                 {isStoreExpanded && (
                                     <div className="space-y-1 pl-2 mt-1">
-                                        {storeOrders.map(order => {
-                                            return renderOrderCard(order, { showStoreName: false });
-                                        })}
+                                        {storeOrders.map(order => (
+                                            <ManagerOrderRow
+                                                key={order.id}
+                                                order={order}
+                                                suppliers={suppliers}
+                                                itemPrices={itemPrices}
+                                                showStoreName={false}
+                                                isExpanded={expandedSuppliers.has(order.id)}
+                                                onToggleExpand={() => toggleSupplier(order.id)}
+                                                onUpdateOrder={actions.updateOrder}
+                                                onDeleteOrder={actions.deleteOrder}
+                                                onChangeSupplier={(o) => { setOrderToChangeSupplier(o); setIsChangeSupplierModalOpen(true); }}
+                                                onItemDrop={handleDropOnSupplier}
+                                                onDragItemStart={handleItemDragStart}
+                                                onQuantityClick={handleQuantityClick}
+                                                onSendTelegram={handleSendToTelegram}
+                                                onAddModalOpen={(o) => { setOrderForAddItem(o); setIsAddItemModalOpen(true); }}
+                                                onPaymentClick={(o) => { setPaymentModalOrder(o); }}
+                                                singleColumn={singleColumn}
+                                            />
+                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -651,14 +375,6 @@ const ManagerReportView: React.FC<ManagerReportViewProps> = (props) => {
         <AddSupplierModal isOpen={isAddSupplierModalOpen} onClose={() => setIsAddSupplierModalOpen(false)} onSelect={handleAddSupplier} title="Add Card" />
         <AddSupplierModal isOpen={isChangeSupplierModalOpen} onClose={() => setIsChangeSupplierModalOpen(false)} onSelect={handleChangeSupplier} title="Change Supplier" />
         <PasteItemsModal isOpen={isPasteItemsModalOpen} onClose={() => setIsPasteItemsModalOpen(false)} />
-        {contextMenu && (
-            <ContextMenu 
-                x={contextMenu.x} 
-                y={contextMenu.y} 
-                options={contextMenu.options} 
-                onClose={() => setContextMenu(null)} 
-            />
-        )}
         </>
     );
 };

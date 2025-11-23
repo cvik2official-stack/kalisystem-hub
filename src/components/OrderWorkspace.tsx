@@ -9,92 +9,12 @@ import ContextMenu from './ContextMenu';
 import { useNotifier } from '../context/NotificationContext';
 import { generateStoreReport, getLocalDateKey, generateKaliUnifyReport, getLatestItemPrice } from '../utils/messageFormatter';
 import { sendDueReport } from '../services/telegramService';
+import { calculateDueReportData } from '../services/reportService';
+import { formatDateGroupHeader } from '../utils/dateUtils';
 import PasteItemsModal from './modals/PasteItemsModal';
 import AddItemModal from './modals/AddItemModal';
 import StaffFoodModal from './modals/StaffFoodModal';
-
-const formatDateGroupHeader = (key: string): string => {
-  if (key === 'Today') return 'Today';
-  if (key === 'Yesterday') return 'Yesterday';
-
-  const todayKey = getLocalDateKey();
-  const yesterdayDate = new Date();
-  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-  const yesterdayKey = getLocalDateKey(yesterdayDate);
-  
-  if (key === todayKey) return 'Today'; 
-  if (key === yesterdayKey) return 'Yesterday';
-
-  const [year, month, day] = key.split('-').map(Number);
-  if (!year || !month || !day) return key; // Fallback if parsing fails
-  return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${String(year).slice(-2)}`;
-};
-
-const InlineAddOrder: React.FC<{ 
-    onAddSupplier: () => void, 
-    onPasteList: () => void,
-    onSelectItem: () => void,
-    onQuickOrder: (qo: QuickOrder) => void,
-    onStaffFood?: () => void
-}> = ({ onAddSupplier, onPasteList, onSelectItem, onQuickOrder, onStaffFood }) => {
-    const { state } = useContext(AppContext);
-    const { activeStore, quickOrders } = state;
-
-    if (activeStore === 'Settings' || activeStore === 'ALL') { return null; }
-
-    const storeQuickOrders = quickOrders.filter(qo => qo.store === activeStore);
-    const isStaffFoodEnabled = activeStore === StoreName.SHANTI || activeStore === StoreName.WB;
-
-    return (
-        <div className="bg-gray-800 rounded-xl shadow-lg flex flex-col border-2 border-dashed border-gray-700 items-center justify-center p-4 w-full max-w-sm mx-auto my-4 transition-all hover:border-gray-600">
-            <div className="flex flex-col space-y-3 w-full">
-                <div className="grid grid-cols-2 gap-3">
-                    <button onClick={onAddSupplier} className="flex items-center justify-center text-indigo-400 hover:text-white hover:bg-indigo-600 font-semibold transition-all text-sm py-3 px-2 rounded-lg border border-indigo-500/30 hover:border-indigo-500 shadow-sm">
-                        <span className="mr-1 text-lg">+</span> Supplier
-                    </button>
-                    <button onClick={onSelectItem} className="flex items-center justify-center text-indigo-400 hover:text-white hover:bg-indigo-600 font-semibold transition-all text-sm py-3 px-2 rounded-lg border border-indigo-500/30 hover:border-indigo-500 shadow-sm">
-                        <span className="mr-1 text-lg">+</span> Item
-                    </button>
-                </div>
-                
-                <div className="relative flex items-center py-1">
-                    <div className="flex-grow border-t border-gray-700"></div>
-                    <span className="flex-shrink-0 mx-2 text-gray-600 text-[10px] font-bold uppercase tracking-widest">OR</span>
-                    <div className="flex-grow border-t border-gray-700"></div>
-                </div>
-
-                <button onClick={onPasteList} className="text-gray-400 hover:text-white hover:bg-gray-700 font-medium transition-colors text-sm py-2 px-4 rounded-lg w-full border border-gray-600 hover:border-gray-500">
-                    Paste a List
-                </button>
-                
-                {isStaffFoodEnabled && onStaffFood && (
-                    <button onClick={onStaffFood} className="text-pink-400 hover:text-white hover:bg-pink-600 font-medium transition-colors text-sm py-2 px-4 rounded-lg w-full border border-pink-500/30 hover:border-pink-500">
-                        Paste Staff Food List
-                    </button>
-                )}
-
-                {storeQuickOrders.length > 0 && (
-                    <div className="pt-2">
-                        <div className="flex items-center mb-2">
-                             <div className="h-px bg-gray-700 flex-grow"></div>
-                             <span className="px-2 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Quick Orders</span>
-                             <div className="h-px bg-gray-700 flex-grow"></div>
-                        </div>
-                        <div className="grid grid-cols-1 gap-2">
-                            {storeQuickOrders.map(qo => (
-                                <button key={qo.id} onClick={() => onQuickOrder(qo)} className="bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white text-xs py-2 px-3 rounded border border-gray-700 hover:border-gray-500 transition-all flex items-center justify-between group">
-                                    <span className="font-medium truncate">{qo.name}</span>
-                                    <span className="text-[10px] text-gray-500 group-hover:text-gray-400">{qo.supplierName}</span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
+import InlineAddOrder from './InlineAddOrder';
 
 const OrderWorkspace: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
@@ -322,14 +242,6 @@ const OrderWorkspace: React.FC = () => {
     });
   };
 
-  const calculateOrderTotal = (order: Order, itemPrices: ItemPrice[]): number => {
-      return order.items.reduce((total, item) => {
-          if (item.isSpoiled) return total;
-          const latestPrice = getLatestItemPrice(item.itemId, order.supplierId, itemPrices)?.price ?? 0;
-          return total + ((item.price ?? latestPrice) * item.quantity);
-      }, 0);
-  };
-
   const handleSendDueReport = async (dateKey: string) => {
       if (!settings.telegramBotToken) {
           notify('Telegram Bot Token is not set in Settings.', 'error');
@@ -338,65 +250,16 @@ const OrderWorkspace: React.FC = () => {
 
       setIsSendingReport(true);
       try {
-          // 1. Calculate previous due (Running balance from Nov 1st 2025)
-          const startDateStr = '2025-11-01';
-          const hardcodedInitialBalance = 146.26;
-          
-          const storesToTrack = [StoreName.CV2, StoreName.SHANTI, StoreName.STOCK02, StoreName.WB];
-          
-          // Generate dates from start to current dateKey
-          const dates: string[] = [];
-          let currentDate = new Date(startDateStr);
-          const endDate = new Date(dateKey);
-          
-          // Safety break
-          let safety = 0;
-          while (currentDate <= endDate && safety < 2000) {
-              dates.push(getLocalDateKey(currentDate));
-              currentDate.setDate(currentDate.getDate() + 1);
-              safety++;
-          }
-
-          const topUpsMap = new Map(dueReportTopUps.map(t => [t.date, t.amount]));
-          
-          let runningDue = hardcodedInitialBalance;
-          
-          // Loop through all days UP TO (but not including) the current dateKey to calculate previousDue
-          // Actually, the report generation function takes "previousDue" which is the due amount BEFORE today's transactions.
-          // So we iterate up to dateKey - 1 day.
-          
-          // Filter orders relevant for calculation (KALI payment or KALI supplier)
-          const kaliOrders = orders.filter(o => {
-              if (o.status !== 'completed' || !o.completedAt) return false;
-              const supplier = suppliers.find(s => s.id === o.supplierId);
-              const paymentMethod = o.paymentMethod || supplier?.paymentMethod;
-              return paymentMethod === PaymentMethod.KALI || supplier?.name === SupplierName.KALI;
-          });
-
-          for (const dKey of dates) {
-              if (dKey === dateKey) break; // Stop before today
-
-              const topUp = topUpsMap.get(dKey) || 0;
-              
-              let dailySpend = 0;
-              kaliOrders.forEach(order => {
-                  if (getLocalDateKey(order.completedAt) === dKey && storesToTrack.includes(order.store)) {
-                      dailySpend += calculateOrderTotal(order, itemPrices);
-                  }
-              });
-              
-              runningDue = runningDue + topUp - dailySpend;
-          }
-
-          const previousDue = runningDue;
-          const topUpToday = topUpsMap.get(dateKey) || 0;
-
-          // 2. Get orders for the current dateKey
-          const ordersForReport = kaliOrders.filter(order => 
-              getLocalDateKey(order.completedAt) === dateKey
+          // Calculate report data using the new service
+          const { ordersForReport, previousDue, topUpToday } = calculateDueReportData(
+              orders,
+              suppliers,
+              itemPrices,
+              dueReportTopUps,
+              dateKey
           );
 
-          // 3. Generate & Send
+          // Generate & Send
           const message = generateKaliUnifyReport(ordersForReport, itemPrices, previousDue, topUpToday, dateKey, dateKey);
           await sendDueReport(message, settings.telegramBotToken);
           notify(`Due Report for ${dateKey} sent!`, 'success');
@@ -750,6 +613,8 @@ const OrderWorkspace: React.FC = () => {
   }
 
   const dispatchingOrders = getFilteredOrdersForStatus(OrderStatus.DISPATCHING);
+  // Hide Dispatch column in 'ALL' view if it is empty (has 0 orders)
+  // AND if we are in the 'ALL' view.
   const showDispatchColumn = !(activeStore === 'ALL' && dispatchingOrders.length === 0);
 
   return (
