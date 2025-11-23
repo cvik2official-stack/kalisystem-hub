@@ -354,6 +354,7 @@ const App: React.FC = () => {
 
                     {/* Right: Menu Button (Order 3 on Desktop) */}
                     <div className="flex items-center space-x-3 landscape:order-3 md:order-3">
+                        {/*
                         {!isAuthenticated ? (
                             <div style={{ transform: 'scale(0.85)', transformOrigin: 'right center' }}>
                                 <TelegramLoginButton 
@@ -373,6 +374,7 @@ const App: React.FC = () => {
                                 </div>
                             )
                         )}
+                        */}
                         <button onClick={handleHeaderMenuClick} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white rounded-full hover:bg-gray-800 focus:outline-none transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
