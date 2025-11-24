@@ -1,3 +1,4 @@
+
 import React, { useContext, useState, useMemo, useRef, useEffect } from 'react';
 import { AppContext } from '../context/AppContext';
 import { Order, OrderStatus, PaymentMethod, Supplier, OrderItem, Unit, Item, ItemPrice, SupplierName, StoreName } from '../types';
@@ -501,8 +502,9 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
     const canSendTelegram = (order.status === OrderStatus.DISPATCHING || order.status === OrderStatus.ON_THE_WAY);
     const isKaliOrder = order.supplierName === SupplierName.KALI || order.paymentMethod === PaymentMethod.KALI;
     
-    const isStockOut = order.supplierName === SupplierName.STOCK_OUT;
-    const isStockIn = order.store === StoreName.STOCK02 && order.supplierName !== SupplierName.STOCK_OUT;
+    // Determine context for stock indicators
+    const isStockOutOrder = order.supplierName === SupplierName.STOCK_OUT;
+    const isStockInOrder = order.store === StoreName.STOCK02 && !isStockOutOrder;
 
     const paymentBadgeClasses = useMemo(() => {
         switch (order.paymentMethod) {
@@ -562,7 +564,7 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                     <div className="flex-grow min-w-0 mr-2 cursor-pointer flex items-center overflow-hidden" onClick={() => setIsManuallyCollapsed(!isManuallyCollapsed)}>
                         {showStoreName && (
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wide mr-2 flex-shrink-0 border ${stringToColorClass(order.store)}`}>
-                                {order.store}
+                                {order.store === StoreName.STOCK02 ? 'O2' : order.store}
                             </span>
                         )}
                         <h3 className={`text-sm font-bold truncate mr-2 ${isKaliOrder ? 'text-purple-400' : 'text-white'}`}>
@@ -628,6 +630,13 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                             const isEditingPrice = editingPriceUniqueId === uniqueItemId;
                             const isEditingName = editingNameUniqueId === uniqueItemId;
                             const isActive = activeUniqueItemId === uniqueItemId;
+                            
+                            // Stock Logic Check
+                            const masterItem = state.items.find(i => i.id === item.itemId);
+                            const hasStockTag = masterItem?.tags?.some(t => t.toLowerCase() === 'stock');
+                            // Only show stock indicators if the item has the stock tag AND we are in a stock context
+                            const showStockOutIndicator = isStockOutOrder && hasStockTag;
+                            const showStockInIndicator = isStockInOrder && hasStockTag;
 
                             return (
                                 <div 
@@ -675,40 +684,45 @@ const SupplierCard: React.FC<SupplierCardProps> = ({ order, onItemDrop, showStor
                                                 {item.name}
                                             </span>
                                         )}
-                                        {item.isNew && <span className="ml-2 w-2 h-2 bg-lime-500 rounded-full flex-shrink-0"></span>}
                                     </div>
                                     
-                                    <div className="flex items-center space-x-2 flex-shrink-0 ml-2">
-                                        {/* STOCK INDICATORS - UPDATED COLORS */}
-                                        {isStockOut && <span className="text-[9px] bg-yellow-900 text-yellow-200 px-1 rounded">OUT</span>}
-                                        {isStockIn && <span className="text-[9px] bg-cyan-900 text-cyan-200 px-1 rounded">IN</span>}
+                                    <div className="flex items-center justify-end space-x-1 ml-2 flex-shrink-0 w-[165px]">
+                                        {/* STOCK INDICATORS - Fixed Width 32px */}
+                                        <div className="w-8 flex items-center justify-center">
+                                            {showStockOutIndicator && <span className="text-[10px] font-bold text-yellow-500">OUT</span>}
+                                            {showStockInIndicator && <span className="text-[10px] font-bold text-cyan-400">IN</span>}
+                                        </div>
 
+                                        {/* QUANTITY - Fixed Width 64px */}
                                         <button 
                                             onClick={(e) => handleQuantityOrPriceClick(e, item)}
-                                            className="text-gray-400 hover:text-white tabular-nums font-bold md:font-normal"
+                                            className="text-gray-400 hover:text-white tabular-nums font-bold md:font-normal w-16 flex items-center justify-end flex-shrink-0"
                                         >
-                                            {item.quantity} <span className="text-xs text-gray-500 font-bold md:font-normal">{item.unit}</span>
+                                            {item.quantity} <span className="text-xs text-gray-500 font-bold md:font-normal ml-1">{item.unit}</span>
                                         </button>
                                         
-                                        {isEditingPrice ? (
-                                            <input 
-                                                type="text"
-                                                inputMode="decimal"
-                                                autoFocus
-                                                defaultValue={totalPrice > 0 ? totalPrice.toFixed(2) : ''}
-                                                onBlur={(e) => handleSaveInlinePrice(item, e.target.value)}
-                                                onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="w-16 bg-gray-900 text-right text-white rounded border border-indigo-500 px-1 py-0.5 outline-none text-xs font-mono"
-                                            />
-                                        ) : (
-                                            <span 
-                                                onClick={(e) => { e.stopPropagation(); setEditingPriceUniqueId(uniqueItemId); }}
-                                                className={`w-14 text-right cursor-pointer font-mono text-xs font-bold md:font-normal ${totalPrice > 0 ? (isKaliOrder ? 'text-purple-300' : 'text-cyan-300') : 'text-gray-600'}`}
-                                            >
-                                                {totalPrice > 0 ? totalPrice.toFixed(2) : '-'}
-                                            </span>
-                                        )}
+                                        {/* PRICE - Fixed Width 56px */}
+                                        <div className="w-14 flex items-center justify-end flex-shrink-0">
+                                            {isEditingPrice ? (
+                                                <input 
+                                                    type="text" 
+                                                    inputMode="decimal" 
+                                                    autoFocus 
+                                                    defaultValue={totalPrice > 0 ? totalPrice.toFixed(2) : ''} 
+                                                    onBlur={(e) => handleSaveInlinePrice(item, e.target.value)} 
+                                                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} 
+                                                    onClick={(e) => e.stopPropagation()} 
+                                                    className="w-full bg-gray-900 text-right text-white rounded border border-indigo-500 px-1 py-0.5 outline-none text-xs font-mono"
+                                                />
+                                            ) : (
+                                                <span 
+                                                    onClick={(e) => { e.stopPropagation(); setEditingPriceUniqueId(uniqueItemId); }}
+                                                    className={`cursor-pointer font-mono text-xs font-bold md:font-normal ${totalPrice > 0 ? (isKaliOrder ? 'text-purple-300' : 'text-cyan-300') : 'text-gray-600'}`}
+                                                >
+                                                    {totalPrice > 0 ? totalPrice.toFixed(2) : '-'}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             );

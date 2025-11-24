@@ -1,3 +1,4 @@
+
 import React, { useContext, useMemo, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../context/AppContext';
 import { STATUS_TABS } from '../constants';
@@ -585,7 +586,7 @@ const OrderWorkspace: React.FC = () => {
   const showDispatchColumn = !(activeStore === 'ALL' && dispatchingOrders.length === 0);
 
   return (
-    <div className="flex-grow flex overflow-hidden h-full space-x-2 md:space-x-4">
+    <div className="flex-grow flex overflow-hidden h-full space-x-2 md:space-x-3 lg:space-x-4">
       {/* Desktop/Tablet 3-Column Layout */}
       {showDispatchColumn && (
         <div 

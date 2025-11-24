@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Item, ParsedItem, Unit, StoreName } from '../types';
 
@@ -57,6 +58,13 @@ const parseItemListWithGemini = async (
           .join('\n');
   }
 
+  const expansionRule = (storeName === StoreName.WB) 
+    ? `5.  **COMPLEX EXPANSION RULE**: If the user input contains "Red+green+yellow 1 kg" (or similar variations implying a mix of 3 bell peppers), you MUST expand this into THREE separate items in the output list:
+          - "Red bell pepper" with quantity 2 and unit "pc"
+          - "Green bell pepper" with quantity 2 and unit "pc"
+          - "Yellow bell pepper" with quantity 2 and unit "pc"`
+    : '';
+
   try {
     const ai = new GoogleGenAI({ apiKey });
 
@@ -65,15 +73,15 @@ const parseItemListWithGemini = async (
       contents: `Parse the following user-provided text into a list of items. For each item, identify its name, quantity, and unit.
       Then, match each parsed item to the closest item from the provided existing item database.
       
+      CONTEXT:
+      Target Store: "${storeName || 'Any'}"
+      
       RULES:
       1.  If a parsed item closely matches an item in the database, provide the 'matchedItemId' and its corresponding database ID. Use fuzzy matching. An item like "Angkor beer" should match "Angkor Beer (can)".
       2.  If a parsed item does not match any existing item, provide the 'newItemName' with the name you parsed from the text. These are likely unique items, special requests, or typos.
       3.  Always provide a quantity. Default to 1 if not specified.
       4.  **SPECIAL QUANTITY RULE**: If the user asks for "Mayonnaise" (or "mayo"), you MUST ignore any quantity specified in the text and ALWAYS return a quantity of 6 and a unit of "pc". For example, "mayo x2" or "1 mayonnaise" must both result in \`{"quantity": 6, "unit": "pc"}\` when parsed.
-      5.  **COMPLEX EXPANSION RULE**: If the user input contains "Red+green+yellow 1 kg" (or similar variations implying a mix of 3 bell peppers), you MUST expand this into THREE separate items in the output list:
-          - "Red bell pepper" with quantity 2 and unit "pc"
-          - "Green bell pepper" with quantity 2 and unit "pc"
-          - "Yellow bell pepper" with quantity 2 and unit "pc"
+      ${expansionRule}
       6.  **CRITICAL UNIT RULE**: This is the most important rule. You must follow it precisely.
           -   **For Matched Items (using 'matchedItemId'):** You MUST OMIT the 'unit' field entirely in the JSON output. The database already has the correct unit. Do NOT return a unit for these items.
           -   **For New Items (using 'newItemName'):** If you can identify a unit, you MUST normalize it to one of the following exact, lowercase, singular values: ${validUnits.join(', ')}.
@@ -86,9 +94,14 @@ const parseItemListWithGemini = async (
           -   If no unit is found for a new item, omit the 'unit' field.
       7.  **CUSTOM ALIASING RULES**: Apply these specific aliases. If the user text contains the key, you should treat it as the value for matching purposes.
           ${aliasingRulesString}
+      8.  **STORE TAG MATCHING**: The database items have 'tags'.
+          -   If multiple items match the name (e.g., "Cream Cheese"), check the 'tags'.
+          -   If an item has a tag that matches the "Target Store" (e.g., tag "CV2" for Target Store "CV2"), it is the correct match.
+          -   Do NOT match an item that has a store tag different from the Target Store (e.g., do not match an item tagged "SHANTI" if the Target Store is "CV2"), unless no other match exists.
+          -   Items with no tags are generic and can be matched for any store.
       
       EXISTING ITEM DATABASE (for matching):
-      ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit })))}
+      ${JSON.stringify(existingItems.map(item => ({ id: item.id, name: item.name, supplier: item.supplierName, unit: item.unit, tags: item.tags })))}
       
       USER TEXT TO PARSE:
       ---

@@ -3,7 +3,6 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { crypto } from "https://deno.land/std@0.177.0/crypto/mod.ts";
 
 declare const Deno: {
   env: {
@@ -161,109 +160,23 @@ const generateKaliZapReport = (orders: Order[], itemPrices: ItemPrice[]): string
     return report;
 };
 
-// --- Auth Verification Logic ---
-async function verifyAuth(authData: any): Promise<boolean> {
-    if (!TELEGRAM_BOT_TOKEN) return false;
-    
-    const { hash, ...data } = authData;
-    
-    // 1. Construct data check string
-    // "The data-check-string is a concatenation of all received fields, sorted in alphabetical order, 
-    // in the format key=value, separated by a line feed character ('\n')."
-    const dataCheckArr = [];
-    const keys = Object.keys(data).sort();
-    for (const key of keys) {
-        dataCheckArr.push(`${key}=${data[key]}`);
-    }
-    const dataCheckString = dataCheckArr.join('\n');
 
-    // 2. Calculate HMAC-SHA256 signature
-    // Secret key is SHA256 of the bot token
-    const encoder = new TextEncoder();
-    const secretKey = await crypto.subtle.digest(
-        "SHA-256",
-        encoder.encode(TELEGRAM_BOT_TOKEN)
-    );
-    
-    const hmacKey = await crypto.subtle.importKey(
-        "raw",
-        secretKey,
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"]
-    );
-    
-    const signature = await crypto.subtle.sign(
-        "HMAC",
-        hmacKey,
-        encoder.encode(dataCheckString)
-    );
-    
-    // 3. Convert signature to hex string
-    const hexSignature = Array.from(new Uint8Array(signature))
-        .map(b => b.toString(16).padStart(2, '0'))
-        .join('');
-        
-    // 4. Compare with provided hash
-    // In production, check auth_date to prevent replay attacks (e.g. within last 24h)
-    const now = Math.floor(Date.now() / 1000);
-    if (now - data.auth_date > 86400) { // 24 hours
-        console.warn("Auth data is too old.");
-        return false;
-    }
-
-    return hexSignature === hash;
-}
-
-
-// --- Request Handler ---
+// --- Telegram Bot Logic ---
 serve(async (req)=>{
-  // CORS headers for verification requests from the frontend
-  if (req.method === 'OPTIONS') {
-      return new Response('ok', { headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-      }});
-  }
-
-  // Parse Body
-  let payload;
-  try {
-      payload = await req.json();
-  } catch (e) {
-      // Might be empty body or invalid JSON
-  }
-
-  // Handle Auth Verification
-  if (payload && payload.action === 'verify_auth') {
-      try {
-          const isValid = await verifyAuth(payload.auth_data);
-          return new Response(JSON.stringify({ success: isValid }), {
-              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
-          });
-      } catch (e) {
-          console.error("Auth verification error:", e);
-          return new Response(JSON.stringify({ success: false, error: e.message }), {
-              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
-              status: 400
-          });
-      }
-  }
-
-  // Handle Telegram Webhooks (Existing Logic)
-  // Send immediate ACK to Telegram
   const ack = new Promise(r => setTimeout(() => r(new Response(null, { status: 200 })), 0));
-  
-  if (payload) {
-      processTelegramUpdate(payload).catch(e => console.error("Error processing update:", e));
-  }
-  
+  processRequest(req).catch(e => console.error("Error processing request:", e));
   return await ack;
 });
 
-async function processTelegramUpdate(payload: any) {
+async function processRequest(req: Request) {
+  if (req.method !== 'POST') return;
+  try {
+    const payload = await req.json();
     if (payload.callback_query) await handleCallbackQuery(payload.callback_query);
     else if (payload.message) await handleMessage(payload.message);
+  } catch (e) {
+    console.error('Failed to parse or process webhook payload:', e);
+  }
 }
 
 async function handleMessage(message: any) {

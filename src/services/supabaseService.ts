@@ -1,4 +1,3 @@
-
 /*
   NOTE FOR DATABASE SETUP:
   This service now supports an 'invoice_amount' for orders and 'bot_settings' for suppliers.
@@ -73,7 +72,7 @@
   );
 
 */
-import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp, QuickOrder, TelegramUser } from '../types';
+import { Item, Order, OrderItem, Supplier, SupplierName, StoreName, OrderStatus, Unit, PaymentMethod, Store, SupplierBotSettings, ItemPrice, DueReportTopUp, QuickOrder } from '../types';
 
 interface SupabaseCredentials {
   url: string;
@@ -315,19 +314,11 @@ export const getOrdersFromSupabase = async ({ url, key, suppliers }: { url: stri
         }, []);
 };
 
-export const pollOrderUpdates = async ({ orderIds, url, key }: { orderIds: string[]; url: string; key: string }): Promise<{id: string, order_id: string, is_acknowledged: boolean, delivery_status: string | null}[]> => {
+export const getAcknowledgedOrderUpdates = async ({ orderIds, url, key }: { orderIds: string[]; url: string; key: string }): Promise<{id: string, order_id: string}[]> => {
     const headers = getHeaders(key);
-    // Fetch status for all requested IDs to check for *any* changes. 
-    // We do not filter by state here (e.g. is_acknowledged=true), we just fetch current state.
-    // 'no-store' cache ensures we get fresh data every poll.
-    const response = await fetch(`${url}/rest/v1/orders?select=id,order_id,is_acknowledged,delivery_status&id=in.(${orderIds.join(',')})`, { 
-        headers,
-        cache: 'no-store'
-    });
-    
+    const response = await fetch(`${url}/rest/v1/orders?select=id,order_id&id=in.(${orderIds.join(',')})&is_acknowledged=eq.true`, { headers });
     if (!response.ok) {
-        // Only warn if it's not a connection error (which browser handles)
-        console.warn(`Failed to poll order updates: ${await response.text()}`);
+        console.warn(`Failed to fetch order updates: ${await response.text()}`);
         return [];
     }
     return await response.json();
@@ -654,39 +645,6 @@ export const deleteQuickOrder = async ({ id, url, key }: { id: string, url: stri
         headers: getHeaders(key)
     });
     if (!response.ok) throw new Error(`Failed to delete quick order: ${await response.text()}`);
-};
-
-// --- AUTHENTICATION ---
-export const verifyTelegramLogin = async (user: TelegramUser, url: string, key: string): Promise<void> => {
-    // This function invokes the 'telegram-bot' Edge Function to verify the hash.
-    // We assume the Edge Function is deployed at `${url}/functions/v1/telegram-bot`.
-    // If you use a custom domain for functions, update this URL accordingly.
-    
-    // Construct the function URL. Standard Supabase structure.
-    const functionUrl = `${url}/functions/v1/telegram-bot`;
-    
-    const payload = {
-        action: 'verify_auth',
-        auth_data: user
-    };
-
-    const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-            ...getHeaders(key),
-        },
-        body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Verification failed: ${errorText}`);
-    }
-
-    const result = await response.json();
-    if (!result.success) {
-        throw new Error('Authentication failed: Invalid credentials.');
-    }
 };
 
 

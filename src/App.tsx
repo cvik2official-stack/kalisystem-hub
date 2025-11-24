@@ -5,7 +5,7 @@ import OrderWorkspace from './components/OrderWorkspace';
 import SettingsPage from './components/SettingsPage';
 import { AppContext } from './context/AppContext';
 import ToastContainer from './components/ToastContainer';
-import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod, Order, Supplier, TelegramUser } from './types';
+import { OrderStatus, StoreName, SupplierName, SettingsTab, PaymentMethod, Order, Supplier } from './types';
 import { generateKaliZapReport, generateOrderMessage } from './utils/messageFormatter';
 import { sendKaliZapReport, sendOrderToSupplierOnTelegram } from './services/telegramService';
 import { useNotifier } from './context/NotificationContext';
@@ -16,13 +16,11 @@ import { useNotificationState, useNotificationDispatch } from './context/Notific
 import AddSupplierModal from './components/modals/AddSupplierModal';
 import SaveQuickOrderModal from './components/modals/SaveQuickOrderModal';
 import QuickOrderListModal from './components/modals/QuickOrderListModal';
-import TelegramLoginButton from './components/TelegramLoginButton';
-import { TELEGRAM_BOT_USERNAME } from './constants';
 
 
 const App: React.FC = () => {
   const { state, dispatch, actions } = useContext(AppContext);
-  const { activeStore, isInitialized, syncStatus, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus, isAuthenticated, user } = state;
+  const { activeStore, isInitialized, syncStatus, orders, settings, itemPrices, suppliers, draggedOrderId, draggedItem, activeSettingsTab, activeStatus } = state;
   const { notify } = useNotifier();
   const { hasUnread } = useNotificationState();
   const { markAllAsRead } = useNotificationDispatch();
@@ -189,16 +187,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogin = async (user: TelegramUser) => {
-      try {
-          await actions.login(user);
-          notify(`Welcome, ${user.first_name}!`, 'success');
-      } catch (e: any) {
-          // Error is already notified by wrapper, but we can do specific handling here if needed
-          console.error("Login failed", e);
-      }
-  };
-
   const isDragging = !!draggedOrderId || !!draggedItem;
   
   const handleDropOnDeleteZone = (e: React.DragEvent) => {
@@ -253,61 +241,8 @@ const App: React.FC = () => {
 
   const greenDotAnimationClass = useMemo(() => {
     if (syncStatus === 'syncing') return 'animate-spin';
-    if (syncStatus === 'offline') return 'opacity-50';
-    if (syncStatus === 'error') return 'animate-pulse bg-red-500';
     return 'sonar-emitter';
   }, [syncStatus]);
-
-  /* 
-  // GATEKEEPER TEMPORARILY DISABLED
-  if (!isAuthenticated) {
-      return (
-          <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-4">
-              <ToastContainer />
-              <div className="bg-gray-800 p-8 rounded-2xl shadow-2xl max-w-sm w-full text-center border border-gray-700">
-                  <div className="mb-6">
-                      <div className="w-16 h-16 bg-indigo-900/50 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                          </svg>
-                      </div>
-                      <h1 className="text-2xl font-bold text-white mb-2">Kali Dispatch</h1>
-                      <p className="text-gray-400 text-sm">Please log in to access the dispatch system.</p>
-                  </div>
-                  
-                  <div className="py-2">
-                      <TelegramLoginButton 
-                          botName={TELEGRAM_BOT_USERNAME} 
-                          onAuth={handleLogin} 
-                          cornerRadius={10}
-                          requestAccess={true}
-                      />
-                  </div>
-                  
-                  <div className="mt-4">
-                    <button 
-                        onClick={() => handleLogin({ 
-                            id: 12345, 
-                            first_name: "Dev", 
-                            last_name: "User", 
-                            username: "dev_user", 
-                            auth_date: Math.floor(Date.now() / 1000), 
-                            hash: "mock_hash" 
-                        })}
-                        className="text-xs text-gray-600 hover:text-gray-400 underline"
-                    >
-                        Dev Bypass (Localhost/Testing)
-                    </button>
-                  </div>
-                  
-                  <div className="mt-8 text-xs text-gray-600">
-                      Authorized personnel only.
-                  </div>
-              </div>
-          </div>
-      );
-  }
-  */
 
   if (!isInitialized) {
     return (
@@ -341,40 +276,15 @@ const App: React.FC = () => {
                             {isRedAnimating && <span className="absolute inset-0 rounded-full bg-red-500 animate-ping-once"></span>}
                         </button>
                         <button ref={yellowDotRef} onClick={handleYellowDotClick} className="relative w-4 h-4 bg-yellow-400 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-yellow-400" title="Notifications">
-                            {hasUnread ? (
-                                <span className="absolute inset-0 rounded-full sonar-emitter text-red-500"></span>
-                            ) : (
-                                <span className="absolute inset-0 rounded-full"></span>
-                            )}
+                            {hasUnread && <span className="absolute inset-0 rounded-full sonar-emitter text-red-500"></span>}
                         </button>
                         <button onClick={handleGreenDotClick} className="relative w-4 h-4 bg-green-500 rounded-full block focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900 focus:ring-green-500" title="Sync with Database">
-                            <span className={`absolute inset-0 rounded-full ${syncStatus === 'error' ? 'bg-red-500' : syncStatus === 'offline' ? 'bg-gray-500' : 'bg-green-500'} ${greenDotAnimationClass}`}></span>
+                            <span className={`absolute inset-0 rounded-full bg-green-500 ${greenDotAnimationClass}`}></span>
                         </button>
                     </div>
 
                     {/* Right: Menu Button (Order 3 on Desktop) */}
-                    <div className="flex items-center space-x-3 landscape:order-3 md:order-3">
-                        {/*
-                        {!isAuthenticated ? (
-                            <div style={{ transform: 'scale(0.85)', transformOrigin: 'right center' }}>
-                                <TelegramLoginButton 
-                                    botName={TELEGRAM_BOT_USERNAME} 
-                                    onAuth={handleLogin} 
-                                    buttonSize="medium" 
-                                    cornerRadius={12} 
-                                    requestAccess={true} 
-                                    usePic={false}
-                                    className="flex items-center"
-                                />
-                            </div>
-                        ) : (
-                            user && (
-                                <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-700 hidden md:block">
-                                    <img src={user.photo_url} alt="User" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.style.display = 'none')} />
-                                </div>
-                            )
-                        )}
-                        */}
+                    <div className="flex items-center space-x-2 landscape:order-3 md:order-3">
                         <button onClick={handleHeaderMenuClick} className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white rounded-full hover:bg-gray-800 focus:outline-none transition-colors">
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -446,7 +356,6 @@ const App: React.FC = () => {
                   { label: 'Quick Orders', action: () => setIsQuickOrderListModalOpen(true) },
                   { label: 'Settings', action: () => dispatch({ type: 'NAVIGATE_TO_SETTINGS', payload: 'items' }) },
                   { label: 'Telegram Webhook', action: () => setIsTelegramWebhookModalOpen(true) },
-                  { label: 'Logout', action: actions.logout, isDestructive: true },
               ]}
               onClose={() => setHeaderMenu(null)}
           />

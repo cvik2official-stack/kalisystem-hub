@@ -1,4 +1,3 @@
-
 import { StoreName as StoreNameEnum, Unit as UnitEnum, OrderStatus as OrderStatusEnum, SupplierName as SupplierNameEnum } from './constants';
 
 // Re-exporting enums from constants to be the single source of truth for types
@@ -141,16 +140,6 @@ export interface Notification {
   orderId?: string;
 }
 
-export interface TelegramUser {
-  id: number;
-  first_name: string;
-  last_name?: string;
-  username?: string;
-  photo_url?: string;
-  auth_date: number;
-  hash: string;
-}
-
 export interface AppSettings {
     supabaseUrl: string;
     supabaseKey: string;
@@ -162,11 +151,6 @@ export interface AppSettings {
     aiParsingRules?: AiParsingRules;
     receiptTemplates?: Record<string, string>; // e.g. { 'default': '<html>...' }
     messageTemplates?: { [key: string]: string; };
-}
-
-export interface ApiError {
-    message: string;
-    details?: unknown;
 }
 
 export interface AppState {
@@ -192,6 +176,4 @@ export interface AppState {
   draggedItem: { item: OrderItem; sourceOrderId: string } | null;
   columnCount: 1 | 2 | 3;
   initialAction: string | null;
-  isAuthenticated: boolean;
-  user: TelegramUser | null;
 }

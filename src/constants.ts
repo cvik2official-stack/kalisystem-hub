@@ -57,8 +57,8 @@ export const SPECIAL_TAG_COLORS: Record<string, string> = {
     'WB': 'bg-green-500/20 text-green-300 border-green-500/30',
     'SHANTI': 'bg-blue-500/20 text-blue-300 border-blue-500/30',
     'STI': 'bg-blue-500/20 text-blue-300 border-blue-500/30', // Alias for SHANTI
-    'STOCKO2': 'bg-orange-500/20 text-orange-300 border-orange-500/30',
-    'O2': 'bg-orange-500/20 text-orange-300 border-orange-500/30', // Alias for STOCKO2
+    'STOCKO2': 'bg-orange-500/20 text-orange-400 border-orange-400/50',
+    'O2': 'bg-orange-500/20 text-orange-400 border-orange-400/50', // Alias for STOCKO2
     'new': 'bg-lime-500/20 text-lime-300 border-lime-500/30',
     'stock': 'bg-gray-500/20 text-gray-300 border-gray-500/30',
 };
@@ -92,16 +92,3 @@ export const stringToColorClass = (str: string) => {
     const index = Math.abs(hash) % TAG_COLORS.length;
     return TAG_COLORS[index];
 };
-
-export const REPORT_START_DATE = '2025-11-01';
-export const REPORT_INITIAL_BALANCE = 146.26;
-
-const getEnvVar = (key: string, defaultValue: string): string => {
-    try {
-        return (import.meta as any).env?.[key] || defaultValue;
-    } catch {
-        return defaultValue;
-    }
-};
-
-export const TELEGRAM_BOT_USERNAME = getEnvVar('VITE_TELEGRAM_BOT_USERNAME', 'kali6tembot');
